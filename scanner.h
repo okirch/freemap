@@ -1,0 +1,70 @@
+/*
+ * Copyright (C) 2023 Olaf Kirch <okir@suse.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 2.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+#ifndef FREEMAP_SCANNER_H
+#define FREEMAP_SCANNER_H
+
+#include <stdlib.h>
+#include <stdbool.h>
+#include <assert.h>
+
+#include "freemap.h"
+#include "lists.h"
+
+typedef struct fm_scan_dummy	fm_scan_state_t;
+
+struct fm_scan_action {
+	char *			id;
+
+	void			(*result_callback)(fm_target_t *, fm_fact_t *);
+
+	const struct fm_scan_action_ops {
+		size_t		obj_size;
+
+		void		(*destroy)(fm_scan_action_t *);
+		fm_probe_t *	(*get_next_probe)(const fm_scan_action_t *, fm_target_t *, unsigned int);
+	} *ops;
+};
+
+struct fm_scan_action_array {
+	unsigned int		count;
+	fm_scan_action_t **	entries;
+};
+
+struct fm_scanner {
+	fm_target_manager_t *	target_manager;
+	fm_target_pool_t *	target_pool;
+
+	struct timeval		scan_started;
+	struct timeval		next_pool_resize;
+
+	/* We put an overall limit on the number of packets we
+	 * generate per second.
+	 * In addition, we put a limit on the number of packets
+	 * that we send to an individual host.
+	 */
+	fm_ratelimit_t		send_rate_limit;
+
+	struct fm_scan_action_array requests;
+
+	fm_protocol_engine_t *	tcp_engine;
+	fm_protocol_engine_t *	udp_engine;
+	fm_protocol_engine_t *	icmp_engine;
+};
+
+#endif /* FREEMAP_SCANNER_H */
+

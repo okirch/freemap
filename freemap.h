@@ -1,0 +1,108 @@
+/*
+ * Copyright (C) 2023 Olaf Kirch <okir@suse.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 2.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+#ifndef FREEMAP_FREEMAP_H
+#define FREEMAP_FREEMAP_H
+
+#include <time.h>
+#include "types.h"
+
+extern fm_address_enumerator_t *fm_create_simple_address_enumerator(const char *addr_string);
+extern fm_address_enumerator_t *fm_create_cidr_address_enumerator(const char *addr_string);
+
+extern const char *	fm_address_enumerator_name(const fm_address_enumerator_t *);
+extern bool		fm_address_enumerator_get_one(fm_address_enumerator_t *, fm_address_t *);
+extern void		fm_address_enumerator_destroy(fm_address_enumerator_t *);
+
+extern const char *	fm_address_format(const fm_address_t *);
+
+extern void		fm_timestamp_init(struct timeval *ts);
+extern double		fm_timestamp_update(struct timeval *ts);
+extern double		fm_timestamp_since(struct timeval *ts);
+extern void		fm_timestamp_set_timeout(struct timeval *ts, long milliseconds);
+extern bool		fm_timestamp_older(const struct timeval *expiry, const struct timeval *now);
+extern const struct timeval *fm_timestamp_now(void);
+
+extern void		fm_ratelimit_init(fm_ratelimit_t *rl, unsigned int rate, unsigned int max_burst);
+extern void		fm_ratelimit_update(fm_ratelimit_t *rl);
+extern bool		fm_ratelimit_okay(fm_ratelimit_t *rl);
+extern unsigned int	fm_ratelimit_available(const fm_ratelimit_t *rl);
+extern void		fm_ratelimit_consume(fm_ratelimit_t *rl, unsigned int ntokens);
+
+extern fm_target_manager_t *fm_target_manager_create(void);
+extern void		fm_target_manager_add_address_generator(fm_target_manager_t *, fm_address_enumerator_t *);
+extern bool		fm_target_manager_replenish_pool(fm_target_manager_t *mgr, fm_target_pool_t *pool);
+
+extern fm_target_pool_t *fm_target_pool_create(unsigned int size);
+extern fm_target_t *	fm_target_pool_get_next(fm_target_pool_t *pool, unsigned int *);
+extern bool		fm_target_pool_remove(fm_target_pool_t *pool, fm_target_t *);
+extern bool		fm_target_pool_reap_completed(fm_target_pool_t *pool);
+extern void		fm_target_pool_auto_resize(fm_target_pool_t *pool, unsigned int max_size);
+
+extern fm_scanner_t *	fm_scanner_create(void);
+extern bool		fm_scanner_ready(fm_scanner_t *);
+extern bool		fm_scanner_add_host_reachability_check(fm_scanner_t *, const char *proto, bool abort_on_fail);
+extern bool		fm_scanner_add_single_port_scan(fm_scanner_t *, const char *proto, unsigned int port);
+extern bool		fm_scanner_transmit(fm_scanner_t *);
+extern double		fm_scanner_elapsed(fm_scanner_t *);
+
+extern fm_target_t *	fm_target_create(const fm_address_t *);
+extern void		fm_target_free(fm_target_t *);
+extern const char *	fm_target_get_id(const fm_target_t *);
+extern bool		fm_target_is_done(const fm_target_t *);
+extern unsigned int	fm_target_get_send_quota(fm_target_t *);
+extern void		fm_target_send_probe(fm_target_t *, fm_probe_t *);
+extern unsigned int	fm_target_process_timeouts(fm_target_t *, unsigned int quota);
+
+extern fm_fact_t *	fm_probe_send(fm_probe_t *);
+extern void		fm_probe_free(fm_probe_t *);
+
+extern fm_protocol_engine_t *fm_tcp_engine_create(void);
+extern fm_protocol_engine_t *fm_icmp_engine_create(void);
+
+extern void		fm_fact_log_append(fm_fact_log_t *, fm_fact_t *);
+extern void		fm_fact_log_destroy(fm_fact_log_t *);
+extern void		fm_fact_free(fm_fact_t *);
+extern const char *	fm_fact_render(const fm_fact_t *fact);
+
+extern bool		fm_address_set_port(fm_address_t *address, unsigned short port);
+extern unsigned int	fm_addrfamily_sockaddr_size(int family);
+
+extern fm_socket_t *	fm_socket_create(int family, int type, int proto);
+extern void		fm_socket_free(fm_socket_t *);
+extern void		fm_socket_set_callback(fm_socket_t *,
+				void (*callback)(fm_socket_t *, int, void *user_data),
+				void *user_data);
+extern bool		fm_socket_connect(fm_socket_t *, const fm_address_t *);
+extern bool		fm_socket_enable_recverr(fm_socket_t *);
+extern bool		fm_socket_send(fm_socket_t *sock, const fm_address_t *dstaddr, const void *pkt, size_t len);
+extern void		fm_socket_close(fm_socket_t *);
+extern bool		fm_socket_poll_all(void);
+
+extern void		fm_probe_mark_port_reachable(fm_probe_t *, const char *proto, unsigned int port);
+extern void		fm_probe_mark_port_unreachable(fm_probe_t *, const char *proto, unsigned int port);
+extern void		fm_probe_mark_host_reachable(fm_probe_t *, const char *proto);
+extern void		fm_probe_mark_host_unreachable(fm_probe_t *, const char *proto);
+
+extern void		fm_set_logfile(FILE *fp);
+extern void		fm_trace(const char *fmt, ...);
+extern void		fm_log_fatal(const char *fmt, ...);
+extern void		fm_log_error(const char *fmt, ...);
+extern void		fm_log_warning(const char *fmt, ...);
+
+
+#endif /* FREEMAP_FREEMAP_H */
