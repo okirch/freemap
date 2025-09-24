@@ -138,7 +138,7 @@ fm_socket_connect(fm_socket_t *sock, const fm_address_t *address)
 		return false;
 
 	if (sock->type == SOCK_STREAM) {
-		printf("Initiated TCP connection to %s on sock %d\n", fm_address_format(address), sock->fd);
+		printf("Initiated connection to %s on sock %d\n", fm_address_format(address), sock->fd);
 		sock->rpoll = POLLIN|POLLOUT;
 	} else {
 		sock->rpoll = POLLIN;
@@ -163,10 +163,13 @@ fm_socket_send(fm_socket_t *sock, const fm_address_t *dstaddr, const void *pkt, 
 
 	if (r < 0) {
 		/* have the caller receive the error */
-		if (errno == EMSGSIZE || errno == EHOSTUNREACH)
+		if (errno == EMSGSIZE || errno == EHOSTUNREACH || errno == ECONNREFUSED)
 			return true;
 
-		fm_log_error("failed to send: %m");
+		if (errno == ENOBUFS || errno == EAGAIN)
+			return false;
+
+		fm_log_error("failed to send: %m (errno %d)", errno);
 		return false;
 	}
 

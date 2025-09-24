@@ -25,6 +25,7 @@
 #include "protocols.h"
 
 
+static void			fm_scanner_map_heisenberg(fm_target_t *);
 static fm_scan_action_t *	fm_scan_action_simple_port_scan(fm_protocol_engine_t *proto, unsigned short port);
 static fm_scan_action_t *	fm_scan_action_host_reachability_scan(fm_protocol_engine_t *proto, unsigned int retries);
 
@@ -116,6 +117,7 @@ fm_scanner_create(void)
 			FM_DEFAULT_GLOBAL_PACKET_RATE / 10);
 
 	scanner->tcp_engine = fm_tcp_engine_create();
+	scanner->udp_engine = fm_udp_engine_create();
 	scanner->icmp_engine = fm_icmp_engine_create();
 
 	return scanner;
@@ -236,9 +238,11 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 		quota -= num_sent;
 
 		if (fm_target_is_done(target)) {
-			printf("%s is done - reaping what we sowed\n", fm_address_format(&target->address));
+			printf("%s is done - reaping what we have sown\n", fm_address_format(&target->address));
 
 			fm_target_pool_remove(scanner->target_pool, target);
+
+			fm_scanner_map_heisenberg(target);
 
 			/* wrap up reporting for this target */
 			// fm_reporting_finalize(target);
@@ -274,6 +278,47 @@ fm_scanner_get_protocol_engine(fm_scanner_t *scanner, const char *protocol_name)
 	}
 
 	return NULL;
+}
+
+/*
+ * Deal with UDP ports that had a timeout
+ */
+void
+fm_scanner_map_heisenberg(fm_target_t *target)
+{
+	int map_heisenberg = FM_FACT_NONE;
+	unsigned int i, j;
+
+	for (i = 0; i < target->log.count; ++i) {
+		fm_fact_t *fact = target->log.entries[i];
+
+		if (fact->type == FM_FACT_PORT_HEISENBERG) {
+			printf("*** %s %s ***\n",
+					fm_address_format(&target->address),
+					fm_fact_render(fact));
+			if (map_heisenberg == FM_FACT_NONE) {
+				unsigned int num_reachable = 0, num_unreachable = 0;
+
+				for (j = 0; j < target->log.count; ++j) {
+					fm_fact_t *other = target->log.entries[i];
+
+					if (other->type == FM_FACT_PORT_REACHABLE && fm_fact_check_protocol(other, "udp"))
+						num_reachable += 1;
+					else
+					if (other->type == FM_FACT_PORT_UNREACHABLE && fm_fact_check_protocol(other, "udp"))
+						num_unreachable += 1;
+				}
+
+				if (num_reachable || num_unreachable)
+					map_heisenberg = FM_FACT_PORT_MAYBE_REACHABLE;
+				else
+					map_heisenberg = FM_FACT_PORT_UNREACHABLE;
+			}
+
+			fact->type = map_heisenberg;
+			printf("STATUS ADJUSTED %s %s\n", fm_address_format(&target->address), fm_fact_render(fact));
+		}
+	}
 }
 
 /*

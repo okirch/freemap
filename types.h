@@ -71,6 +71,8 @@ typedef enum {
 	FM_FACT_HOST_UNREACHABLE,
 	FM_FACT_PORT_REACHABLE,
 	FM_FACT_PORT_UNREACHABLE,
+	FM_FACT_PORT_HEISENBERG,
+	FM_FACT_PORT_MAYBE_REACHABLE,
 
 } fm_fact_type_t;
 
@@ -83,6 +85,7 @@ struct fm_fact {
 		size_t		obj_size;
 		const char *	(*render)(const fm_fact_t *);
 		void		(*destroy)(fm_fact_t *);
+		bool		(*check_protocol)(const fm_fact_t *, const char *);
 	} *ops;
 };
 

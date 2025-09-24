@@ -3,6 +3,7 @@ CFLAGS	= -Wall -g -D_GNU_SOURCE
 OBJS	= scanner.o \
 	  target.o \
 	  tcp.o \
+	  udp.o \
 	  icmp.o \
 	  ratelimit.o \
 	  addresses.o \

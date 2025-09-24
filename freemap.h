@@ -72,12 +72,14 @@ extern fm_fact_t *	fm_probe_send(fm_probe_t *);
 extern void		fm_probe_free(fm_probe_t *);
 
 extern fm_protocol_engine_t *fm_tcp_engine_create(void);
+extern fm_protocol_engine_t *fm_udp_engine_create(void);
 extern fm_protocol_engine_t *fm_icmp_engine_create(void);
 
 extern void		fm_fact_log_append(fm_fact_log_t *, fm_fact_t *);
 extern void		fm_fact_log_destroy(fm_fact_log_t *);
 extern void		fm_fact_free(fm_fact_t *);
 extern const char *	fm_fact_render(const fm_fact_t *fact);
+extern bool		fm_fact_check_protocol(const fm_fact_t *fact, const char *protocol_id);
 
 extern bool		fm_address_set_port(fm_address_t *address, unsigned short port);
 extern unsigned int	fm_addrfamily_sockaddr_size(int family);
@@ -95,6 +97,7 @@ extern bool		fm_socket_poll_all(void);
 
 extern void		fm_probe_mark_port_reachable(fm_probe_t *, const char *proto, unsigned int port);
 extern void		fm_probe_mark_port_unreachable(fm_probe_t *, const char *proto, unsigned int port);
+extern void		fm_probe_mark_port_heisenberg(fm_probe_t *, const char *proto, unsigned int port);
 extern void		fm_probe_mark_host_reachable(fm_probe_t *, const char *proto);
 extern void		fm_probe_mark_host_unreachable(fm_probe_t *, const char *proto);
 

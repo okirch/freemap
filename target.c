@@ -103,6 +103,12 @@ fm_probe_mark_port_unreachable(fm_probe_t *probe, const char *proto_id, unsigned
 	fm_probe_set_status(probe, fm_fact_create_port_unreachable(proto_id, port));
 }
 
+void
+fm_probe_mark_port_heisenberg(fm_probe_t *probe, const char *proto_id, unsigned int port)
+{
+	fm_probe_set_status(probe, fm_fact_create_port_heisenberg(proto_id, port));
+}
+
 /*
  * The target pool
  */
@@ -132,9 +138,6 @@ fm_target_pool_auto_resize(fm_target_pool_t *pool, unsigned int max_size)
 		for (i = pool->size; i < new_size; ++i)
 			pool->slots[i] = NULL;
 		pool->size = new_size;
-
-		printf("*** Resized target pool to %u entries\n", pool->size);
-		fm_target_pool_check(pool);
 	}
 }
 
@@ -185,8 +188,6 @@ bool
 fm_target_pool_remove(fm_target_pool_t *pool, fm_target_t *target)
 {
 	unsigned int i;
-
-	fm_target_pool_check(pool);
 
 	for (i = 0; i < pool->size; ++i) {
 		if (pool->slots[i] == target) {
@@ -298,9 +299,9 @@ fm_target_manager_replenish_pool(fm_target_manager_t *mgr, fm_target_pool_t *poo
 			printf("%s added to address pool\n", fm_target_get_id(target));
 			fm_target_pool_add(pool, target);
 		}
-	}
 
-	fm_target_pool_check(pool);
+		fm_target_pool_check(pool);
+	}
 
 	return pool->count > 0;
 }

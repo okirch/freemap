@@ -37,8 +37,17 @@ main(int argc, char **argv)
 
 	mgr = scanner->target_manager;
 
+#if 0
 	fm_target_manager_add_address_generator(mgr, 
 			fm_create_cidr_address_enumerator("192.168.178.0/24"));
+#else
+	fm_target_manager_add_address_generator(mgr, 
+			fm_create_simple_address_enumerator("192.168.178.1"));
+	fm_target_manager_add_address_generator(mgr, 
+			fm_create_simple_address_enumerator("192.168.178.93"));
+	fm_target_manager_add_address_generator(mgr, 
+			fm_create_simple_address_enumerator("192.168.178.162"));
+#endif
 	fm_target_manager_add_address_generator(mgr, 
 			fm_create_simple_address_enumerator("192.168.172.1"));
 	fm_target_manager_add_address_generator(mgr, 
@@ -46,6 +55,9 @@ main(int argc, char **argv)
 
 	fm_scanner_add_host_reachability_check(scanner, "icmp", true);
 	fm_scanner_add_single_port_scan(scanner, "tcp", 22);
+	fm_scanner_add_single_port_scan(scanner, "udp", 111);
+	fm_scanner_add_single_port_scan(scanner, "udp", 53);
+	fm_scanner_add_single_port_scan(scanner, "udp", 1);
 
 	if (!fm_scanner_ready(scanner)) {
 		fprintf(stderr, "scanner is not fully configured\n");

@@ -29,6 +29,7 @@
 extern fm_fact_t *		fm_fact_create_error(fm_fact_type_t type, const char *fmt, ...);
 extern fm_fact_t *		fm_fact_create_port_reachable(const char *proto_id, unsigned int port);
 extern fm_fact_t *		fm_fact_create_port_unreachable(const char *proto_id, unsigned int port);
+extern fm_fact_t *		fm_fact_create_port_heisenberg(const char *proto_id, unsigned int port);
 extern fm_fact_t *		fm_fact_create_host_reachable(const char *proto_id);
 extern fm_fact_t *		fm_fact_create_host_unreachable(const char *proto_id);
 
@@ -40,7 +41,7 @@ struct fm_probe_ops {
 
 	void			(*destroy)(fm_probe_t *);
 	fm_fact_t *		(*send)(fm_probe_t *);
-	bool			(*should_resend)(const fm_probe_t *);
+	bool			(*should_resend)(fm_probe_t *);
 };
 
 struct fm_probe {

@@ -177,9 +177,9 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 }
 
 static bool
-fm_icmp_host_probe_should_resend(const fm_probe_t *probe)
+fm_icmp_host_probe_should_resend(fm_probe_t *probe)
 {
-	const struct fm_icmp_host_probe *icmp = (const struct fm_icmp_host_probe *) probe;
+	const struct fm_icmp_host_probe *icmp = (struct fm_icmp_host_probe *) probe;
 
 	return icmp->retries > 0;
 }

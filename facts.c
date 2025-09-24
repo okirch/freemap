@@ -92,6 +92,12 @@ fm_fact_type_to_string(fm_fact_type_t type)
 
 	case FM_FACT_PORT_UNREACHABLE:
 		return "port closed";
+
+	case FM_FACT_PORT_HEISENBERG:
+		return "port in heisenberg state";
+
+	case FM_FACT_PORT_MAYBE_REACHABLE:
+		return "port maybe reachable";
 	}
 	return "<bad status>";
 }
@@ -113,6 +119,14 @@ fm_fact_render(const fm_fact_t *fact)
 	}
 
 	return msgbuf;
+}
+
+bool
+fm_fact_check_protocol(const fm_fact_t *fact, const char *protocol_id)
+{
+	if (fact->ops->check_protocol == NULL)
+		return false;
+	return fact->ops->check_protocol(fact, protocol_id);
 }
 
 /*
@@ -137,9 +151,20 @@ fm_fact_port_status_render(const fm_fact_t *fact)
 	return msgbuf;
 }
 
+static bool
+fm_fact_port_status_check_protocol(const fm_fact_t *fact, const char *protocol_id)
+{
+	struct fm_fact_port_status *error = (struct fm_fact_port_status *) fact;
+
+	if (error->proto == NULL || protocol_id == NULL)
+		return false;
+	return strcmp(error->proto, protocol_id) == 0;
+}
+
 static const struct fm_fact_ops fm_fact_port_status_ops = {
 	.obj_size	= sizeof(struct fm_fact_port_status),
 	.render		= fm_fact_port_status_render,
+	.check_protocol	= fm_fact_port_status_check_protocol,
 };
 
 static fm_fact_t *
@@ -177,6 +202,12 @@ fm_fact_t *
 fm_fact_create_port_unreachable(const char *proto_id, unsigned int port)
 {
 	return fm_fact_create_port_status(FM_FACT_PORT_UNREACHABLE, proto_id, port);
+}
+
+fm_fact_t *
+fm_fact_create_port_heisenberg(const char *proto_id, unsigned int port)
+{
+	return fm_fact_create_port_status(FM_FACT_PORT_HEISENBERG, proto_id, port);
 }
 
 /*
