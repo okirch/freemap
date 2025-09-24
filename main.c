@@ -47,6 +47,8 @@ main(int argc, char **argv)
 			fm_create_simple_address_enumerator("192.168.178.93"));
 	fm_target_manager_add_address_generator(mgr, 
 			fm_create_simple_address_enumerator("192.168.178.162"));
+	fm_target_manager_add_address_generator(mgr, 
+			fm_create_simple_address_enumerator("192.168.178.46"));
 #endif
 	fm_target_manager_add_address_generator(mgr, 
 			fm_create_simple_address_enumerator("192.168.172.1"));
@@ -55,8 +57,9 @@ main(int argc, char **argv)
 
 	fm_scanner_add_host_reachability_check(scanner, "icmp", true);
 	fm_scanner_add_single_port_scan(scanner, "tcp", 22);
-	fm_scanner_add_single_port_scan(scanner, "udp", 111);
+	fm_scanner_add_single_port_scan(scanner, "udp", 2049);
 	fm_scanner_add_single_port_scan(scanner, "udp", 53);
+	fm_scanner_add_single_port_scan(scanner, "udp", 5353);
 	fm_scanner_add_single_port_scan(scanner, "udp", 1);
 
 	if (!fm_scanner_ready(scanner)) {

@@ -1,4 +1,4 @@
-CFLAGS	= -Wall -g -D_GNU_SOURCE
+CFLAGS	= -Wall -g -D_GNU_SOURCE -I.
 
 OBJS	= scanner.o \
 	  target.o \
@@ -9,6 +9,9 @@ OBJS	= scanner.o \
 	  addresses.o \
 	  socket.o \
 	  facts.o \
+	  wellknown.o \
+	  wellknown/rpc.o \
+	  wellknown/dns.o \
 	  logging.o
 LIB	= libfreemap.a
 UTILS	= freemap

@@ -25,6 +25,7 @@
 
 #include "scanner.h"
 #include "protocols.h"
+#include "wellknown.h"
 #include "target.h" /* for fm_probe_t */
 
 static fm_probe_t *	fm_udp_create_port_probe(fm_protocol_engine_t *proto, fm_target_t *target, uint16_t port);
@@ -93,6 +94,8 @@ static fm_fact_t *
 fm_udp_port_probe_send(fm_probe_t *probe)
 {
 	struct fm_udp_port_probe *udp = (struct fm_udp_port_probe *) probe;
+	fm_wellknown_service_t *wks;
+	const fm_probe_packet_t *pkt;
 
 	if (udp->sock == NULL) {
 		udp->sock = fm_socket_create(udp->host_address.ss_family, SOCK_DGRAM, 0);
@@ -109,11 +112,19 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 		}
 	}
 
-	/* Send a single NUL byte as payload.
-	 * We should probably make an effort to craft a somewhat valid packet
-	 * for well known services, such as RPC, DNS, MDNS, DHCP.
-	 */
-	if (!fm_socket_send(udp->sock, NULL, "", 1))
+	/* Check if we can guess a well-known service */
+	if ((wks = fm_wellknown_service_for_port("udp", udp->port)) == NULL) {
+		/* If we can't guess the UDP service, send a single NUL byte as payload. */
+		static fm_probe_packet_t dummy_packet = { "", 1 };
+		static fm_wellknown_service_t dummy_udp = {
+			.id = "udp", .probe_packet = &dummy_packet
+		};
+
+		wks = &dummy_udp;
+	}
+
+	pkt = wks->probe_packet;
+	if (!fm_socket_send(udp->sock, NULL, pkt->data, pkt->len))
 		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to send UDP packet: %m");
 
 	return NULL;
