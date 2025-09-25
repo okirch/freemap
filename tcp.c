@@ -27,6 +27,7 @@
 #include "protocols.h"
 #include "target.h" /* for fm_probe_t */
 
+static fm_rtt_stats_t *	fm_tcp_create_rtt_estimator(const fm_protocol_engine_t *proto, int ipproto, unsigned int netid);
 static fm_probe_t *	fm_tcp_create_port_probe(fm_protocol_engine_t *proto, fm_target_t *target, uint16_t port);
 
 struct fm_tcp_engine_default {
@@ -37,6 +38,7 @@ static struct fm_protocol_ops	fm_tcp_engine_default_ops = {
 	.obj_size	= sizeof(struct fm_tcp_engine_default),
 	.name		= "tcp",
 
+	.create_rtt_estimator = fm_tcp_create_rtt_estimator,
 	.create_port_probe = fm_tcp_create_port_probe,
 };
 
@@ -48,6 +50,12 @@ fm_tcp_engine_create(void)
 	tcp = (struct fm_tcp_engine_default *) fm_protocol_engine_create(&fm_tcp_engine_default_ops);
 
 	return &tcp->base;
+}
+
+static fm_rtt_stats_t *
+fm_tcp_create_rtt_estimator(const fm_protocol_engine_t *proto, int ipproto, unsigned int netid)
+{
+	return fm_rtt_stats_create(ipproto, netid, 250 / 2, 2);
 }
 
 /*
@@ -88,6 +96,7 @@ fm_tcp_port_probe_callback(fm_socket_t *sock, int bits, void *user_data)
 		fm_probe_mark_port_reachable(&tcp->base, "tcp", tcp->port);
 	}
 
+	fm_probe_reply_received(&tcp->base);
 	fm_socket_close(sock);
 }
 
@@ -127,11 +136,14 @@ fm_tcp_create_port_probe(fm_protocol_engine_t *proto, fm_target_t *target, uint1
 {
 	struct sockaddr_storage tmp_address = target->address;
 	struct fm_tcp_port_probe *probe;
+	char name[32];
 
 	if (!fm_address_set_port(&tmp_address, port))
 		return NULL;
 
-	probe = (struct fm_tcp_port_probe *) fm_probe_alloc(&fm_tcp_port_probe_ops);
+	snprintf(name, sizeof(name), "tcp/%u", port);
+
+	probe = (struct fm_tcp_port_probe *) fm_probe_alloc(name, &fm_tcp_port_probe_ops, IPPROTO_TCP, target);
 
 	probe->port = port;
 	probe->host_address = tmp_address;

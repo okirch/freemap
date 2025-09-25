@@ -24,15 +24,18 @@ static bool		fm_target_inspect_pending(fm_target_t *target);
 static void		fm_target_pool_check(fm_target_pool_t *pool);
 
 fm_probe_t *
-fm_probe_alloc(const struct fm_probe_ops *ops)
+fm_probe_alloc(const char *id, const struct fm_probe_ops *ops, int ipproto, const fm_target_t *target)
 {
 	fm_probe_t *probe;
 
 	assert(ops->obj_size >= sizeof(*probe));
 	probe = calloc(1, ops->obj_size);
+	probe->name = strdup(id);
 	probe->ops = ops;
+	probe->ipproto = ipproto;
+	probe->netid = target->netid;
 
-	probe->timeout = ops->default_timeout;
+	assert(probe->netid);
 
 	return probe;
 }
@@ -57,15 +60,33 @@ fm_probe_send(fm_probe_t *probe)
 {
 	fm_fact_t *error;
 
+	probe->timeout = 0;
+
 	error = probe->ops->send(probe);
 	if (error == NULL) {
 		/* Record when we sent the first packet */
 		fm_timestamp_init(&probe->sent);
 
+		/* If we have an RTT estimator, use the timeout it suggests */
+		if (probe->timeout == 0 && probe->rtt != NULL)
+			probe->timeout = probe->rtt->timeout + probe->rtt_application_bias;
+
+		if (probe->timeout == 0)
+			probe->timeout = probe->ops->default_timeout;
+
 		if (probe->timeout > 0)
 			fm_timestamp_set_timeout(&probe->expires, probe->timeout);
+		else
+			fm_log_warning("%s: timeout=0\n", probe->name);
 	}
 	return error;
+}
+
+void
+fm_probe_reply_received(fm_probe_t *probe)
+{
+	if (probe->rtt)
+		fm_rtt_stats_update(probe->rtt, fm_timestamp_since(&probe->sent));
 }
 
 void
@@ -262,17 +283,18 @@ fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 
 	while (target == NULL) {
 		fm_address_t target_addr;
+		unsigned int netid;
 
 		if (!(agen = fm_address_enumerator_list_head(&mgr->address_generators)))
 			break;
 
-		if (!fm_address_enumerator_get_one(agen, &target_addr)) {
+		if (!(netid = fm_address_enumerator_get_one(agen, &target_addr))) {
 			/* This address generator is spent; move to the next */
 			fm_address_enumerator_destroy(agen);
 			continue;
 		}
 
-		target = fm_target_create(&target_addr);
+		target = fm_target_create(&target_addr, netid);
 
 		/* Set the packet send rate per host.
 		 * The maximum burst size defaults to 0.1 sec worth of packets. */
@@ -307,13 +329,14 @@ fm_target_manager_replenish_pool(fm_target_manager_t *mgr, fm_target_pool_t *poo
 }
 
 fm_target_t *
-fm_target_create(const fm_address_t *address)
+fm_target_create(const fm_address_t *address, unsigned int netid)
 {
 	fm_target_t *tgt;
 
 	tgt = calloc(1, sizeof(*tgt));
 	tgt->address = *address;
 	tgt->id = strdup(fm_address_format(address));
+	tgt->netid = netid;
 
 	/* Initial sequence number for ICMP probes */
 	tgt->host_probe_seq = 1;
@@ -445,4 +468,76 @@ fm_target_inspect_pending(fm_target_t *target)
 	}
 
 	return rv;
+}
+
+/*
+ * Deal with network stats
+ * Maybe this code should live in scanner.c
+ */
+struct fm_rtt_stats_array {
+	unsigned int		count;
+	fm_rtt_stats_t **	stats;
+};
+
+static struct fm_rtt_stats_array	fm_rtt_stats_registry;
+
+static void
+fm_rtt_stats_array_append(struct fm_rtt_stats_array *array, fm_rtt_stats_t *stats)
+{
+	static const unsigned int chunk = 16;
+
+	if ((array->count % chunk) == 0)
+		array->stats = realloc(array->stats, (array->count + chunk) * sizeof(array->stats[0]));
+	array->stats[array->count++] = stats;
+}
+
+fm_rtt_stats_t *
+fm_rtt_stats_get(int protid, unsigned int netid)
+{
+	unsigned int i;
+
+	for (i = 0; i < fm_rtt_stats_registry.count; ++i) {
+		fm_rtt_stats_t *rtt = fm_rtt_stats_registry.stats[i];
+
+		if (rtt->ipproto == protid && rtt->netid == netid)
+			return rtt;
+	}
+
+	return NULL;
+}
+
+fm_rtt_stats_t *
+fm_rtt_stats_create(int protid, unsigned int netid, unsigned long initial_rtt, unsigned int multiple)
+{
+	fm_rtt_stats_t *stats;
+
+	stats = calloc(1, sizeof(*stats));
+	stats->ipproto = protid;
+	stats->netid = netid;
+	stats->multiple = multiple;
+
+	fm_rtt_stats_update(stats, 1e-3 * initial_rtt);
+
+	fm_rtt_stats_array_append(&fm_rtt_stats_registry, stats);
+
+	return stats;
+}
+
+void
+fm_rtt_stats_update(fm_rtt_stats_t *stats, double rtt)
+{
+	stats->rtt_sum += rtt;
+	stats->nsamples += 1;
+
+	stats->rtt = (unsigned int) (stats->rtt_sum * (1000.0 / stats->nsamples));
+	stats->timeout = stats->rtt * stats->multiple;
+
+	if (stats->timeout == 0)
+		stats->timeout = 1000; /* as good as any value */
+
+	fm_log_debug("update rtt estimate %d/%u; sample rtt=%u ms; new estimate=%lu\n",
+				stats->ipproto, stats->netid,
+                                (unsigned int) (1000 * rtt),
+				stats->rtt);
+
 }

@@ -37,7 +37,7 @@ typedef const struct fm_wellknown_service fm_wellknown_service_t;
 
 typedef struct sockaddr_storage	fm_address_t;
 
-static const unsigned int	FM_INITIAL_TARGET_POOL_SIZE = 5;
+static const unsigned int	FM_INITIAL_TARGET_POOL_SIZE = 16;
 static const unsigned int	FM_DEFAULT_GLOBAL_PACKET_RATE = 1000;
 static const unsigned int	FM_DEFAULT_HOST_PACKET_RATE = 100;
 static const unsigned int	FM_TARGET_POOL_RESIZE_TIME = 4; /* grow the pool every 4 seconds */
@@ -48,6 +48,21 @@ static const unsigned int	FM_TARGET_POOL_MAX_SIZE = 1023;
 static const unsigned int	FM_ICMP_PROBE_RETRIES = 3;
 static const unsigned int	FM_ICMP_PACKET_SPACING = 250;
 static const unsigned int	FM_ICMP_RESPONSE_TIMEOUT = 1000;
+
+/*
+ * Network stats. For now, we use it to build a reasonable RTT estimate
+ */
+typedef struct fm_rtt_stats {
+	int			ipproto;
+	unsigned int		netid;
+
+	unsigned long		rtt;		/* millisec */
+	unsigned int		multiple;	/* rtt * multiple => timeout */
+	unsigned long		timeout;
+
+	unsigned int		nsamples;
+	double			rtt_sum;	/* seconds */
+} fm_network_stats_t, fm_rtt_stats_t;
 
 /*
  * Rate limiting.

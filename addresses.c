@@ -33,12 +33,14 @@
 fm_address_enumerator_t *
 fm_address_enumerator_alloc(const struct fm_address_enumerator_ops *ops)
 {
+	static unsigned int allocator_id = 1;
 	fm_address_enumerator_t *agen;
 
 	assert(sizeof(*agen) <= ops->obj_size);
 
 	agen = calloc(1, ops->obj_size);
 	agen->ops = ops;
+	agen->id = allocator_id++;
 	return agen;
 }
 
@@ -60,13 +62,16 @@ fm_address_enumerator_name(const fm_address_enumerator_t *agen)
 	return agen->ops->name;
 }
 
-bool
+unsigned int
 fm_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
 {
 	assert(agen->ops != NULL);
 	assert(agen->ops->get_one_address != NULL);
 
-	return agen->ops->get_one_address(agen, ret);
+	if (!agen->ops->get_one_address(agen, ret))
+		return 0;
+
+	return agen->id;
 }
 
 
@@ -355,7 +360,7 @@ fm_simple_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t
 }
 
 /*
- * The "cidr" enumerator that is iterates over a CIDR block.
+ * The "cidr" enumerator that iterates over a CIDR block.
  */
 struct fm_cidr_address_enumerator {
 	fm_address_enumerator_t base;
@@ -429,4 +434,3 @@ fm_cidr_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *
 
 	return true;
 }
-

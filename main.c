@@ -37,11 +37,13 @@ main(int argc, char **argv)
 	scanner = fm_scanner_create();
 
 	report = fm_scanner_get_report(scanner);
-	fm_report_add_logfile(report, "freescan.log");
+	fm_report_add_logfile(report, "scan.log");
 
 	mgr = scanner->target_manager;
 
-#if 0
+	fm_debug_level = 0;
+
+#if 1
 	fm_target_manager_add_address_generator(mgr, 
 			fm_create_cidr_address_enumerator("192.168.178.0/24"));
 #else
@@ -56,8 +58,6 @@ main(int argc, char **argv)
 #endif
 	fm_target_manager_add_address_generator(mgr, 
 			fm_create_simple_address_enumerator("192.168.172.1"));
-	fm_target_manager_add_address_generator(mgr, 
-			fm_create_simple_address_enumerator("52.28.168.184"));
 
 	fm_scanner_add_host_reachability_check(scanner, "icmp", true);
 	fm_scanner_add_single_port_scan(scanner, "tcp", 22);

@@ -28,6 +28,7 @@
 #include "wellknown.h"
 #include "target.h" /* for fm_probe_t */
 
+static fm_rtt_stats_t *	fm_udp_create_rtt_estimator(const fm_protocol_engine_t *proto, int ipproto, unsigned int netid);
 static fm_probe_t *	fm_udp_create_port_probe(fm_protocol_engine_t *proto, fm_target_t *target, uint16_t port);
 
 struct fm_udp_engine_default {
@@ -38,6 +39,7 @@ static struct fm_protocol_ops	fm_udp_engine_default_ops = {
 	.obj_size	= sizeof(struct fm_udp_engine_default),
 	.name		= "udp",
 
+	.create_rtt_estimator = fm_udp_create_rtt_estimator,
 	.create_port_probe = fm_udp_create_port_probe,
 };
 
@@ -45,6 +47,12 @@ fm_protocol_engine_t *
 fm_udp_engine_create(void)
 {
 	return fm_protocol_engine_create(&fm_udp_engine_default_ops);
+}
+
+static fm_rtt_stats_t *
+fm_udp_create_rtt_estimator(const fm_protocol_engine_t *proto, int ipproto, unsigned int netid)
+{
+	return fm_rtt_stats_create(ipproto, netid, 250 / 2, 2);
 }
 
 /*
@@ -87,6 +95,7 @@ fm_udp_port_probe_callback(fm_socket_t *sock, int bits, void *user_data)
 		fm_probe_mark_port_reachable(&udp->base, "udp", udp->port);
 	}
 
+	fm_probe_reply_received(&udp->base);
 	fm_socket_close(sock);
 }
 
@@ -163,21 +172,22 @@ fm_udp_create_port_probe(fm_protocol_engine_t *proto, fm_target_t *target, uint1
 {
 	struct sockaddr_storage tmp_address = target->address;
 	struct fm_udp_port_probe *probe;
+	char name[32];
 
 	if (!fm_address_set_port(&tmp_address, port))
 		return NULL;
 
-	probe = (struct fm_udp_port_probe *) fm_probe_alloc(&fm_udp_port_probe_ops);
+	snprintf(name, sizeof(name), "udp/%u", port);
+
+	probe = (struct fm_udp_port_probe *) fm_probe_alloc(name, &fm_udp_port_probe_ops, IPPROTO_UDP, target);
 
 	probe->port = port;
 	probe->host_address = tmp_address;
 	probe->sock = NULL;
 
-	if (target->rtt_estimate) {
-		probe->base.timeout = 10 * target->rtt_estimate;
-	} else {
-		probe->base.timeout = 1000;
-	}
+	/* For the time being, assume that any UDP service may take up to .5 sec to process
+	 * the request and cook up a response. */
+	probe->base.rtt_application_bias = 500;
 
 	fm_log_debug("Created UDP socket probe for %s\n", fm_address_format(&probe->host_address));
 	return &probe->base;

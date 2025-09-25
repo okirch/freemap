@@ -32,7 +32,7 @@ extern void		fm_report_flush(fm_report_t *);
 extern void		fm_report_free(fm_report_t *);
 
 extern const char *	fm_address_enumerator_name(const fm_address_enumerator_t *);
-extern bool		fm_address_enumerator_get_one(fm_address_enumerator_t *, fm_address_t *);
+extern unsigned int	fm_address_enumerator_get_one(fm_address_enumerator_t *, fm_address_t *);
 extern void		fm_address_enumerator_destroy(fm_address_enumerator_t *);
 
 extern const char *	fm_address_format(const fm_address_t *);
@@ -68,7 +68,7 @@ extern bool		fm_scanner_add_single_port_scan(fm_scanner_t *, const char *proto, 
 extern bool		fm_scanner_transmit(fm_scanner_t *);
 extern double		fm_scanner_elapsed(fm_scanner_t *);
 
-extern fm_target_t *	fm_target_create(const fm_address_t *);
+extern fm_target_t *	fm_target_create(const fm_address_t *, unsigned int netid);
 extern void		fm_target_free(fm_target_t *);
 extern const char *	fm_target_get_id(const fm_target_t *);
 extern bool		fm_target_is_done(const fm_target_t *);
@@ -82,6 +82,10 @@ extern void		fm_probe_free(fm_probe_t *);
 extern fm_protocol_engine_t *fm_tcp_engine_create(void);
 extern fm_protocol_engine_t *fm_udp_engine_create(void);
 extern fm_protocol_engine_t *fm_icmp_engine_create(void);
+
+extern fm_rtt_stats_t *	fm_rtt_stats_get(int proto_id, unsigned int netid);
+extern fm_rtt_stats_t *	fm_rtt_stats_create(int proto_id, unsigned int netid, unsigned long initial_rtt, unsigned int multiple);
+extern void		fm_rtt_stats_update(fm_rtt_stats_t *, double rtt);
 
 extern void		fm_fact_log_append(fm_fact_log_t *, fm_fact_t *);
 extern void		fm_fact_log_destroy(fm_fact_log_t *);
@@ -105,6 +109,7 @@ extern bool		fm_socket_send(fm_socket_t *sock, const fm_address_t *dstaddr, cons
 extern void		fm_socket_close(fm_socket_t *);
 extern bool		fm_socket_poll_all(void);
 
+extern void		fm_probe_reply_received(fm_probe_t *);
 extern void		fm_probe_mark_port_reachable(fm_probe_t *, const char *proto, unsigned int port);
 extern void		fm_probe_mark_port_unreachable(fm_probe_t *, const char *proto, unsigned int port);
 extern void		fm_probe_mark_port_heisenberg(fm_probe_t *, const char *proto, unsigned int port);

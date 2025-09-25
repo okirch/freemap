@@ -29,6 +29,9 @@
 struct fm_address_enumerator {
 	struct hlist		link;
 
+	/* every enumerator has its unique id */
+	unsigned int		id;
+
 	const struct fm_address_enumerator_ops {
 		size_t		obj_size;
 		const char *	name;

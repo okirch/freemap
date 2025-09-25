@@ -31,6 +31,7 @@
 #include "target.h" /* for fm_probe_t */
 
 static fm_probe_t *	fm_icmp_create_host_probe(fm_protocol_engine_t *proto, fm_target_t *target, unsigned int retries);
+static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_engine_t *proto, int ipproto, unsigned int netid);
 
 struct fm_icmp_engine_default {
 	fm_protocol_engine_t	base;
@@ -40,6 +41,7 @@ static struct fm_protocol_ops	fm_icmp_engine_default_ops = {
 	.obj_size	= sizeof(struct fm_icmp_engine_default),
 	.name		= "icmp",
 
+	.create_rtt_estimator = fm_icmp_create_rtt_estimator,
 	.create_host_probe = fm_icmp_create_host_probe,
 };
 
@@ -47,6 +49,12 @@ fm_protocol_engine_t *
 fm_icmp_engine_create(void)
 {
 	return fm_protocol_engine_create(&fm_icmp_engine_default_ops);
+}
+
+static fm_rtt_stats_t *
+fm_icmp_create_rtt_estimator(const fm_protocol_engine_t *proto, int ipproto, unsigned int netid)
+{
+	return fm_rtt_stats_create(ipproto, netid, FM_ICMP_PACKET_SPACING / 5, 5);
 }
 
 /*
@@ -93,6 +101,7 @@ fm_icmp_host_probe_callback(fm_socket_t *sock, int bits, void *user_data)
 		fm_probe_mark_host_unreachable(&icmp->base, "icmp");
 	}
 
+	fm_probe_reply_received(&icmp->base);
 	fm_socket_close(sock);
 }
 
@@ -115,8 +124,7 @@ fm_icmp_build_echo_request(int af, uint32_t ident, uint32_t seq, unsigned char *
 
 		icmp->icmp_cksum = in_csum(icmp, sizeof(*icmp));
 		rsize = sizeof(*icmp);
-        }
-        else if (af == AF_INET6) {
+        } else if (af == AF_INET6) {
 		struct icmp6_hdr *icmp6 = (struct icmp6_hdr *) buf;
 
 		icmp6->icmp6_type = ICMP6_ECHO_REQUEST;
@@ -167,11 +175,12 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 	if (icmp->retries > 0)
 		icmp->retries -= 1;
 
-	/* We send N packets, 250ms apart and then wait for up to 1 sec */
-	if (icmp->retries > 0)
-		probe->timeout = FM_ICMP_PACKET_SPACING;
-	else
+	/* We send several packets in rapid succession, and then we wait for a bit longer.
+	 * The actual values are set in create_rtt_estimator */
+	if (icmp->retries == 0)
 		probe->timeout = FM_ICMP_RESPONSE_TIMEOUT;
+
+	/* If retries > 0, we let the caller pick a timeout based on the rtt estimate */
 
 	return NULL;
 }
@@ -181,14 +190,20 @@ fm_icmp_host_probe_should_resend(fm_probe_t *probe)
 {
 	const struct fm_icmp_host_probe *icmp = (struct fm_icmp_host_probe *) probe;
 
-	return icmp->retries > 0;
+	/* This is overly aggressive - icmp/echo may be just one of several reachability probes */
+	if (icmp->retries == 0) {
+		fm_probe_mark_host_unreachable(probe, probe->name);
+		return false;
+	}
+
+	return true;
 }
 
 static struct fm_probe_ops fm_icmp_host_probe_ops = {
 	.obj_size	= sizeof(struct fm_icmp_host_probe),
 	.name 		= "icmp",
 
-	.default_timeout= 1000,
+	.default_timeout= 1000,	/* FM_ICMP_RESPONSE_TIMEOUT */
 
 	.destroy	= fm_icmp_host_probe_destroy,
 	.send		= fm_icmp_host_probe_send,
@@ -218,7 +233,7 @@ fm_icmp_create_host_probe(fm_protocol_engine_t *proto, fm_target_t *target, unsi
 		return NULL;
 	}
 
-	probe = (struct fm_icmp_host_probe *) fm_probe_alloc(&fm_icmp_host_probe_ops);
+	probe = (struct fm_icmp_host_probe *) fm_probe_alloc("icmp/echo", &fm_icmp_host_probe_ops, ipproto, target);
 
 	probe->sock = NULL;
 
@@ -229,11 +244,10 @@ fm_icmp_create_host_probe(fm_protocol_engine_t *proto, fm_target_t *target, unsi
 	probe->retries = retries;
 	target->host_probe_seq += retries;
 
-	/* Make this a blocking probe, ie do not send any other packets until
-	 * this one has completed. */
+	/* Make this a blocking probe, ie do not send any other packets to this host until
+	 * the icmp probe has completed. */
 	probe->base.blocking = true;
 
 	fm_log_debug("Created ICMP socket probe for %s\n", fm_address_format(&probe->host_address));
 	return &probe->base;
 }
-

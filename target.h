@@ -47,9 +47,25 @@ struct fm_probe_ops {
 struct fm_probe {
 	struct hlist		link;
 
+	/* name of the probe, like udp/53 or icmp/echo */
+	char *			name;
+	int			ipproto;
+	unsigned int		netid;
+
 	const struct fm_probe_ops *ops;
 
 	bool			blocking;
+
+	fm_rtt_stats_t *	rtt;
+
+	/* When probing eg UDP based services, we need to slap some
+	 * constant value in the timeout derived from the RTT estimate,
+	 * because the RTT will be largely based on the network timing;
+	 * but for us to receive a UDP response, we need to take into
+	 * account the time it takes the server to actually cook up a
+	 * response.
+	 */
+	unsigned int		rtt_application_bias;
 
 	long			timeout;
 
@@ -77,6 +93,9 @@ struct fm_target {
 
 	/* sequence number for host probes, eg ICMP seq */
 	unsigned int		host_probe_seq;
+
+	/* Unique ID identifying a network that we scan */
+	unsigned int		netid;
 
 	/* When doing an initial ICMP probe, this will record the RTT in millisec. */
 	unsigned int		rtt_estimate;
@@ -110,7 +129,10 @@ struct fm_target_manager {
 	unsigned int		host_packet_rate;
 };
 
-extern fm_probe_t *	fm_probe_alloc(const struct fm_probe_ops *ops);
+extern fm_probe_t *	fm_probe_alloc(const char *id,
+				const struct fm_probe_ops *ops,
+				int ipproto,
+				const fm_target_t *target);
 
 
 static inline void

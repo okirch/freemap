@@ -39,26 +39,56 @@ fm_protocol_engine_create(const struct fm_protocol_ops *ops)
 	return prot;
 }
 
+static fm_rtt_stats_t *
+fm_protocol_engine_get_rtt(const fm_protocol_engine_t *proto, int ipproto, unsigned int netid)
+{
+	fm_rtt_stats_t *rtt;
+
+	if (proto->ops->create_rtt_estimator == NULL)
+		return NULL;
+
+	if ((rtt = fm_rtt_stats_get(ipproto, netid)) == NULL)
+		rtt = proto->ops->create_rtt_estimator(proto, ipproto, netid);
+	return rtt;
+}
+
+static inline void
+fm_protocol_engine_attach_rtt_estimator(fm_protocol_engine_t *proto, fm_probe_t *probe)
+{
+	probe->rtt = fm_protocol_engine_get_rtt(proto, probe->ipproto, probe->netid);
+}
+
+/*
+ * Create host/port probes
+ */
 fm_probe_t *
 fm_protocol_engine_create_port_probe(fm_protocol_engine_t *proto, fm_target_t *target, uint16_t port)
 {
+	fm_probe_t *probe;
+
 	if (proto->ops->create_port_probe == NULL) {
 		fprintf(stderr, "Error: protocol %s cannot create a port probe\n", proto->ops->name);
 		return NULL;
 	}
 
-	return proto->ops->create_port_probe(proto, target, port);
+	if ((probe = proto->ops->create_port_probe(proto, target, port)) != NULL)
+		fm_protocol_engine_attach_rtt_estimator(proto, probe);
+	return probe;
 }
 
 fm_probe_t *
 fm_protocol_engine_create_host_probe(fm_protocol_engine_t *proto, fm_target_t *target, unsigned int retries)
 {
+	fm_probe_t *probe;
+
 	if (proto->ops->create_host_probe == NULL) {
 		fprintf(stderr, "Error: protocol %s cannot create a host probe\n", proto->ops->name);
 		return NULL;
 	}
 
-	return proto->ops->create_host_probe(proto, target, retries);
+	if ((probe = proto->ops->create_host_probe(proto, target, retries)) != NULL)
+		fm_protocol_engine_attach_rtt_estimator(proto, probe);
+	return probe;
 }
 
 static inline void
@@ -333,7 +363,7 @@ static void
 fm_scanner_host_reachability_callback(fm_target_t *target, fm_fact_t *status)
 {
 	if (status->type != FM_FACT_HOST_REACHABLE) {
-		fm_trace("Host %s not reachable, skipping all other scan actions\n", fm_address_format(&target->address));
+		fm_log_debug("%s does not respond to ICMP echo ping, skipping all other scan actions\n", fm_address_format(&target->address));
 		fm_scanner_abort_target(target);
 	} else if (status->elapsed != 0) {
 		target->rtt_estimate = 1000 * status->elapsed;
