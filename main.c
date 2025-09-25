@@ -27,6 +27,7 @@ main(int argc, char **argv)
 {
 	fm_scanner_t *scanner;
 	fm_target_manager_t *mgr;
+	fm_report_t *report;
 
 #if 1
 	if (mcheck_pedantic(NULL) < 0)
@@ -34,6 +35,9 @@ main(int argc, char **argv)
 #endif
 
 	scanner = fm_scanner_create();
+
+	report = fm_scanner_get_report(scanner);
+	fm_report_add_logfile(report, "freescan.log");
 
 	mgr = scanner->target_manager;
 

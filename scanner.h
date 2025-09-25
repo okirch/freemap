@@ -48,6 +48,7 @@ struct fm_scan_action_array {
 struct fm_scanner {
 	fm_target_manager_t *	target_manager;
 	fm_target_pool_t *	target_pool;
+	fm_report_t *		report;
 
 	struct timeval		scan_started;
 	struct timeval		next_pool_resize;

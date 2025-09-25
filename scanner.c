@@ -109,6 +109,7 @@ fm_scanner_create(void)
 
 	scanner->target_manager = fm_target_manager_create();
 	scanner->target_pool = fm_target_pool_create(FM_INITIAL_TARGET_POOL_SIZE);
+	scanner->report = fm_report_create();
 
 	/* Set the global packet send rate.
 	 * The maximum burst size defaults to 0.1 sec worth of packets. */
@@ -132,6 +133,12 @@ fm_scanner_ready(fm_scanner_t *scanner)
 	fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
 
 	return true;
+}
+
+fm_report_t *
+fm_scanner_get_report(fm_scanner_t *scanner)
+{
+	return scanner->report;
 }
 
 double
@@ -202,6 +209,7 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 
 	if (!fm_target_manager_replenish_pool(scanner->target_manager, scanner->target_pool)) {
 		printf("Looks like we're done\n");
+		fm_report_flush(scanner->report);
 		return false;
 	}
 
@@ -245,7 +253,7 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 			fm_scanner_map_heisenberg(target);
 
 			/* wrap up reporting for this target */
-			// fm_reporting_finalize(target);
+			fm_report_write(scanner->report, target);
 
 			fm_target_free(target);
 		}

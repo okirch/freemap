@@ -24,6 +24,13 @@
 extern fm_address_enumerator_t *fm_create_simple_address_enumerator(const char *addr_string);
 extern fm_address_enumerator_t *fm_create_cidr_address_enumerator(const char *addr_string);
 
+extern fm_report_t *	fm_report_create(void);
+extern void		fm_report_write(const fm_report_t *, const fm_target_t *);
+extern void		fm_report_enable_standard_output(fm_report_t *, bool);
+extern bool		fm_report_add_logfile(fm_report_t *, const char *path);
+extern void		fm_report_flush(fm_report_t *);
+extern void		fm_report_free(fm_report_t *);
+
 extern const char *	fm_address_enumerator_name(const fm_address_enumerator_t *);
 extern bool		fm_address_enumerator_get_one(fm_address_enumerator_t *, fm_address_t *);
 extern void		fm_address_enumerator_destroy(fm_address_enumerator_t *);
@@ -55,6 +62,7 @@ extern void		fm_target_pool_auto_resize(fm_target_pool_t *pool, unsigned int max
 
 extern fm_scanner_t *	fm_scanner_create(void);
 extern bool		fm_scanner_ready(fm_scanner_t *);
+extern fm_report_t *	fm_scanner_get_report(fm_scanner_t *);
 extern bool		fm_scanner_add_host_reachability_check(fm_scanner_t *, const char *proto, bool abort_on_fail);
 extern bool		fm_scanner_add_single_port_scan(fm_scanner_t *, const char *proto, unsigned int port);
 extern bool		fm_scanner_transmit(fm_scanner_t *);
@@ -80,6 +88,8 @@ extern void		fm_fact_log_destroy(fm_fact_log_t *);
 extern void		fm_fact_free(fm_fact_t *);
 extern const char *	fm_fact_render(const fm_fact_t *fact);
 extern bool		fm_fact_check_protocol(const fm_fact_t *fact, const char *protocol_id);
+extern const fm_fact_t *fm_fact_log_find(const fm_fact_log_t *, fm_fact_type_t);
+extern const fm_fact_t *fm_fact_log_find_iter(const fm_fact_log_t *, fm_fact_type_t, unsigned int *);
 
 extern bool		fm_address_set_port(fm_address_t *address, unsigned short port);
 extern unsigned int	fm_addrfamily_sockaddr_size(int family);

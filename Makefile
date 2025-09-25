@@ -9,6 +9,7 @@ OBJS	= scanner.o \
 	  addresses.o \
 	  socket.o \
 	  facts.o \
+	  report.o \
 	  wellknown.o \
 	  wellknown/rpc.o \
 	  wellknown/dns.o \

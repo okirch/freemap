@@ -48,6 +48,33 @@ fm_fact_log_destroy(fm_fact_log_t *log)
 	memset(log, 0, sizeof(*log));
 }
 
+const fm_fact_t *
+fm_fact_log_find_iter(const fm_fact_log_t *log, fm_fact_type_t type, unsigned int *pos)
+{
+	unsigned int i = *pos;
+	fm_fact_t *fact;
+
+	while (i < log->count) {
+		fact = log->entries[i++];
+		if (fact->type == type)
+			goto out;
+	}
+
+	fact = NULL;
+
+out:
+	*pos = i;
+	return fact;
+}
+
+const fm_fact_t *
+fm_fact_log_find(const fm_fact_log_t *log, fm_fact_type_t type)
+{
+	unsigned int pos = 0;
+
+	return fm_fact_log_find_iter(log, type, &pos);
+}
+
 fm_fact_t *
 fm_fact_create(const struct fm_fact_ops *ops, fm_fact_type_t type)
 {

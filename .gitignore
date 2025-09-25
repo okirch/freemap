@@ -1,6 +1,7 @@
 *.swp
 *.o
 *.a
+*.log
 freemap
 tests/addrs
 tests/ratelimit
