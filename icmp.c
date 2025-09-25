@@ -85,11 +85,11 @@ fm_icmp_host_probe_callback(fm_socket_t *sock, int bits, void *user_data)
 	/* FIXME actually receive the packet and make sure it's the response we
 	 * were looking for. */
 	if (bits & POLLIN) {
-		printf("ICMP probe %s: reachable\n", fm_address_format(&icmp->host_address));
+		fm_log_debug("ICMP probe %s: reachable\n", fm_address_format(&icmp->host_address));
 		fm_probe_mark_host_reachable(&icmp->base, "icmp");
 	}
 	if (bits & POLLERR) {
-		printf("ICMP probe %s: unreachable\n", fm_address_format(&icmp->host_address));
+		fm_log_debug("ICMP probe %s: unreachable\n", fm_address_format(&icmp->host_address));
 		fm_probe_mark_host_unreachable(&icmp->base, "icmp");
 	}
 
@@ -233,7 +233,7 @@ fm_icmp_create_host_probe(fm_protocol_engine_t *proto, fm_target_t *target, unsi
 	 * this one has completed. */
 	probe->base.blocking = true;
 
-	printf("Created ICMP socket probe for %s\n", fm_address_format(&probe->host_address));
+	fm_log_debug("Created ICMP socket probe for %s\n", fm_address_format(&probe->host_address));
 	return &probe->base;
 }
 

@@ -80,10 +80,10 @@ fm_udp_port_probe_callback(fm_socket_t *sock, int bits, void *user_data)
 	assert(udp->sock == sock);
 
 	if (bits & POLLERR) {
-		printf("UDP probe %s: error\n", fm_address_format(&udp->host_address));
+		fm_log_debug("UDP probe %s: error\n", fm_address_format(&udp->host_address));
 		fm_probe_mark_port_unreachable(&udp->base, "udp", udp->port);
 	} else if (bits & POLLIN) {
-		printf("UDP probe %s: reachable\n", fm_address_format(&udp->host_address));
+		fm_log_debug("UDP probe %s: reachable\n", fm_address_format(&udp->host_address));
 		fm_probe_mark_port_reachable(&udp->base, "udp", udp->port);
 	}
 
@@ -179,7 +179,7 @@ fm_udp_create_port_probe(fm_protocol_engine_t *proto, fm_target_t *target, uint1
 		probe->base.timeout = 1000;
 	}
 
-	printf("Created UDP socket probe for %s\n", fm_address_format(&probe->host_address));
+	fm_log_debug("Created UDP socket probe for %s\n", fm_address_format(&probe->host_address));
 	return &probe->base;
 }
 

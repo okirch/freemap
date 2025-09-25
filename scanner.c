@@ -94,7 +94,7 @@ fm_scan_action_get_next_probe(fm_scan_action_t *action, fm_target_t *target, uns
 
 	probe = action->ops->get_next_probe(action, target, index);
 	if (probe != NULL) {
-		printf("   %s created next probe for %s index=%d\n", fm_target_get_id(target), action->id, index);
+		fm_log_debug("   %s created next probe for %s index=%d\n", fm_target_get_id(target), action->id, index);
 		probe->result_callback = action->result_callback;
 	}
 	return probe;
@@ -156,15 +156,12 @@ fm_scanner_get_next_probe_for_target(fm_scanner_t *scanner, fm_target_t *target)
 	while (true) {
 		action = target->current_scan.action;
 		if (action == NULL) {
-			if (!(action = fm_scan_action_array_get(&scanner->requests, target->current_scan.action_index))) {
-				// printf("No more scan actions for %s\n", fm_address_format(&target->address));
+			if (!(action = fm_scan_action_array_get(&scanner->requests, target->current_scan.action_index)))
 				return NULL;
-			}
+
 			target->current_scan.action = action;
 			target->current_scan.action_index += 1;
 			target->current_scan.port_index = 0;
-
-			printf("   next action is %s\n", action->id);
 		}
 
 		probe = fm_scan_action_get_next_probe(action, target, target->current_scan.port_index);
@@ -174,7 +171,7 @@ fm_scanner_get_next_probe_for_target(fm_scanner_t *scanner, fm_target_t *target)
 		}
 
 		if (target->current_scan.port_index == 0)
-			printf("Warning: scan action %s does not generate any probe packets at all!\n", action->id);
+			fm_log_warning("scan action %s does not generate any probe packets at all!\n", action->id);
 
 		target->current_scan.action = NULL;
 		target->current_scan.port_index = 0;
@@ -202,13 +199,13 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 		return true;
 
 	if (fm_timestamp_older(&scanner->next_pool_resize, NULL)) {
-		printf("Trying to resize target pool\n");
+		fm_log_debug("Trying to resize target pool\n");
 		fm_target_pool_auto_resize(scanner->target_pool, FM_TARGET_POOL_MAX_SIZE);
 		fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
 	}
 
 	if (!fm_target_manager_replenish_pool(scanner->target_manager, scanner->target_pool)) {
-		printf("Looks like we're done\n");
+		fm_log_debug("Looks like we're done\n");
 		fm_report_flush(scanner->report);
 		return false;
 	}
@@ -226,7 +223,7 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 			target_quota = quota;
 
 #if 0
-		printf("Try to send probes to %s (quota=%u)\n", 
+		fm_log_debug("Try to send probes to %s (quota=%u)\n", 
 				fm_target_get_id(target), target_quota);
 #endif
 
@@ -246,7 +243,7 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 		quota -= num_sent;
 
 		if (fm_target_is_done(target)) {
-			printf("%s is done - reaping what we have sown\n", fm_address_format(&target->address));
+			fm_log_debug("%s is done - reaping what we have sown\n", fm_address_format(&target->address));
 
 			fm_target_pool_remove(scanner->target_pool, target);
 
@@ -301,7 +298,7 @@ fm_scanner_map_heisenberg(fm_target_t *target)
 		fm_fact_t *fact = target->log.entries[i];
 
 		if (fact->type == FM_FACT_PORT_HEISENBERG) {
-			printf("*** %s %s ***\n",
+			fm_log_debug("*** %s %s ***\n",
 					fm_address_format(&target->address),
 					fm_fact_render(fact));
 			if (map_heisenberg == FM_FACT_NONE) {
@@ -324,7 +321,7 @@ fm_scanner_map_heisenberg(fm_target_t *target)
 			}
 
 			fact->type = map_heisenberg;
-			printf("STATUS ADJUSTED %s %s\n", fm_address_format(&target->address), fm_fact_render(fact));
+			fm_log_debug("STATUS ADJUSTED %s %s\n", fm_address_format(&target->address), fm_fact_render(fact));
 		}
 	}
 }
@@ -336,7 +333,7 @@ static void
 fm_scanner_host_reachability_callback(fm_target_t *target, fm_fact_t *status)
 {
 	if (status->type != FM_FACT_HOST_REACHABLE) {
-		printf("Host %s not reachable, skipping all other scan actions\n", fm_address_format(&target->address));
+		fm_trace("Host %s not reachable, skipping all other scan actions\n", fm_address_format(&target->address));
 		fm_scanner_abort_target(target);
 	} else if (status->elapsed != 0) {
 		target->rtt_estimate = 1000 * status->elapsed;

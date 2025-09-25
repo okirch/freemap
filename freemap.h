@@ -117,6 +117,12 @@ extern void		fm_log_fatal(const char *fmt, ...);
 extern void		fm_log_error(const char *fmt, ...);
 extern void		fm_log_warning(const char *fmt, ...);
 
+extern unsigned int	fm_debug_level;
+
+#define fm_log_debug(fmt ...) do { \
+		if (fm_debug_level > 0) fm_trace(fmt); \
+	} while (0)
+
 extern fm_wellknown_service_t *fm_wellknown_service_for_port(const char *protool_id, unsigned int port);
 
 #endif /* FREEMAP_FREEMAP_H */

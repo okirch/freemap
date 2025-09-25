@@ -138,7 +138,7 @@ fm_socket_connect(fm_socket_t *sock, const fm_address_t *address)
 		return false;
 
 	if (sock->type == SOCK_STREAM) {
-		printf("Initiated connection to %s on sock %d\n", fm_address_format(address), sock->fd);
+		fm_log_debug("Initiated connection to %s on sock %d\n", fm_address_format(address), sock->fd);
 		sock->rpoll = POLLIN|POLLOUT;
 	} else {
 		sock->rpoll = POLLIN;
@@ -225,7 +225,7 @@ fm_socket_poll_all(void)
 	socks = calloc(max_fds, sizeof(socks[0]));
 
 	fm_socket_foreach(&socket_list, sock) {
-		/* printf("sock %d poll %d\n", sock->fd, sock->rpoll); */
+		/* fm_log_debug("sock %d poll %d\n", sock->fd, sock->rpoll); */
 		if (sock->fd >= 0 && sock->rpoll != 0) {
 			pfd[nfds].fd = sock->fd;
 			pfd[nfds].events = sock->rpoll;
@@ -240,7 +240,7 @@ fm_socket_poll_all(void)
 			struct pollfd *rp = &pfd[nfds];
 
 			if (rp->revents != 0) {
-				/* printf("poll event %d on sock %d\n", rp->revents, rp->fd); */
+				/* fm_log_debug("poll event %d on sock %d\n", rp->revents, rp->fd); */
 				sock = socks[nfds];
 
 				fm_socket_handle_poll_event(sock, rp->revents);

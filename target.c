@@ -296,7 +296,7 @@ fm_target_manager_replenish_pool(fm_target_manager_t *mgr, fm_target_pool_t *poo
 				break;
 			}
 
-			printf("%s added to address pool\n", fm_target_get_id(target));
+			fm_log_debug("%s added to address pool\n", fm_target_get_id(target));
 			fm_target_pool_add(pool, target);
 		}
 
@@ -397,7 +397,7 @@ fm_target_process_timeouts(fm_target_t *target, unsigned int quota)
 				if (num_sent < quota) {
 					fm_fact_t *error;
 
-					printf("%s: resending %s probe\n", fm_address_format(&target->address), probe->ops->name);
+					fm_log_debug("%s: resending %s probe\n", fm_address_format(&target->address), probe->ops->name);
 					error = fm_probe_send(probe);
 					if (error != NULL)
 						fm_probe_set_status(probe, error);
@@ -425,7 +425,7 @@ fm_target_inspect_pending(fm_target_t *target)
                 next = (fm_probe_t *) probe->link.next;
 
 		if (probe->status != NULL) {
-			printf("STATUS %s %s\n", fm_address_format(&target->address), fm_fact_render(probe->status));
+			fm_log_debug("STATUS %s %s\n", fm_address_format(&target->address), fm_fact_render(probe->status));
 			if (probe->result_callback)
 				probe->result_callback(target, probe->status);
 
@@ -441,7 +441,7 @@ fm_target_inspect_pending(fm_target_t *target)
 		target->plugged = false;
 
 	if (fm_target_is_done(target)) {
-		printf("%s all outstanding probes collected\n", fm_address_format(&target->address));
+		fm_log_debug("%s all outstanding probes collected\n", fm_address_format(&target->address));
 	}
 
 	return rv;

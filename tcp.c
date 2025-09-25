@@ -81,10 +81,10 @@ fm_tcp_port_probe_callback(fm_socket_t *sock, int bits, void *user_data)
 	assert(tcp->sock == sock);
 
 	if (bits & POLLERR) {
-		printf("TCP probe %s: error\n", fm_address_format(&tcp->host_address));
+		fm_log_debug("TCP probe %s: error\n", fm_address_format(&tcp->host_address));
 		fm_probe_mark_port_unreachable(&tcp->base, "tcp", tcp->port);
 	} else if (bits & POLLOUT) {
-		printf("TCP probe %s: reachable\n", fm_address_format(&tcp->host_address));
+		fm_log_debug("TCP probe %s: reachable\n", fm_address_format(&tcp->host_address));
 		fm_probe_mark_port_reachable(&tcp->base, "tcp", tcp->port);
 	}
 
@@ -137,6 +137,6 @@ fm_tcp_create_port_probe(fm_protocol_engine_t *proto, fm_target_t *target, uint1
 	probe->host_address = tmp_address;
 	probe->sock = NULL;
 
-	printf("Created TCP socket probe for %s\n", fm_address_format(&probe->host_address));
+	fm_log_debug("Created TCP socket probe for %s\n", fm_address_format(&probe->host_address));
 	return &probe->base;
 }
