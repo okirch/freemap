@@ -50,7 +50,7 @@ fm_address_enumerator_destroy(fm_address_enumerator_t *agen)
 	fm_address_enumerator_list_remove(agen);
 	if (agen->ops->destroy != NULL)
 		agen->ops->destroy(agen);
-	memset(agen, 0, sizeof(agen->ops->obj_size));
+	memset(agen, 0, agen->ops->obj_size);
 	free(agen);
 }
 

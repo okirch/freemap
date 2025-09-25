@@ -34,7 +34,7 @@ fm_protocol_engine_create(const struct fm_protocol_ops *ops)
 {
 	fm_protocol_engine_t *prot;
 
-	prot = calloc(1, sizeof(ops->obj_size));
+	prot = calloc(1, ops->obj_size);
 	prot->ops = ops;
 	return prot;
 }
