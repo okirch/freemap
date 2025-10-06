@@ -64,6 +64,7 @@ extern void		fm_target_pool_auto_resize(fm_target_pool_t *pool, unsigned int max
 extern fm_scanner_t *	fm_scanner_create(void);
 extern bool		fm_scanner_ready(fm_scanner_t *);
 extern fm_report_t *	fm_scanner_get_report(fm_scanner_t *);
+extern fm_target_pool_t *fm_scanner_get_target_pool(fm_scanner_t *);
 extern bool		fm_scanner_add_host_reachability_check(fm_scanner_t *, const char *proto, bool abort_on_fail);
 extern bool		fm_scanner_add_single_port_scan(fm_scanner_t *, const char *proto, unsigned int port);
 extern bool		fm_scanner_transmit(fm_scanner_t *);
@@ -72,6 +73,7 @@ extern fm_scan_action_t *fm_scanner_get_action(fm_scanner_t *, unsigned int);
 extern fm_probe_t *	fm_scan_action_get_next_probe(fm_scan_action_t *action, fm_target_t *target, unsigned int index);
 extern const char *	fm_scan_action_id(const fm_scan_action_t *action);
 
+extern void		fm_scheduler_transmit_some(fm_scheduler_t *, unsigned int);
 extern fm_probe_t *	fm_scheduler_get_next_probe(fm_scheduler_t *, fm_target_t *);
 extern bool		fm_scheduler_attach_target(fm_scheduler_t *, fm_target_t *);
 extern void		fm_scheduler_detach_target(fm_scheduler_t *, fm_target_t *);

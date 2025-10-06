@@ -23,8 +23,15 @@
 #include "freemap.h"
 #include "target.h"
 
+/*
+ * A scheduler determines which target and port are scanned next.
+ * The default implementation just does everything in a linear fashion;
+ * but of course, it's possible to implement more complex approaches
+ * (focusing eg on stealth, minimizing the impact of ICMP rate limiting etc)
+ */
 struct fm_scheduler {
 	fm_scanner_t *		scanner;
+	fm_target_pool_t *	target_pool;
 
 	const struct fm_scheduler_ops {
 		const char *	name;
@@ -32,6 +39,7 @@ struct fm_scheduler {
 
 		bool		(*attach)(fm_scheduler_t *, fm_target_t *);
 		void		(*detach)(fm_scheduler_t *, fm_target_t *);
+		void		(*transmit_some)(fm_scheduler_t *, unsigned int quota);
 		fm_probe_t *	(*get_next_probe)(fm_scheduler_t *, fm_target_t *);
 		void		(*destroy)(fm_scheduler_t *);
 	} *ops;
@@ -55,6 +63,7 @@ fm_scheduler_alloc(fm_scanner_t *scanner, const struct fm_scheduler_ops *ops)
 	assert(ops->size >= sizeof(*ret));
 	ret = calloc(1, ops->size);
 	ret->scanner = scanner;
+	ret->target_pool = fm_scanner_get_target_pool(scanner);
 	ret->ops = ops;
 	return ret;
 }
@@ -66,6 +75,12 @@ fm_scheduler_free(fm_scheduler_t *sched)
 		sched->ops->destroy(sched);
 	memset(sched, 0, sizeof(sched->ops->size));
 	free(sched);
+}
+
+void
+fm_scheduler_transmit_some(fm_scheduler_t *sched, unsigned int quota)
+{
+	sched->ops->transmit_some(sched, quota);
 }
 
 fm_probe_t *
@@ -85,6 +100,28 @@ fm_scheduler_detach_target(fm_scheduler_t *sched, fm_target_t *target)
 {
 	sched->ops->detach(sched, target);
 }
+
+static inline fm_probe_t *
+fm_scheduler_get_next_probe_for_target(fm_scheduler_t *sched, fm_target_t *target)
+{
+	fm_probe_t *probe;
+
+	if (target->scan_done)
+		return NULL;
+
+	/* FIXME: which is the right place and time to detach? */
+	if (target->sched_state == NULL)
+		fm_scheduler_attach_target(sched, target);
+
+	probe = fm_scheduler_get_next_probe(sched, target);
+	if (probe == NULL) {
+		fm_scheduler_detach_target(sched, target);
+		target->scan_done = true;
+	}
+
+	return probe;
+}
+
 
 /*
  * Linear scheduler
@@ -145,6 +182,43 @@ fm_linear_scheduler_get_next_probe(fm_scheduler_t *sched, fm_target_t *target)
 	return probe;
 }
 
+static void
+fm_linear_scheduler_transmit_some(fm_scheduler_t *sched, unsigned int quota)
+{
+	unsigned int num_visited = 0;
+
+	while (quota) {
+		unsigned int num_sent = 0, target_quota;
+		fm_target_t *target;
+
+		target = fm_target_pool_get_next(sched->target_pool, &num_visited);
+		if (target == NULL)
+			break;
+
+		target_quota = fm_target_get_send_quota(target);
+		if (target_quota > quota)
+			target_quota = quota;
+
+#if 0
+		fm_log_debug("Try to send probes to %s (quota=%u)\n", 
+				fm_target_get_id(target), target_quota);
+#endif
+
+		while (num_sent < target_quota && !target->plugged) {
+			fm_probe_t *probe;
+
+			probe = fm_scheduler_get_next_probe_for_target(sched, target);
+			if (probe == NULL)
+				break;
+
+			fm_target_send_probe(target, probe);
+			num_sent += 1;
+		}
+
+		quota -= num_sent;
+	}
+}
+
 static struct fm_scheduler_ops		fm_linear_scheduler_ops = {
 	.name		= "linear",
 	.size		= sizeof(fm_scheduler_t),
@@ -152,6 +226,7 @@ static struct fm_scheduler_ops		fm_linear_scheduler_ops = {
 	.attach		= fm_linear_scheduler_attach,
 	.detach		= fm_linear_scheduler_detach,
 	.get_next_probe	= fm_linear_scheduler_get_next_probe,
+	.transmit_some	= fm_linear_scheduler_transmit_some,
 };
 
 fm_scheduler_t *

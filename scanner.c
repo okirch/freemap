@@ -180,6 +180,12 @@ fm_scanner_get_report(fm_scanner_t *scanner)
 	return scanner->report;
 }
 
+fm_target_pool_t *
+fm_scanner_get_target_pool(fm_scanner_t *scanner)
+{
+	return scanner->target_pool;
+}
+
 fm_scan_action_t *
 fm_scanner_get_action(fm_scanner_t *scanner, unsigned int index)
 {
@@ -220,64 +226,43 @@ fm_scanner_abort_target(fm_target_t *target)
 	target->scan_done = true;
 }
 
-bool
-fm_scanner_transmit(fm_scanner_t *scanner)
+/*
+ * Process the timeouts for all probes.
+ * Note that retransmission of probes is subject to rate limiting constraints.
+ */
+void
+fm_scanner_process_timeouts(fm_scanner_t *scanner)
 {
-	unsigned int quota, target_quota;
 	unsigned int num_visited = 0;
+	unsigned int quota, target_quota;
 
-	fm_ratelimit_update(&scanner->send_rate_limit);
-	quota = fm_ratelimit_available(&scanner->send_rate_limit);
-	if (!quota)
-		return true;
-
-	if (fm_timestamp_older(&scanner->next_pool_resize, NULL)) {
-		fm_log_debug("Trying to resize target pool\n");
-		fm_target_pool_auto_resize(scanner->target_pool, FM_TARGET_POOL_MAX_SIZE);
-		fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
-	}
-
-	if (!fm_target_manager_replenish_pool(scanner->target_manager, scanner->target_pool)) {
-		fm_log_debug("Looks like we're done\n");
-		fm_report_flush(scanner->report);
-		return false;
-	}
-
-	/* FIXME: we should probably split the following loop, so that we
-	 *  (a) retransmit probes as necessary
-	 *  (b) call the scheduler to generate new probes where necessary
-	 */
-	while (quota) {
-		unsigned int num_sent = 0;
+	while (true) {
 		fm_target_t *target;
 
 		target = fm_target_pool_get_next(scanner->target_pool, &num_visited);
 		if (target == NULL)
 			break;
 
+		quota = fm_ratelimit_available(&scanner->send_rate_limit);
 		target_quota = fm_target_get_send_quota(target);
 		if (target_quota > quota)
 			target_quota = quota;
 
-#if 0
-		fm_log_debug("Try to send probes to %s (quota=%u)\n", 
-				fm_target_get_id(target), target_quota);
-#endif
+		fm_target_process_timeouts(target, target_quota);
+	}
+}
 
-		num_sent += fm_target_process_timeouts(target, target_quota - num_sent);
+void
+fm_scanner_process_completed(fm_scanner_t *scanner)
+{
+	unsigned int num_visited = 0;
 
-		while (num_sent < target_quota && !target->plugged) {
-			fm_probe_t *probe;
+	while (true) {
+		fm_target_t *target;
 
-			probe = fm_scanner_get_next_probe_for_target(scanner, target);
-			if (probe == NULL)
-				break;
-
-			fm_target_send_probe(target, probe);
-			num_sent += 1;
-		}
-
-		quota -= num_sent;
+		target = fm_target_pool_get_next(scanner->target_pool, &num_visited);
+		if (target == NULL)
+			break;
 
 		if (fm_target_is_done(target)) {
 			fm_log_debug("%s is done - reaping what we have sown\n", fm_address_format(&target->address));
@@ -295,6 +280,34 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 			fm_target_free(target);
 		}
 	}
+}
+
+bool
+fm_scanner_transmit(fm_scanner_t *scanner)
+{
+	if (fm_timestamp_older(&scanner->next_pool_resize, NULL)) {
+		fm_log_debug("Trying to resize target pool\n");
+		fm_target_pool_auto_resize(scanner->target_pool, FM_TARGET_POOL_MAX_SIZE);
+		fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
+	}
+
+	if (!fm_target_manager_replenish_pool(scanner->target_manager, scanner->target_pool)) {
+		fm_log_debug("Looks like we're done\n");
+		fm_report_flush(scanner->report);
+		return false;
+	}
+
+	fm_ratelimit_update(&scanner->send_rate_limit);
+
+	/* Handle probes that have timed out */
+	fm_scanner_process_timeouts(scanner);
+
+	/* Schedule and transmit a few additional probes */
+	fm_scheduler_transmit_some(scanner->scheduler, fm_ratelimit_available(&scanner->send_rate_limit));
+
+	/* Reap any targets that we're done with, making room in the pool for
+	 * the next batch of targets. */
+	fm_scanner_process_completed(scanner);
 
 	/* This loops over the entire pool and reaps the status of completed probes */
 	fm_target_pool_reap_completed(scanner->target_pool);
