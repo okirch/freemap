@@ -117,6 +117,12 @@ fm_scan_action_create(const struct fm_scan_action_ops *ops, const char *id)
 	return action;
 }
 
+const char *
+fm_scan_action_id(const fm_scan_action_t *action)
+{
+	return action->id;
+}
+
 fm_probe_t *
 fm_scan_action_get_next_probe(fm_scan_action_t *action, fm_target_t *target, unsigned int index)
 {
@@ -162,6 +168,9 @@ fm_scanner_ready(fm_scanner_t *scanner)
 	fm_timestamp_update(&scanner->scan_started);
 	fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
 
+	if (scanner->scheduler == NULL)
+		scanner->scheduler = fm_linear_scheduler_create(scanner);
+
 	return true;
 }
 
@@ -169,6 +178,12 @@ fm_report_t *
 fm_scanner_get_report(fm_scanner_t *scanner)
 {
 	return scanner->report;
+}
+
+fm_scan_action_t *
+fm_scanner_get_action(fm_scanner_t *scanner, unsigned int index)
+{
+	return fm_scan_action_array_get(&scanner->requests, index);
 }
 
 double
@@ -180,31 +195,19 @@ fm_scanner_elapsed(fm_scanner_t *scanner)
 static inline fm_probe_t *
 fm_scanner_get_next_probe_for_target(fm_scanner_t *scanner, fm_target_t *target)
 {
-	fm_scan_action_t *action;
 	fm_probe_t *probe;
 
-	while (true) {
-		action = target->current_scan.action;
-		if (action == NULL) {
-			if (!(action = fm_scan_action_array_get(&scanner->requests, target->current_scan.action_index)))
-				return NULL;
+	if (target->scan_done)
+		return NULL;
 
-			target->current_scan.action = action;
-			target->current_scan.action_index += 1;
-			target->current_scan.port_index = 0;
-		}
+	/* FIXME: which is the right place and time to detach? */
+	if (target->sched_state == NULL)
+		fm_scheduler_attach_target(scanner->scheduler, target);
 
-		probe = fm_scan_action_get_next_probe(action, target, target->current_scan.port_index);
-		if (probe != NULL) {
-			target->current_scan.port_index += 1;
-			break;
-		}
-
-		if (target->current_scan.port_index == 0)
-			fm_log_warning("scan action %s does not generate any probe packets at all!\n", action->id);
-
-		target->current_scan.action = NULL;
-		target->current_scan.port_index = 0;
+	probe = fm_scheduler_get_next_probe(scanner->scheduler, target);
+	if (probe == NULL) {
+		fm_scheduler_detach_target(scanner->scheduler, target);
+		target->scan_done = true;
 	}
 
 	return probe;
@@ -213,8 +216,8 @@ fm_scanner_get_next_probe_for_target(fm_scanner_t *scanner, fm_target_t *target)
 void
 fm_scanner_abort_target(fm_target_t *target)
 {
-	target->current_scan.action = NULL;
-	target->current_scan.action_index = (unsigned int) -1;
+	/* fm_scheduler_detach_target(scanner->scheduler, target); */
+	target->scan_done = true;
 }
 
 bool
@@ -240,6 +243,10 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 		return false;
 	}
 
+	/* FIXME: we should probably split the following loop, so that we
+	 *  (a) retransmit probes as necessary
+	 *  (b) call the scheduler to generate new probes where necessary
+	 */
 	while (quota) {
 		unsigned int num_sent = 0;
 		fm_target_t *target;
@@ -281,6 +288,9 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 
 			/* wrap up reporting for this target */
 			fm_report_write(scanner->report, target);
+
+			if (target->sched_state != NULL)
+				fm_scheduler_detach_target(scanner->scheduler, target);
 
 			fm_target_free(target);
 		}
@@ -473,7 +483,6 @@ static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
 	.obj_size	= sizeof(struct fm_simple_port_scan),
 	.get_next_probe	= fm_simple_port_scan_get_next_probe,
 };
-
 
 fm_scan_action_t *
 fm_scan_action_simple_port_scan(fm_protocol_engine_t *proto, unsigned short port)

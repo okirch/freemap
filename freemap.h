@@ -68,6 +68,14 @@ extern bool		fm_scanner_add_host_reachability_check(fm_scanner_t *, const char *
 extern bool		fm_scanner_add_single_port_scan(fm_scanner_t *, const char *proto, unsigned int port);
 extern bool		fm_scanner_transmit(fm_scanner_t *);
 extern double		fm_scanner_elapsed(fm_scanner_t *);
+extern fm_scan_action_t *fm_scanner_get_action(fm_scanner_t *, unsigned int);
+extern fm_probe_t *	fm_scan_action_get_next_probe(fm_scan_action_t *action, fm_target_t *target, unsigned int index);
+extern const char *	fm_scan_action_id(const fm_scan_action_t *action);
+
+extern fm_probe_t *	fm_scheduler_get_next_probe(fm_scheduler_t *, fm_target_t *);
+extern bool		fm_scheduler_attach_target(fm_scheduler_t *, fm_target_t *);
+extern void		fm_scheduler_detach_target(fm_scheduler_t *, fm_target_t *);
+extern fm_scheduler_t *	fm_linear_scheduler_create(fm_scanner_t *);
 
 extern fm_target_t *	fm_target_create(const fm_address_t *, unsigned int netid);
 extern void		fm_target_free(fm_target_t *);

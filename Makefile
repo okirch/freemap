@@ -1,6 +1,7 @@
 CFLAGS	= -Wall -g -D_GNU_SOURCE -I.
 
 OBJS	= scanner.o \
+	  scheduler.o \
 	  target.o \
 	  tcp.o \
 	  udp.o \

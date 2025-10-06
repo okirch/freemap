@@ -86,6 +86,10 @@ struct fm_target {
 	fm_address_t		address;
 	char *			id;
 
+	/* for now, just a boolean state: in progress vs done.
+	 * Maybe later we need 3 states or more. */
+	bool			scan_done;
+
 	bool			plugged;
 
 	/* Limit the rate at which we send packets to this host */
@@ -100,12 +104,8 @@ struct fm_target {
 	/* When doing an initial ICMP probe, this will record the RTT in millisec. */
 	unsigned int		rtt_estimate;
 
-	/* The scan action we're processing */
-	struct {
-		fm_scan_action_t *action;
-		unsigned int	action_index;
-		unsigned int	port_index;
-	} current_scan;
+	/* scheduler stores per-target state here: */
+	void *			sched_state;
 
 	struct fm_probe_list	pending_probes;
 

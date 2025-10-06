@@ -60,6 +60,8 @@ struct fm_scanner {
 	 */
 	fm_ratelimit_t		send_rate_limit;
 
+	fm_scheduler_t *	scheduler;
+
 	struct fm_scan_action_array requests;
 
 	fm_protocol_engine_t *	tcp_engine;

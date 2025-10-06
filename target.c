@@ -378,7 +378,7 @@ fm_target_get_send_quota(fm_target_t *target)
 bool
 fm_target_is_done(const fm_target_t *target)
 {
-	if (target->current_scan.action != NULL)
+	if (!target->scan_done)
 		return false;
 
 	return fm_probe_list_is_empty(&target->pending_probes);
