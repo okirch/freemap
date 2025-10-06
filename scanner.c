@@ -198,27 +198,6 @@ fm_scanner_elapsed(fm_scanner_t *scanner)
 	return 1000 * fm_timestamp_since(&scanner->scan_started);
 }
 
-static inline fm_probe_t *
-fm_scanner_get_next_probe_for_target(fm_scanner_t *scanner, fm_target_t *target)
-{
-	fm_probe_t *probe;
-
-	if (target->scan_done)
-		return NULL;
-
-	/* FIXME: which is the right place and time to detach? */
-	if (target->sched_state == NULL)
-		fm_scheduler_attach_target(scanner->scheduler, target);
-
-	probe = fm_scheduler_get_next_probe(scanner->scheduler, target);
-	if (probe == NULL) {
-		fm_scheduler_detach_target(scanner->scheduler, target);
-		target->scan_done = true;
-	}
-
-	return probe;
-}
-
 void
 fm_scanner_abort_target(fm_target_t *target)
 {
