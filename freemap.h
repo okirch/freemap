@@ -19,6 +19,7 @@
 #define FREEMAP_FREEMAP_H
 
 #include <time.h>
+#include <stdio.h>
 #include "types.h"
 
 extern fm_address_enumerator_t *fm_create_simple_address_enumerator(const char *addr_string);
