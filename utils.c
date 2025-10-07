@@ -15,30 +15,40 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef FREEMAP_UTILS_H
-#define FREEMAP_UTILS_H
+#include <string.h>
+#include "utils.h"
 
-#include <stdlib.h>
-#include "types.h"
-
-static inline void
-drop_string(char **var)
+void
+fm_string_array_append(fm_string_array_t *sarr, const char *s)
 {
-	char *s = *var;
+	static const unsigned int chunk = 16;
 
-	if (s != NULL) {
-		free(s);
-		*var = NULL;
-	}
+	if (s == NULL)
+		return;
+
+	if ((sarr->count % chunk) == 0)
+		sarr->entries = realloc(sarr->entries, (sarr->count + chunk) * sizeof(sarr->entries[0]));
+	sarr->entries[sarr->count++] = strdup(s);
 }
 
-typedef struct fm_string_array {
-	unsigned int	count;
-	char **		entries;
-} fm_string_array_t;
+void
+fm_string_array_destroy(fm_string_array_t *sarr)
+{
+	unsigned int i;
 
-extern void		fm_string_array_append(fm_string_array_t *, const char *);
-extern void		fm_string_array_destroy(fm_string_array_t *);
-extern const char *	fm_string_array_get(fm_string_array_t *, unsigned int);
+	if (sarr->count) {
+		for (i = 0; i < sarr->count; ++i)
+			free(sarr->entries[i]);
+		free(sarr->entries);
+	}
 
-#endif /* FREEMAP_UTILS_H */
+	memset(sarr, 0, sizeof(*sarr));
+}
+
+const char *
+fm_string_array_get(fm_string_array_t *sarr, unsigned int index)
+{
+	if (index >= sarr->count)
+		return NULL;
+	return sarr->entries[index];
+}

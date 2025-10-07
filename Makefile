@@ -14,7 +14,8 @@ OBJS	= scanner.o \
 	  wellknown.o \
 	  wellknown/rpc.o \
 	  wellknown/dns.o \
-	  logging.o
+	  logging.o \
+	  utils.o
 LIB	= libfreemap.a
 UTILS	= freemap
 freemap_OBJS = main.o
