@@ -11,6 +11,8 @@ OBJS	= scanner.o \
 	  socket.o \
 	  facts.o \
 	  report.o \
+	  program.o \
+	  filefmt.o \
 	  wellknown.o \
 	  wellknown/rpc.o \
 	  wellknown/dns.o \

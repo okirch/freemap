@@ -1,0 +1,5 @@
+routine default-reachability serialize=strict:
+	host-probe icmp;
+
+routine default-scan:
+	port-probe tcp 21 22;

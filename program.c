@@ -1,0 +1,384 @@
+/*
+ * Copyright (C) 2025 Olaf Kirch <okir@suse.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 2.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+#include <string.h>
+#include <stdint.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <assert.h>
+#include <errno.h>
+#include <ctype.h>
+
+#include "freemap.h"
+#include "program.h"
+#include "scanner.h"
+#include "filefmt.h"
+
+#if 0
+static void		fm_scan_step_free(fm_scan_step_t *);
+#endif
+
+const char *		fm_library_path = "lib/library.scan";
+
+/*
+ * unit of execution
+ */
+static fm_scan_exec_t *
+fm_scan_exec_array_append(fm_scan_exec_array_t *array, int type)
+{
+	static const unsigned int chunk = 16;
+	fm_scan_exec_t *exec;
+
+	if ((array->count % chunk) == 0)
+		array->entries = realloc(array->entries, (array->count + chunk) * sizeof(array->entries[0]));
+
+	exec = &array->entries[array->count++];
+
+	memset(exec, 0, sizeof(*exec));
+	exec->type = type;
+
+	return exec;
+}
+
+void
+fm_scan_exec_array_destroy(fm_scan_exec_array_t *array)
+{
+	/* Right now, we do not do refcounting of steps and routines, so
+	 * we cannot tell when it's okay to delete the referenced object.
+	 * So we leak that memory... which is not too bad as this is relatively
+	 * low overhead. */
+	drop_pointer(&array->entries);
+	array->count = 0;
+}
+
+static fm_scan_exec_t *
+fm_scan_routine_append_step(fm_scan_routine_t *routine, const fm_scan_step_t *step)
+{
+	fm_scan_exec_t *exec;
+
+	exec = fm_scan_exec_array_append(&routine->body, FM_SCAN_EXEC_STEP);
+	exec->step = step;
+	return exec;
+}
+
+static fm_scan_exec_t *
+fm_scan_program_append_routine(fm_scan_program_t *program, const fm_scan_routine_t *routine)
+{
+	fm_scan_exec_t *exec;
+
+	exec = fm_scan_exec_array_append(&program->body, FM_SCAN_EXEC_ROUTINE);
+	exec->routine = routine;
+	return exec;
+}
+
+static fm_scan_exec_t *
+fm_scan_library_append_routine(fm_scan_library_t *library, const fm_scan_routine_t *routine)
+{
+	fm_scan_exec_t *exec;
+
+	exec = fm_scan_exec_array_append(&library->routines, FM_SCAN_EXEC_ROUTINE);
+	exec->routine = routine;
+	return exec;
+}
+
+void
+fm_scan_exec_set_abort_on_fail(fm_scan_exec_t *exec, bool value)
+{
+	exec->abort_on_fail = value;
+}
+
+static inline const fm_scan_exec_t *
+fm_scan_exec_array_find_routine(struct fm_scan_exec_array *array, const char *name)
+{
+	unsigned int i;
+
+	if (name == NULL)
+		return NULL;
+
+	for (i = 0; i < array->count; ++i) {
+		fm_scan_exec_t *exec = &array->entries[i];
+		const fm_scan_routine_t *routine;
+
+		if (exec->type == FM_SCAN_EXEC_ROUTINE) {
+			routine = exec->routine;
+		
+			if (!strcmp(routine->name, name))
+				return exec;
+		}
+	}
+
+	return NULL;
+}
+
+fm_scan_routine_t *
+fm_scan_routine_new(const char *name)
+{
+	fm_scan_routine_t *ret;
+
+	ret = calloc(1, sizeof(*ret));
+	ret->name = strdup(name);
+	return ret;
+}
+
+static fm_scan_step_t *
+fm_scan_step_alloc(int type, const char *proto)
+{
+	fm_scan_step_t *step;
+
+	step = calloc(1, sizeof(*step));
+	step->proto = strdup(proto);
+	step->type = type;
+	return step;
+}
+
+void
+fm_scan_step_free(fm_scan_step_t *step)
+{
+	fm_string_array_destroy(&step->args);
+	drop_string(&step->proto);
+	free(step);
+}
+
+static fm_scan_step_t *
+parse_step_definition(struct file_scanner *fs, int type)
+{
+	fm_scan_step_t *step = NULL;
+	char *arg;
+
+	while ((arg = file_scanner_continue_entry(fs)) != NULL) {
+		if (!strcmp(arg, ";"))
+			break;
+
+		if (step == NULL) {
+			step = fm_scan_step_alloc(type, arg);
+		} else {
+			fm_string_array_append(&step->args, arg);
+		}
+	}
+
+	return step;
+}
+
+static bool
+parse_routine_definition(struct file_scanner *fs, fm_scan_library_t *lib)
+{
+	fm_scan_routine_t *routine;
+	fm_scan_exec_t *exec;
+	char *name, *arg;
+
+	if (!(name = file_scanner_continue_entry(fs)))
+		return file_scanner_error(fs, "missing name in \"routine\" declaration\n");
+
+	if (fm_scan_exec_array_find_routine(&lib->routines, name) != NULL)
+		return file_scanner_error(fs, "duplicate routine name \"%s\"\n", name);
+
+	routine = fm_scan_routine_new(name);
+	exec = fm_scan_library_append_routine(lib, routine);
+	(void) exec;
+
+	// printf("NEW ROUTINE %s\n", routine->name);
+
+	/* routine <name> [<attr> ...]: */
+	while ((arg = file_scanner_continue_entry(fs)) != NULL) {
+		if (!strcmp(arg, ":"))
+			break;
+
+		if (!strcmp(arg, "serialize=strict")) {
+			routine->allow_random_order = true;
+			routine->allow_parallel_scan = true;
+		} else {
+			return file_scanner_error(fs, "unsupported routine argument \"%s\"\n", arg);
+		}
+	}
+
+	while ((arg = file_scanner_continue_entry(fs)) != NULL) {
+		fm_scan_step_t *step = NULL;
+
+		if (!strcmp(arg, "host-probe")) {
+			step = parse_step_definition(fs, FM_SCAN_STEP_HOST_PROBE);
+		} else if (!strcmp(arg, "port-probe")) {
+			step = parse_step_definition(fs, FM_SCAN_STEP_PORT_PROBE);
+		} else {
+			file_scanner_error(fs, "unsupported routine argument \"%s\"\n", arg);
+			break;
+		}
+
+		if (step)
+			fm_scan_routine_append_step(routine, step);
+	}
+
+	return true;
+}
+
+static fm_scan_library_t *
+__fm_scan_library_load(const char *path)
+{
+	fm_scan_library_t *lib;
+	struct file_scanner *fs;
+	char *cmd;
+
+	if ((fs = file_scanner_open(path)) == NULL) {
+		fm_log_error("Cannot load library from %s: %m\n", path);
+		return NULL;
+	}
+
+	lib = calloc(1, sizeof(*lib));
+	while ((cmd = file_scanner_next_entry(fs)) != NULL) {
+		if (!strcmp(cmd, "routine"))
+			parse_routine_definition(fs, lib);
+		else
+			file_scanner_error(fs, "unsupported command %s\n", cmd);
+	}
+
+	if (file_scanner_has_error(fs)) {
+		// fm_scan_library_free(lib);
+		lib = NULL;
+	}
+
+	file_scanner_free(fs);
+	return lib;
+}
+
+
+static fm_scan_library_t *
+fm_scan_library_load(void)
+{
+	static fm_scan_library_t *fm_scan_library = NULL;
+
+	if (fm_scan_library == NULL) {
+		fm_scan_library = __fm_scan_library_load(fm_library_path);
+		if (fm_scan_library == NULL)
+			fm_log_fatal("Unable to load scan library\n");
+	}
+	return fm_scan_library;
+}
+
+const fm_scan_exec_t *
+fm_scan_library_load_routine(const char *name)
+{
+	fm_scan_library_t *lib;
+
+	lib = fm_scan_library_load();
+	return fm_scan_exec_array_find_routine(&lib->routines, name);
+}
+
+/*
+ * fm_scan_program objects
+ */
+fm_scan_program_t *
+fm_scan_program_alloc(void)
+{
+	fm_scan_program_t *ret;
+
+	ret = calloc(1, sizeof(*ret));
+	return ret;
+}
+
+void
+fm_scan_program_free(fm_scan_program_t *program)
+{
+	fm_scan_exec_array_destroy(&program->body);
+	free(program);
+}
+
+fm_scan_exec_t *
+fm_scan_program_call_routine(fm_scan_program_t *program, const char *name)
+{
+	fm_scan_library_t *lib;
+	const fm_scan_exec_t *exec;
+
+	lib = fm_scan_library_load();
+
+	exec = fm_scan_exec_array_find_routine(&lib->routines, name);
+	if (exec == NULL) {
+		fm_log_error("Unable to find scan routine \"%s\"\n", name);
+		return NULL;
+	}
+
+	return fm_scan_program_append_routine(program, exec->routine);
+}
+
+static inline const char *
+fm_scan_step_type_to_string(int type)
+{
+	switch (type) {
+	case FM_SCAN_STEP_HOST_PROBE:
+		return "host-probe";
+	case FM_SCAN_STEP_PORT_PROBE:
+		return "port-probe";
+	}
+
+	return "???";
+}
+
+void
+fm_scan_exec_array_dump(const fm_scan_exec_array_t *array, unsigned int indent)
+{
+	char nest_indent[256];
+	unsigned int i, j;
+
+	snprintf(nest_indent, sizeof(nest_indent), "  %*.*s", indent, indent, "");
+	for (i = 0; i < array->count; ++i) {
+		fm_scan_exec_t *exec = &array->entries[i];
+		const fm_scan_routine_t *routine;
+		const fm_scan_step_t *step;
+
+		printf("%s%2u:", nest_indent, i);
+
+		switch (exec->type) {
+		case FM_SCAN_EXEC_STEP:
+			step = exec->step;
+
+			printf(" %s %s", fm_scan_step_type_to_string(step->type),
+					step->proto);
+			for (j = 0; j < step->args.count; ++j)
+				printf(" %s", step->args.entries[j]);
+
+			if (exec->abort_on_fail)
+				printf("; onfail=abort");
+			printf("\n");
+			break;
+
+		case FM_SCAN_EXEC_ROUTINE:
+			routine = exec->routine;
+
+			printf(" call %s", routine->name?: "<unnamed>");
+			if (routine->allow_random_order)
+				printf(" random-order=ok");
+			if (routine->allow_parallel_scan)
+				printf(" parallel-scan=ok");
+
+			if (exec->abort_on_fail)
+				printf("; onfail=abort");
+			printf("\n");
+			fm_scan_exec_array_dump(&routine->body, indent + 4);
+			break;
+
+		default:
+			printf(" ???\n");
+			break;
+		}
+	}
+}
+
+void
+fm_scan_program_dump(const fm_scan_program_t *program)
+{
+	printf("SCAN PROGRAM DUMP\n");
+	fm_scan_exec_array_dump(&program->body, 2);
+}

@@ -32,6 +32,13 @@ drop_string(char **var)
 	}
 }
 
+#define drop_pointer(pp) do { \
+	void **__pp = (void **) pp; \
+	if (*__pp) { \
+		free(*__pp); *__pp = NULL; \
+	} \
+} while (0)
+
 typedef struct fm_string_array {
 	unsigned int	count;
 	char **		entries;
