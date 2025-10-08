@@ -27,6 +27,7 @@
 #include "protocols.h"
 #include "wellknown.h"
 #include "target.h" /* for fm_probe_t */
+#include "socket.h"
 
 static fm_rtt_stats_t *	fm_udp_create_rtt_estimator(const fm_protocol_engine_t *proto, int ipproto, unsigned int netid);
 static fm_probe_t *	fm_udp_create_port_probe(fm_protocol_engine_t *proto, fm_target_t *target, uint16_t port);
@@ -88,11 +89,26 @@ fm_udp_port_probe_callback(fm_socket_t *sock, int bits, void *user_data)
 	assert(udp->sock == sock);
 
 	if (bits & POLLERR) {
-		fm_log_debug("UDP probe %s: error\n", fm_address_format(&udp->host_address));
+		fm_pkt_info_t info;
+
+		/* Check if there's an ICMP error queued up for us */
+		if (fm_socket_recverr(sock, &info)) {
+			fm_log_debug("%s %s: %s\n",
+					fm_address_format(&udp->host_address), udp->base.name,
+					fm_socket_render_error(&info));
+			if (!fm_socket_error_dest_unreachable(&info) && 0)
+				return;
+		} else {
+			fm_log_error("%s %s: recvmsg(MSG_ERRQUEUE) failed: %m",
+					fm_address_format(&udp->host_address), udp->base.name);
+		}
+
 		fm_probe_mark_port_unreachable(&udp->base, "udp", udp->port);
 	} else if (bits & POLLIN) {
 		fm_log_debug("UDP probe %s: reachable\n", fm_address_format(&udp->host_address));
 		fm_probe_mark_port_reachable(&udp->base, "udp", udp->port);
+
+		/* FIXME: we may want to receive the response and do something useful with it. */
 	}
 
 	fm_probe_reply_received(&udp->base);
@@ -112,6 +128,8 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create UDP socket for %s: %m",
 					fm_address_format(&udp->host_address));
 		}
+
+		fm_socket_enable_recverr(udp->sock);
 
 		fm_socket_set_callback(udp->sock, fm_udp_port_probe_callback, probe);
 
