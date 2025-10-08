@@ -3,6 +3,7 @@ routine default-reachability serialize=strict:
 
 routine default-scan:
 	port-probe tcp 21 22 53 80;
+	port-probe udp 53 111 2049 5353;
 
 program default:
 	call default-reachability onfail=abort;
