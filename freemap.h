@@ -72,6 +72,7 @@ extern fm_scan_action_t *fm_scanner_add_port_range_scan(fm_scanner_t *, const ch
 extern fm_scan_action_t *fm_scanner_add_reachability_check(fm_scanner_t *);
 extern bool		fm_scanner_transmit(fm_scanner_t *);
 extern double		fm_scanner_elapsed(fm_scanner_t *);
+extern void		fm_scanner_dump_program(fm_scanner_t *);
 extern fm_scan_action_t *fm_scanner_get_action(fm_scanner_t *, unsigned int);
 extern fm_probe_t *	fm_scan_action_get_next_probe(fm_scan_action_t *action, fm_target_t *target, unsigned int index);
 extern bool		fm_scan_action_validate(fm_scan_action_t *, fm_target_t *);

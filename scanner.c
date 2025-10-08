@@ -341,6 +341,23 @@ fm_scanner_get_protocol_engine(fm_scanner_t *scanner, const char *protocol_name)
 	return NULL;
 }
 
+void
+fm_scanner_dump_program(fm_scanner_t *scanner)
+{
+	fm_scan_action_array_t *array = &scanner->requests;
+	unsigned int i;
+
+	printf("compiled program:\n");
+	for (i = 0; i < array->count; ++i) {
+		fm_scan_action_t *action = array->entries[i];
+
+		printf(" %2u: %s", i, action->id);
+		if (action->barrier)
+			printf("; barrier");
+		printf("\n");
+	}
+}
+
 /*
  * Deal with UDP ports that had a timeout
  */
