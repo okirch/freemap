@@ -512,46 +512,6 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, cons
 }
 
 
-fm_scan_action_t *
-fm_scanner_add_single_port_scan(fm_scanner_t *scanner, const char *protocol_name, unsigned int port)
-{
-	fm_protocol_engine_t *proto;
-	fm_scan_action_t *action;
-
-	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
-		fprintf(stderr, "No protocol engine for protocol id %s/%u\n", protocol_name, port);
-		return NULL;
-	}
-
-	if (!(action = fm_scan_action_port_range_scan(proto, port, port)))
-		return NULL;
-
-	assert(action->nprobes >= 1);
-
-	fm_scan_action_array_append(&scanner->requests, action);
-	return action;
-}
-
-fm_scan_action_t *
-fm_scanner_add_port_range_scan(fm_scanner_t *scanner, const char *protocol_name, unsigned int low_port, unsigned int high_port)
-{
-	fm_protocol_engine_t *proto;
-	fm_scan_action_t *action;
-
-	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
-		fprintf(stderr, "No protocol engine for protocol id %s/%u-%u\n", protocol_name, low_port, high_port);
-		return NULL;
-	}
-
-	if (!(action = fm_scan_action_port_range_scan(proto, low_port, high_port)))
-		return NULL;
-
-	assert(action->nprobes >= 1);
-
-	fm_scan_action_array_append(&scanner->requests, action);
-	return action;
-}
-
 /*
  * After executing a number of probes, chech whether at least one has reached the target host
  */

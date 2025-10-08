@@ -68,8 +68,6 @@ extern fm_target_pool_t *fm_scanner_get_target_pool(fm_scanner_t *);
 extern void		fm_scanner_insert_barrier(fm_scanner_t *);
 extern fm_scan_action_t *fm_scanner_add_host_probe(fm_scanner_t *, const char *proto, const fm_string_array_t *args);
 extern fm_scan_action_t *fm_scanner_add_port_probe(fm_scanner_t *, const char *proto, const fm_string_array_t *args);
-extern fm_scan_action_t *fm_scanner_add_single_port_scan(fm_scanner_t *, const char *proto, unsigned int port);
-extern fm_scan_action_t *fm_scanner_add_port_range_scan(fm_scanner_t *, const char *proto, unsigned int, unsigned int);
 extern fm_scan_action_t *fm_scanner_add_reachability_check(fm_scanner_t *);
 extern bool		fm_scanner_transmit(fm_scanner_t *);
 extern double		fm_scanner_elapsed(fm_scanner_t *);
