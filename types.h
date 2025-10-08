@@ -43,7 +43,7 @@ typedef struct sockaddr_storage	fm_address_t;
 
 static const unsigned int	FM_INITIAL_TARGET_POOL_SIZE = 16;
 static const unsigned int	FM_DEFAULT_GLOBAL_PACKET_RATE = 1000;
-static const unsigned int	FM_DEFAULT_HOST_PACKET_RATE = 100;
+static const unsigned int	FM_DEFAULT_HOST_PACKET_RATE = 10;
 static const unsigned int	FM_TARGET_POOL_RESIZE_TIME = 4; /* grow the pool every 4 seconds */
 static const unsigned int	FM_TARGET_POOL_MAX_SIZE = 1023;
 
