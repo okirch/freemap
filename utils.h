@@ -39,10 +39,10 @@ drop_string(char **var)
 	} \
 } while (0)
 
-typedef struct fm_string_array {
+struct fm_string_array {
 	unsigned int	count;
 	char **		entries;
-} fm_string_array_t;
+};
 
 extern void		fm_string_array_append(fm_string_array_t *, const char *);
 extern void		fm_string_array_destroy(fm_string_array_t *);
