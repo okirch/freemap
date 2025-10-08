@@ -347,11 +347,14 @@ fm_icmp_create_host_probe_action(fm_protocol_engine_t *proto, const fm_string_ar
 {
 	struct fm_icmp_host_scan *hostscan;
 	struct icmp_host_probe_params icmp_args;
+	char id[64];
 
 	if (!fm_icmp_build_params(&icmp_args, args))
 		return false;
 
-	hostscan = (struct fm_icmp_host_scan *) fm_scan_action_create(&fm_icmp_host_scan_ops, proto->ops->name);
+	snprintf(id, sizeof(id), "icmp/%s", icmp_args.type_name);
+
+	hostscan = (struct fm_icmp_host_scan *) fm_scan_action_create(&fm_icmp_host_scan_ops, id);
 	hostscan->proto = proto;
 	hostscan->params = icmp_args;
 
