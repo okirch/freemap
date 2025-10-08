@@ -2,8 +2,8 @@ routine default-reachability serialize=strict:
 	host-probe icmp;
 
 routine default-scan:
-	port-probe tcp 21 22 53 80;
-	port-probe udp 53 111 2049 5353;
+	port-probe tcp 21 22 25 53 80 137 138 139;
+	port-probe udp 53 111 2049 5353 137 138 139;
 
 program default:
 	call default-reachability onfail=abort;
