@@ -74,3 +74,39 @@ fm_parse_port_range(const char *s, unsigned int *low, unsigned int *high)
 
 	return true;
 }
+
+/*
+ * Handle numeric options like "retries=4"
+ */
+bool
+fm_parse_numeric_argument(const char *arg, const char *option_name, unsigned int *value_p)
+{
+	int optlen = strlen(option_name);
+	const char *end;
+
+	if (strncmp(arg, option_name, optlen) || arg[optlen] != '=')
+		return false;
+
+	*value_p = strtoul(arg + optlen + 1, (char **) &end, 0);
+	if (*end != '\0')
+		return false;
+
+	return true;
+}
+
+/*
+ * Handle string options like "type=echo"
+ */
+bool
+fm_parse_string_argument(const char *arg, const char *option_name, const char **value_p)
+{
+	int optlen = strlen(option_name);
+
+	*value_p = NULL;
+
+	if (strncmp(arg, option_name, optlen) || arg[optlen] != '=')
+		return false;
+
+	*value_p = arg + optlen + 1;
+	return true;
+}
