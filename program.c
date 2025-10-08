@@ -445,28 +445,13 @@ static bool
 fm_scan_step_compile(const fm_scan_exec_t *exec, fm_scanner_t *scanner)
 {
 	const fm_scan_step_t *step = exec->step;
-	fm_scan_action_t *action;
-	unsigned int i;
 
 	switch (step->type) {
 	case FM_SCAN_STEP_HOST_PROBE:
 		return fm_scanner_add_host_probe(scanner, step->proto, &step->args);
 
 	case FM_SCAN_STEP_PORT_PROBE:
-		for (i = 0; i < step->args.count; ++i) {
-			const char *arg = step->args.entries[i];
-			fm_port_range_t range;
-
-			if (!fm_parse_port_range(arg, &range)) {
-				fm_log_error("Unable to parse port range \"%s\"", arg);
-				return false;
-			}
-
-			action = fm_scanner_add_port_range_scan(scanner, step->proto, range.first, range.last);
-			if (!action)
-				return false;
-		}
-		return true;
+		return fm_scanner_add_port_probe(scanner, step->proto, &step->args);
 	}
 	return false;
 }

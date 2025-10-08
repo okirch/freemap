@@ -20,9 +20,11 @@
 #include <stdint.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <ctype.h>
 #include "scanner.h"
 #include "target.h"
 #include "protocols.h"
+#include "utils.h"
 
 
 static void			fm_scanner_map_heisenberg(fm_target_t *);
@@ -449,6 +451,66 @@ fm_scanner_add_reachability_check(fm_scanner_t *scanner)
 	}
 	return action;
 }
+
+/*
+ * Port scan probes
+ */
+fm_scan_action_t *
+fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, const fm_string_array_t *args)
+{
+	static const unsigned int MAXRANGE=32;
+	fm_port_range_t ranges[MAXRANGE];
+	unsigned int i, nranges = 0;
+	fm_scan_action_t *action = NULL;
+	fm_string_array_t proto_args;
+	fm_protocol_engine_t *proto;
+
+	memset(&proto_args, 0, sizeof(proto_args));
+
+	for (i = 0; i < args->count; ++i) {
+		const char *arg = args->entries[i];
+
+		if (isdigit(*arg)) {
+			fm_port_range_t *r;
+
+			if (nranges >= MAXRANGE) {
+				fm_log_error("Too many port ranges in port scan call");
+				return NULL;
+			}
+
+			r = &ranges[nranges++];
+
+			if (!fm_parse_port_range(arg, r)) {
+                                fm_log_error("Unable to parse port range \"%s\"", arg);
+                                return NULL;
+                        }
+		} else {
+			fm_string_array_append(&proto_args, arg);
+		}
+	}
+
+	if (nranges == 0)
+		fm_log_error("Port scan call does not specify any ports to scan");
+
+	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
+		fm_log_error("No protocol engine for protocol id %s port scan\n", protocol_name);
+		return NULL;
+	}
+
+	for (i = 0; i < nranges; ++i) {
+		fm_port_range_t *r = ranges + i;
+
+		if (!(action = fm_scan_action_port_range_scan(proto, r->first, r->last)))
+			return NULL;
+
+		assert(action->nprobes >= 1);
+
+		fm_scan_action_array_append(&scanner->requests, action);
+	}
+
+	return action;
+}
+
 
 fm_scan_action_t *
 fm_scanner_add_single_port_scan(fm_scanner_t *scanner, const char *protocol_name, unsigned int port)
