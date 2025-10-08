@@ -81,5 +81,7 @@ struct fm_scanner {
 	fm_protocol_engine_t *	icmp_engine;
 };
 
+extern fm_scan_action_t *	fm_scan_action_create(const struct fm_scan_action_ops *ops, const char *id);
+
 #endif /* FREEMAP_SCANNER_H */
 

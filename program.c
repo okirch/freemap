@@ -450,7 +450,7 @@ fm_scan_step_compile(const fm_scan_exec_t *exec, fm_scanner_t *scanner)
 
 	switch (step->type) {
 	case FM_SCAN_STEP_HOST_PROBE:
-		return fm_scanner_add_host_probe(scanner, step->proto);
+		return fm_scanner_add_host_probe(scanner, step->proto, &step->args);
 
 	case FM_SCAN_STEP_PORT_PROBE:
 		for (i = 0; i < step->args.count; ++i) {

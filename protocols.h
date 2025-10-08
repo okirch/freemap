@@ -36,6 +36,9 @@ struct fm_protocol_ops {
 
 	void		(*destroy)(fm_protocol_engine_t *);
 	fm_network_stats_t *(*create_rtt_estimator)(const fm_protocol_engine_t *, int ipproto, unsigned int netid);
+
+	fm_scan_action_t *(*create_host_probe_action)(fm_protocol_engine_t *, const fm_string_array_t *args);
+
 	fm_probe_t *	(*create_host_probe)(fm_protocol_engine_t *, fm_target_t *, unsigned int retries);
 	fm_probe_t *	(*create_port_probe)(fm_protocol_engine_t *, fm_target_t *, uint16_t);
 };

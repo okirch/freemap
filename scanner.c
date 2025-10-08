@@ -27,7 +27,6 @@
 
 static void			fm_scanner_map_heisenberg(fm_target_t *);
 static fm_scan_action_t *	fm_scan_action_port_range_scan(fm_protocol_engine_t *proto, unsigned int low_port, unsigned int high_port);
-static fm_scan_action_t *	fm_scan_action_host_ping_scan(fm_protocol_engine_t *proto, unsigned int retries);
 static fm_scan_action_t *	fm_scan_action_reachability_check(void);
 
 fm_protocol_engine_t *
@@ -413,17 +412,22 @@ fm_scanner_host_probe_callback(fm_target_t *target, fm_fact_t *status)
 }
 
 fm_scan_action_t *
-fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name)
+fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name, const fm_string_array_t *args)
 {
 	fm_protocol_engine_t *proto;
 	fm_scan_action_t *action;
 
 	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
-		fprintf(stderr, "No protocol engine for protocol id %s\n", protocol_name);
+		fm_log_error("Cannot create host probe: no protocol engine for protocol id %s\n", protocol_name);
 		return NULL;
 	}
 
-	if (!(action = fm_scan_action_host_ping_scan(proto, 0)))
+	if (proto->ops->create_host_probe_action == NULL) {
+		fm_log_error("Cannot create host probe: no protocol engine %s does not support host probes\n", protocol_name);
+		return NULL;
+	}
+
+	if (!(action = proto->ops->create_host_probe_action(proto, args)))
 		return NULL;
 
 	action->result_callback = fm_scanner_host_probe_callback;
@@ -515,47 +519,6 @@ fm_scan_action_t *
 fm_scan_action_reachability_check(void)
 {
 	return fm_scan_action_create(&fm_host_reachability_check_ops, "reachability-check");
-}
-
-/*
- * Check host reachability
- */
-struct fm_host_ping_scan {
-	fm_scan_action_t	base;
-
-	fm_protocol_engine_t *	proto;
-	unsigned int		retries;
-};
-
-static fm_probe_t *
-fm_host_ping_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *target, unsigned int index)
-{
-	struct fm_host_ping_scan *hostscan = (struct fm_host_ping_scan *) action;
-
-	if (index != 0)
-		return NULL;
-
-	return fm_protocol_engine_create_host_probe(hostscan->proto, target, hostscan->retries);
-}
-
-static const struct fm_scan_action_ops	fm_host_ping_scan_ops = {
-	.obj_size	= sizeof(struct fm_host_ping_scan),
-	.get_next_probe	= fm_host_ping_scan_get_next_probe,
-};
-
-
-fm_scan_action_t *
-fm_scan_action_host_ping_scan(fm_protocol_engine_t *proto, unsigned int retries)
-{
-	struct fm_host_ping_scan *hostscan;
-
-	hostscan = (struct fm_host_ping_scan *) fm_scan_action_create(&fm_host_ping_scan_ops, proto->ops->name);
-	hostscan->proto = proto;
-	hostscan->retries = retries;
-
-	hostscan->base.nprobes = 1;
-
-	return &hostscan->base;
 }
 
 /*
