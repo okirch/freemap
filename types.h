@@ -81,6 +81,13 @@ struct fm_ratelimit {
 };
 
 /*
+ * A simple port range
+ */
+typedef struct fm_port_range {
+	unsigned int		first, last;
+} fm_port_range_t;
+
+/*
  * Representation of errors, and information about a target
  */
 typedef enum {

@@ -48,7 +48,7 @@ extern void		fm_string_array_append(fm_string_array_t *, const char *);
 extern void		fm_string_array_destroy(fm_string_array_t *);
 extern const char *	fm_string_array_get(fm_string_array_t *, unsigned int);
 
-extern bool		fm_parse_port_range(const char *, unsigned int *, unsigned int *);
+extern bool		fm_parse_port_range(const char *, fm_port_range_t *);
 extern bool		fm_parse_numeric_argument(const char *arg, const char *option_name, unsigned int *value_p);
 extern bool		fm_parse_string_argument(const char *arg, const char *option_name, const char **value_p);
 
