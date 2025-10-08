@@ -132,6 +132,9 @@ fm_scan_action_get_next_probe(fm_scan_action_t *action, fm_target_t *target, uns
 	if (probe != NULL) {
 		fm_log_debug("   %s created next probe for %s index=%d\n", fm_target_get_id(target), action->id, index);
 		probe->result_callback = action->result_callback;
+
+		if (action->barrier && index >= action->nprobes)
+			probe->blocking = true;
 	}
 	return probe;
 }
@@ -203,6 +206,17 @@ fm_scanner_abort_target(fm_target_t *target)
 {
 	/* fm_scheduler_detach_target(scanner->scheduler, target); */
 	target->scan_done = true;
+}
+
+void
+fm_scanner_insert_barrier(fm_scanner_t *scanner)
+{
+	fm_scan_action_array_t *reqs = &scanner->requests;
+
+        if (reqs->count) {
+                fm_scan_action_t *action = reqs->entries[reqs->count - 1];
+                action->barrier = true;
+        }
 }
 
 /*
