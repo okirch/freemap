@@ -17,54 +17,112 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <getopt.h>
 #include <mcheck.h>
 
 #include "freemap.h"
 #include "scanner.h"
 
+enum {
+	OPT_DUMP,
+};
+
+static struct option long_options[] = {
+	{ "port",		required_argument,	NULL,	'p',	},
+	{ "logfile",		required_argument,	NULL,	'L',	},
+	{ "debug",		no_argument,		NULL,	'd',	},
+	{ "help",		no_argument,		NULL,	'h',	},
+	{ "dump",		no_argument,		NULL,	OPT_DUMP },
+	{ NULL },
+};
+
+static void		usage(int);
+
 int
 main(int argc, char **argv)
 {
+	const char *opt_logfile = NULL;
+	bool opt_dump = false;
+	fm_scan_program_t *program = NULL;
 	fm_scanner_t *scanner;
-	fm_target_manager_t *mgr;
-	fm_report_t *report;
+	int c;
 
 #if 1
 	if (mcheck_pedantic(NULL) < 0)
 		printf("Tried but failed to enable pedantic memory checking\n");
 #endif
 
+	while ((c = getopt_long(argc, argv, "dh", long_options, NULL)) != EOF) {
+		switch (c) {
+		case 'd':
+			fm_debug_level += 1;
+			break;
+		case 'L':
+			opt_logfile = optarg;
+			break;
+
+		case OPT_DUMP:
+			opt_dump = true;
+			break;
+
+		case 'h':
+			usage(0);
+
+		case '?':
+			usage(1);
+		}
+	}
+
+	if (optind >= argc) {
+		fprintf(stderr, "Missing scan target(s)\n");
+		usage(1);
+	}
+
 	scanner = fm_scanner_create();
 
-	report = fm_scanner_get_report(scanner);
-	fm_report_add_logfile(report, "scan.log");
+	while (optind < argc) {
+		fm_target_manager_t *mgr = scanner->target_manager;
+		fm_address_enumerator_t *agen;
+		const char *name = argv[optind++];
 
-	mgr = scanner->target_manager;
+		if (strchr(name, '/')) {
+			agen = fm_create_simple_address_enumerator(name);
+		} else {
+			agen = fm_create_simple_address_enumerator(name);
+		}
 
-	fm_debug_level = 0;
+		if (agen == NULL)
+			fm_log_fatal("Cannot parse address or network \"%s\"\n", name);
 
-#if 1
-	fm_target_manager_add_address_generator(mgr, 
-			fm_create_cidr_address_enumerator("192.168.178.0/24"));
-#else
-	fm_target_manager_add_address_generator(mgr, 
-			fm_create_simple_address_enumerator("192.168.178.1"));
-	fm_target_manager_add_address_generator(mgr, 
-			fm_create_simple_address_enumerator("192.168.178.93"));
-	fm_target_manager_add_address_generator(mgr, 
-			fm_create_simple_address_enumerator("192.168.178.162"));
-	fm_target_manager_add_address_generator(mgr, 
-			fm_create_simple_address_enumerator("192.168.178.46"));
-#endif
-	fm_target_manager_add_address_generator(mgr, 
-			fm_create_simple_address_enumerator("192.168.172.1"));
+		fm_target_manager_add_address_generator(mgr, agen);
+	}
 
-	fm_scanner_add_host_reachability_check(scanner, "icmp", true);
-	fm_scanner_add_single_port_scan(scanner, "tcp", 22);
-	fm_scanner_add_single_port_scan(scanner, "udp", 2049);
-	fm_scanner_add_single_port_scan(scanner, "udp", 53);
-	fm_scanner_add_single_port_scan(scanner, "udp", 5353);
-	fm_scanner_add_single_port_scan(scanner, "udp", 1);
+	if (opt_logfile != NULL) {
+		fm_report_t *report;
+
+		report = fm_scanner_get_report(scanner);
+		fm_report_add_logfile(report, opt_logfile);
+	}
+
+	{
+		fm_scan_exec_t *exec;
+
+		program = fm_scan_program_alloc();
+
+		exec = fm_scan_program_call_routine(program, "default-reachability");
+		fm_scan_exec_set_abort_on_fail(exec, true);
+
+		exec = fm_scan_program_call_routine(program, "default-scan");
+
+		if (opt_dump)
+			fm_scan_program_dump(program);
+	}
+
+	if (!fm_scan_program_compile(program, scanner))
+		fm_log_fatal("Failed to compile scan program");
+
+	if (opt_dump)
+		fm_scanner_dump_program(scanner);
 
 	if (!fm_scanner_ready(scanner)) {
 		fprintf(stderr, "scanner is not fully configured\n");
@@ -82,4 +140,19 @@ main(int argc, char **argv)
 	}
 
 	return 0;
+}
+
+static void
+usage(int exval)
+{
+	fprintf(exval? stderr : stdout,
+		"Usage: freemap [options] target ...\n"
+		"Options:\n"
+		"   -L PATH, --logfile PATH\n"
+		"      Log scan results to file at PATH\n"
+		"   -d, --debug\n"
+		"      Increase debug verbosity.\n"
+		"   -h, --help\n"
+		"      Print this message.\n");
+	exit(exval);
 }
