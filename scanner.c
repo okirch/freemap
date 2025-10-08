@@ -27,7 +27,7 @@
 
 static void			fm_scanner_map_heisenberg(fm_target_t *);
 static fm_scan_action_t *	fm_scan_action_port_range_scan(fm_protocol_engine_t *proto, unsigned int low_port, unsigned int high_port);
-static fm_scan_action_t *	fm_scan_action_host_reachability_scan(fm_protocol_engine_t *proto, unsigned int retries);
+static fm_scan_action_t *	fm_scan_action_host_ping_scan(fm_protocol_engine_t *proto, unsigned int retries);
 
 fm_protocol_engine_t *
 fm_protocol_engine_create(const struct fm_protocol_ops *ops)
@@ -362,35 +362,32 @@ fm_scanner_map_heisenberg(fm_target_t *target)
  * Reachability probe
  */
 static void
-fm_scanner_host_reachability_callback(fm_target_t *target, fm_fact_t *status)
+fm_scanner_host_probe_callback(fm_target_t *target, fm_fact_t *status)
 {
-	if (status->type != FM_FACT_HOST_REACHABLE) {
-		fm_log_debug("%s does not respond to ICMP echo ping, skipping all other scan actions\n", fm_address_format(&target->address));
-		fm_scanner_abort_target(target);
-	} else if (status->elapsed != 0) {
+	if (status->type == FM_FACT_HOST_REACHABLE && status->elapsed != 0)
 		target->rtt_estimate = 1000 * status->elapsed;
-	}
 }
 
 fm_scan_action_t *
-fm_scanner_add_host_reachability_check(fm_scanner_t *scanner, const char *protocol_name, bool abort_on_fail)
+fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name)
 {
 	fm_protocol_engine_t *proto;
 	fm_scan_action_t *action;
 
 	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
 		fprintf(stderr, "No protocol engine for protocol id %s\n", protocol_name);
-		return false;
+		return NULL;
 	}
 
-	if (!(action = fm_scan_action_host_reachability_scan(proto, 0)))
-		return false;
+	if (!(action = fm_scan_action_host_ping_scan(proto, 0)))
+		return NULL;
 
-	if (abort_on_fail)
-		action->result_callback = fm_scanner_host_reachability_callback;
+	action->result_callback = fm_scanner_host_probe_callback;
+
+	assert(action->nprobes >= 1);
 
 	fm_scan_action_array_append(&scanner->requests, action);
-	return true;
+	return action;
 }
 
 bool
@@ -436,7 +433,7 @@ fm_scanner_add_port_range_scan(fm_scanner_t *scanner, const char *protocol_name,
 /*
  * Check host reachability
  */
-struct fm_host_reachability_scan {
+struct fm_host_ping_scan {
 	fm_scan_action_t	base;
 
 	fm_protocol_engine_t *	proto;
@@ -444,9 +441,9 @@ struct fm_host_reachability_scan {
 };
 
 static fm_probe_t *
-fm_host_reachability_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *target, unsigned int index)
+fm_host_ping_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *target, unsigned int index)
 {
-	struct fm_host_reachability_scan *hostscan = (struct fm_host_reachability_scan *) action;
+	struct fm_host_ping_scan *hostscan = (struct fm_host_ping_scan *) action;
 
 	if (index != 0)
 		return NULL;
@@ -454,18 +451,18 @@ fm_host_reachability_scan_get_next_probe(const fm_scan_action_t *action, fm_targ
 	return fm_protocol_engine_create_host_probe(hostscan->proto, target, hostscan->retries);
 }
 
-static const struct fm_scan_action_ops	fm_host_reachability_scan_ops = {
-	.obj_size	= sizeof(struct fm_host_reachability_scan),
-	.get_next_probe	= fm_host_reachability_scan_get_next_probe,
+static const struct fm_scan_action_ops	fm_host_ping_scan_ops = {
+	.obj_size	= sizeof(struct fm_host_ping_scan),
+	.get_next_probe	= fm_host_ping_scan_get_next_probe,
 };
 
 
 fm_scan_action_t *
-fm_scan_action_host_reachability_scan(fm_protocol_engine_t *proto, unsigned int retries)
+fm_scan_action_host_ping_scan(fm_protocol_engine_t *proto, unsigned int retries)
 {
-	struct fm_host_reachability_scan *hostscan;
+	struct fm_host_ping_scan *hostscan;
 
-	hostscan = (struct fm_host_reachability_scan *) fm_scan_action_create(&fm_host_reachability_scan_ops, proto->ops->name);
+	hostscan = (struct fm_host_ping_scan *) fm_scan_action_create(&fm_host_ping_scan_ops, proto->ops->name);
 	hostscan->proto = proto;
 	hostscan->retries = retries;
 

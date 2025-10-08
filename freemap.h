@@ -65,7 +65,7 @@ extern fm_scanner_t *	fm_scanner_create(void);
 extern bool		fm_scanner_ready(fm_scanner_t *);
 extern fm_report_t *	fm_scanner_get_report(fm_scanner_t *);
 extern fm_target_pool_t *fm_scanner_get_target_pool(fm_scanner_t *);
-extern fm_scan_action_t *fm_scanner_add_host_reachability_check(fm_scanner_t *, const char *proto, bool abort_on_fail);
+extern fm_scan_action_t *fm_scanner_add_host_probe(fm_scanner_t *, const char *proto);
 extern fm_scan_action_t *fm_scanner_add_single_port_scan(fm_scanner_t *, const char *proto, unsigned int port);
 extern fm_scan_action_t *fm_scanner_add_port_range_scan(fm_scanner_t *, const char *proto, unsigned int, unsigned int);
 extern bool		fm_scanner_transmit(fm_scanner_t *);
