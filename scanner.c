@@ -140,11 +140,14 @@ fm_scan_action_get_next_probe(fm_scan_action_t *action, fm_target_t *target, uns
 
 	probe = action->ops->get_next_probe(action, target, index);
 	if (probe != NULL) {
-		fm_log_debug("   %s created next probe for %s index=%d\n", fm_target_get_id(target), action->id, index);
 		probe->result_callback = action->result_callback;
 
-		if (action->barrier && index >= action->nprobes)
+		if (action->barrier && index + 1 >= action->nprobes)
 			probe->blocking = true;
+
+		fm_log_debug("   %s created next probe for %s index=%d%s\n",
+				fm_target_get_id(target), action->id, index,
+				probe->blocking? " (blocking)": "");
 	}
 	return probe;
 }
