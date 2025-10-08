@@ -422,7 +422,7 @@ fm_target_process_timeouts(fm_target_t *target, unsigned int quota)
 				if (num_sent < quota) {
 					fm_fact_t *error;
 
-					fm_log_debug("%s: resending %s probe\n", fm_address_format(&target->address), probe->ops->name);
+					fm_log_debug("%s: resending %s probe\n", fm_address_format(&target->address), probe->name);
 					error = fm_probe_send(probe);
 					if (error != NULL)
 						fm_probe_set_status(probe, error);
@@ -433,7 +433,7 @@ fm_target_process_timeouts(fm_target_t *target, unsigned int quota)
 
 			fm_probe_set_status(probe, fm_fact_create_error(FM_FACT_PROBE_TIMED_OUT,
 						"%s no response received",
-						probe->ops->name));
+						probe->name));
 		}
 	}
 
