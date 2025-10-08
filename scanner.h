@@ -47,6 +47,7 @@ struct fm_scan_action {
 		size_t		obj_size;
 
 		void		(*destroy)(fm_scan_action_t *);
+		bool		(*validate)(fm_scan_action_t *, fm_target_t *);
 		fm_probe_t *	(*get_next_probe)(const fm_scan_action_t *, fm_target_t *, unsigned int);
 	} *ops;
 };

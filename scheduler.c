@@ -155,7 +155,7 @@ fm_linear_scheduler_get_next_probe(fm_scheduler_t *sched, fm_target_t *target)
 
 	assert(state != NULL);
 
-	while (true) {
+	while (!target->scan_done) {
 		action = state->action;
 		if (action == NULL) {
 			if (!(action = fm_scanner_get_action(sched->scanner, state->action_index)))
@@ -164,6 +164,9 @@ fm_linear_scheduler_get_next_probe(fm_scheduler_t *sched, fm_target_t *target)
 			state->action = action;
 			state->action_index += 1;
 			state->probe_index = 0;
+
+			if (!fm_scan_action_validate(action, target))
+				goto skip_this_action;
 		}
 
 		probe = fm_scan_action_get_next_probe(action, target, state->probe_index);
@@ -175,6 +178,7 @@ fm_linear_scheduler_get_next_probe(fm_scheduler_t *sched, fm_target_t *target)
 		if (state->probe_index == 0)
 			fm_log_warning("scan action %s does not generate any probe packets at all!\n", fm_scan_action_id(action));
 
+skip_this_action:
 		state->action = NULL;
 		state->probe_index = 0;
 	}

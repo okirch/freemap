@@ -28,6 +28,7 @@
 static void			fm_scanner_map_heisenberg(fm_target_t *);
 static fm_scan_action_t *	fm_scan_action_port_range_scan(fm_protocol_engine_t *proto, unsigned int low_port, unsigned int high_port);
 static fm_scan_action_t *	fm_scan_action_host_ping_scan(fm_protocol_engine_t *proto, unsigned int retries);
+static fm_scan_action_t *	fm_scan_action_reachability_check(void);
 
 fm_protocol_engine_t *
 fm_protocol_engine_create(const struct fm_protocol_ops *ops)
@@ -121,6 +122,15 @@ const char *
 fm_scan_action_id(const fm_scan_action_t *action)
 {
 	return action->id;
+}
+
+bool
+fm_scan_action_validate(fm_scan_action_t *action, fm_target_t *target)
+{
+	if (action->ops->validate == NULL)
+		return true;
+
+	return action->ops->validate(action, target);
 }
 
 fm_probe_t *
@@ -404,7 +414,19 @@ fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name)
 	return action;
 }
 
-bool
+fm_scan_action_t *
+fm_scanner_add_reachability_check(fm_scanner_t *scanner)
+{
+	fm_scan_action_t *action;
+
+	if ((action = fm_scan_action_reachability_check()) != NULL) {
+		fm_scan_action_array_append(&scanner->requests, action);
+		action->barrier = true;
+	}
+	return action;
+}
+
+fm_scan_action_t *
 fm_scanner_add_single_port_scan(fm_scanner_t *scanner, const char *protocol_name, unsigned int port)
 {
 	fm_protocol_engine_t *proto;
@@ -442,6 +464,37 @@ fm_scanner_add_port_range_scan(fm_scanner_t *scanner, const char *protocol_name,
 
 	fm_scan_action_array_append(&scanner->requests, action);
 	return action;
+}
+
+/*
+ * After executing a number of probes, chech whether at least one has reached the target host
+ */
+static bool
+fm_host_reachability_check_validate(fm_scan_action_t *action, fm_target_t *target)
+{
+	bool reachable = true;
+
+	reachable = fm_fact_log_find(&target->log, FM_FACT_PORT_REACHABLE)
+		 || fm_fact_log_find(&target->log, FM_FACT_HOST_REACHABLE);
+
+	if (!reachable) {
+		fm_log_debug("%s does not respond to any probe, skipping all other scan actions\n", fm_address_format(&target->address));
+		fm_scanner_abort_target(target);
+	}
+
+	return false;
+}
+
+static const struct fm_scan_action_ops	fm_host_reachability_check_ops = {
+	.obj_size	= sizeof(fm_scan_action_t),
+	.validate	= fm_host_reachability_check_validate,
+};
+
+
+fm_scan_action_t *
+fm_scan_action_reachability_check(void)
+{
+	return fm_scan_action_create(&fm_host_reachability_check_ops, "reachability-check");
 }
 
 /*

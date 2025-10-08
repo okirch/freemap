@@ -69,10 +69,12 @@ extern void		fm_scanner_insert_barrier(fm_scanner_t *);
 extern fm_scan_action_t *fm_scanner_add_host_probe(fm_scanner_t *, const char *proto);
 extern fm_scan_action_t *fm_scanner_add_single_port_scan(fm_scanner_t *, const char *proto, unsigned int port);
 extern fm_scan_action_t *fm_scanner_add_port_range_scan(fm_scanner_t *, const char *proto, unsigned int, unsigned int);
+extern fm_scan_action_t *fm_scanner_add_reachability_check(fm_scanner_t *);
 extern bool		fm_scanner_transmit(fm_scanner_t *);
 extern double		fm_scanner_elapsed(fm_scanner_t *);
 extern fm_scan_action_t *fm_scanner_get_action(fm_scanner_t *, unsigned int);
 extern fm_probe_t *	fm_scan_action_get_next_probe(fm_scan_action_t *action, fm_target_t *target, unsigned int index);
+extern bool		fm_scan_action_validate(fm_scan_action_t *, fm_target_t *);
 extern const char *	fm_scan_action_id(const fm_scan_action_t *action);
 
 extern fm_scan_program_t *fm_scan_program_alloc(void);
