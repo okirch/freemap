@@ -18,6 +18,9 @@
 #include <sys/socket.h>
 #include <sys/param.h>
 #include <arpa/inet.h>
+#include <linux/errqueue.h>
+#include <netinet/icmp6.h>
+#include <netinet/ip_icmp.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdint.h>
@@ -176,6 +179,353 @@ fm_socket_send(fm_socket_t *sock, const fm_address_t *dstaddr, const void *pkt, 
 	return true;
 }
 
+/*
+ * recvmsg convenience functions
+ */
+struct fm_recv_data {
+	struct sockaddr_storage peer_addr;
+	struct msghdr msg;
+	struct iovec iov;
+	char control[1024];
+};
+
+static struct fm_recv_data *
+fm_recvmsg_prepare(void *buffer, size_t bufsize, int flags)
+{
+	struct fm_recv_data *rd;
+
+	rd = calloc(1, sizeof(*rd));
+
+	rd->msg.msg_name = &rd->peer_addr;
+	rd->msg.msg_namelen = sizeof(rd->peer_addr);
+	rd->msg.msg_control = rd->control;
+	rd->msg.msg_controllen = sizeof (rd->control);
+	rd->iov.iov_base = buffer;
+	rd->iov.iov_len = bufsize;
+	rd->msg.msg_iov = &rd->iov;
+	rd->msg.msg_iovlen = 1;
+	rd->msg.msg_flags = flags;
+
+	return rd;
+}
+
+static bool
+fm_process_cmsg(struct fm_recv_data *rd, fm_pkt_info_t *info)
+{
+	struct cmsghdr *cm;
+
+	memset(info, 0, sizeof(*info));
+
+	for (cm = CMSG_FIRSTHDR(&rd->msg); cm; cm = CMSG_NXTHDR(&rd->msg, cm)) {
+		void *ptr = CMSG_DATA(cm);
+
+		if (cm->cmsg_level == SOL_SOCKET && cm->cmsg_type == SO_TIMESTAMP) {
+			struct timeval *tv = (struct timeval *) ptr;
+
+			info->recv_time = tv->tv_sec + tv->tv_usec / 1000000.;
+		} else
+		if ((cm->cmsg_level == SOL_IP && cm->cmsg_type == IP_TTL)
+		 || (cm->cmsg_level == SOL_IPV6 && cm->cmsg_type == IPV6_HOPLIMIT)) {
+			info->recv_ttl = *((int *) ptr);
+		} else
+		if ((cm->cmsg_level == SOL_IP && cm->cmsg_type == IP_RECVERR)
+		 || (cm->cmsg_level == SOL_IPV6 && cm->cmsg_type == IPV6_RECVERR)) {
+			unsigned int len = cm->cmsg_len;
+
+			if (len > sizeof(info->eebuf)) {
+				fm_log_warning("Truncating RECVERR (%u > %u)\n",
+						len, sizeof(info->eebuf));
+				len = sizeof(info->eebuf);
+			}
+
+			memcpy(info->eebuf, ptr, len);
+			info->ee = (struct sock_extended_err *) info->eebuf;
+			info->offender = (const struct sockaddr_storage *) SO_EE_OFFENDER(info->ee);
+			info->error_class = fm_socket_error_class(info);
+		}
+	}
+
+	return true;
+}
+
+bool
+fm_socket_recverr(fm_socket_t *sock, fm_pkt_info_t *info)
+{
+	struct fm_recv_data *rd;
+	unsigned char dummy_buf[1];
+	int n;
+
+	if (sock->fd < 0)
+		return -1;
+
+	/* recvmsg will give us the packet that caused the error,
+	 * along with an indication of who complained, and why. */
+	rd = fm_recvmsg_prepare(dummy_buf, sizeof(dummy_buf), MSG_ERRQUEUE);
+
+	n = recvmsg(sock->fd, &rd->msg, MSG_ERRQUEUE);
+	if (n >= 0)
+		fm_process_cmsg(rd, info);
+
+	free(rd);
+	return n >= 0;
+}
+
+int
+fm_socket_recv(fm_socket_t *sock, void *buffer, size_t size, fm_pkt_info_t *info)
+{
+	struct fm_recv_data *rd;
+	int n;
+
+	if (sock->fd < 0)
+		return -1;
+
+	rd = fm_recvmsg_prepare(buffer, size, 0);
+
+	n = recvmsg(sock->fd, &rd->msg, 0);
+	if (n >= 0 && info != NULL)
+		fm_process_cmsg(rd, info);
+
+	free(rd);
+	return n;
+}
+
+/*
+ * Helper function for displaying the extended socket error
+ */
+static inline const char *
+ee_icmp_str(const struct sock_extended_err *ee)
+{
+	static char xx[64];
+
+	switch (ee->ee_type) {
+	case ICMP_SOURCE_QUENCH:
+		return "source quench";
+	case ICMP_REDIRECT:
+		return "source redirect";
+	case ICMP_TIME_EXCEEDED:
+		if (ee->ee_code == ICMP_EXC_TTL)
+			return "ttl exceeded";
+		break;
+	case ICMP_DEST_UNREACH:
+		switch (ee->ee_code) {
+		case ICMP_UNREACH_NET:
+		case ICMP_UNREACH_NET_UNKNOWN:
+		case ICMP_UNREACH_ISOLATED:
+		case ICMP_UNREACH_TOSNET:
+			return "network unreachable";
+
+		case ICMP_UNREACH_HOST:
+		case ICMP_UNREACH_HOST_UNKNOWN:
+		case ICMP_UNREACH_TOSHOST:
+			return "host unreachable";
+
+		case ICMP_UNREACH_NET_PROHIB:
+		case ICMP_UNREACH_HOST_PROHIB:
+		case ICMP_UNREACH_FILTER_PROHIB:
+			return "host/network prohibited";
+
+		case ICMP_UNREACH_PORT:
+			return "port unreachable";
+
+		case ICMP_UNREACH_PROTOCOL:
+			return "protocol unreachable";
+
+		case ICMP_UNREACH_NEEDFRAG:
+			return "need fragmentation";
+		}
+		break;
+	}
+
+	snprintf(xx, sizeof(xx), "icmp%u/%u", ee->ee_type, ee->ee_code);
+	return xx;
+}
+
+static inline const char *
+ee_icmp6_str(const struct sock_extended_err *ee)
+{
+	static char xx[64];
+
+	switch (ee->ee_type) {
+	case ICMP6_TIME_EXCEEDED:
+		if (ee->ee_code == ICMP6_TIME_EXCEED_TRANSIT)
+			return "ttl exceeded";
+		break;
+	case ICMP6_DST_UNREACH:
+		switch (ee->ee_code) {
+		case ICMP6_DST_UNREACH_NOROUTE:
+			return "network unreachable";
+
+		case ICMP6_DST_UNREACH_BEYONDSCOPE:
+		case ICMP6_DST_UNREACH_ADDR:
+			return "host unreachable";
+
+		case ICMP6_DST_UNREACH_ADMIN:
+			return "host/network prohibited";
+
+		case ICMP6_DST_UNREACH_NOPORT:
+			return "port unreachable";
+		}
+		break;
+	}
+
+	snprintf(xx, sizeof(xx), "icmp%u/%u", ee->ee_type, ee->ee_code);
+	return xx;
+}
+
+static inline const char *
+fm_error_class_str(int cls)
+{
+	switch (cls) {
+	case FM_ERROR_CLASS_IGNORE:
+		return "ignore";
+	case FM_ERROR_CLASS_TRANSIENT:
+		return "transient";
+	case FM_ERROR_CLASS_TOO_MANY_HOPS:
+		return "too_many_hops";
+	case FM_ERROR_CLASS_NET_UNREACH:
+		return "network unreachable";
+	case FM_ERROR_CLASS_HOST_UNREACH:
+		return "host unreachable";
+	case FM_ERROR_CLASS_ADMIN_PROHIBITED:
+		return "administratively prohibited";
+	case FM_ERROR_CLASS_PORT_UNREACH:
+		return "port unreachable";
+	case FM_ERROR_CLASS_OTHER:
+		return "other";
+	}
+
+	return "unknown";
+};
+
+const char *
+fm_socket_render_error(const fm_pkt_info_t *info)
+{
+	static char buffer[256];
+	const struct sock_extended_err *ee;
+	const char *clsname;
+
+	if ((ee = info->ee) == NULL)
+		return NULL;
+
+	clsname = fm_error_class_str(info->error_class);
+	if (ee->ee_origin == SO_EE_ORIGIN_LOCAL) {
+		snprintf(buffer, sizeof(buffer), "local error: class %s; errno=%u (%s)",
+				clsname, ee->ee_errno,
+				strerror(ee->ee_errno));
+	} else if (ee->ee_origin == SO_EE_ORIGIN_ICMP) {
+		snprintf(buffer, sizeof(buffer), "icmp error: %s (%s)",
+				clsname,
+				fm_address_format(info->offender));
+	} else if (ee->ee_origin == SO_EE_ORIGIN_ICMP6) {
+		snprintf(buffer, sizeof(buffer), "icmp6 error: %s (%s)",
+				clsname,
+				fm_address_format(info->offender));
+	} else {
+		snprintf(buffer, sizeof(buffer), "error of unknown origin %u: errno=%u",
+				ee->ee_origin, ee->ee_errno);
+	}
+
+	return buffer;
+}
+
+/*
+ * Assess the impact of a local or remote socket error.
+ */
+int
+fm_socket_error_class(const fm_pkt_info_t *info)
+{
+	const struct sock_extended_err *ee;
+
+	if ((ee = info->ee) == NULL)
+		return 0;
+
+	if (ee->ee_origin == SO_EE_ORIGIN_LOCAL) {
+		switch (ee->ee_errno) {
+		case ENOBUFS:
+			return FM_ERROR_CLASS_TRANSIENT;
+
+		default:
+			return FM_ERROR_CLASS_OTHER;
+		}
+	} else if (ee->ee_origin == SO_EE_ORIGIN_ICMP) {
+		switch (ee->ee_type) {
+		case ICMP_SOURCE_QUENCH:
+		case ICMP_REDIRECT:
+			return FM_ERROR_CLASS_IGNORE;
+		case ICMP_TIME_EXCEEDED:
+			return FM_ERROR_CLASS_TOO_MANY_HOPS;
+		case ICMP_DEST_UNREACH:
+			switch (ee->ee_code) {
+			case ICMP_UNREACH_PROTOCOL:
+			case ICMP_UNREACH_NEEDFRAG:
+				return FM_ERROR_CLASS_HOST_UNREACH;
+
+			case ICMP_UNREACH_NET:
+			case ICMP_UNREACH_NET_UNKNOWN:
+			case ICMP_UNREACH_ISOLATED:
+			case ICMP_UNREACH_TOSNET:
+				return FM_ERROR_CLASS_NET_UNREACH;
+
+			case ICMP_UNREACH_HOST:
+			case ICMP_UNREACH_HOST_UNKNOWN:
+			case ICMP_UNREACH_TOSHOST:
+				return FM_ERROR_CLASS_HOST_UNREACH;
+
+			case ICMP_UNREACH_NET_PROHIB:
+			case ICMP_UNREACH_HOST_PROHIB:
+			case ICMP_UNREACH_FILTER_PROHIB:
+				return FM_ERROR_CLASS_ADMIN_PROHIBITED;
+
+			case ICMP_UNREACH_PORT:
+				return FM_ERROR_CLASS_PORT_UNREACH;
+
+			}
+			break;
+		}
+	} else if (ee->ee_origin == SO_EE_ORIGIN_ICMP6) {
+		switch (ee->ee_type) {
+		case ICMP6_TIME_EXCEEDED:
+			return FM_ERROR_CLASS_TOO_MANY_HOPS;
+		case ICMP6_DST_UNREACH:
+			switch (ee->ee_code) {
+			case ICMP6_DST_UNREACH_NOROUTE:
+				return FM_ERROR_CLASS_NET_UNREACH;
+
+			case ICMP6_DST_UNREACH_BEYONDSCOPE:
+			case ICMP6_DST_UNREACH_ADDR:
+				return FM_ERROR_CLASS_HOST_UNREACH;
+
+			case ICMP6_DST_UNREACH_ADMIN:
+				return FM_ERROR_CLASS_ADMIN_PROHIBITED;
+
+			case ICMP6_DST_UNREACH_NOPORT:
+				return FM_ERROR_CLASS_PORT_UNREACH;
+			}
+			break;
+		}
+	}
+
+	return FM_ERROR_CLASS_OTHER;
+}
+
+bool
+fm_socket_error_dest_unreachable(const fm_pkt_info_t *info)
+{
+	switch (info->error_class) {
+	case FM_ERROR_CLASS_NET_UNREACH:
+	case FM_ERROR_CLASS_HOST_UNREACH:
+	case FM_ERROR_CLASS_ADMIN_PROHIBITED:
+	case FM_ERROR_CLASS_PORT_UNREACH:
+	case FM_ERROR_CLASS_OTHER:
+		return true;
+	}
+
+	return false;
+}
+
+/*
+ * Invoke the socket's poll callback
+ */
 static void
 fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 {

@@ -26,6 +26,7 @@
 #include "scanner.h"
 #include "protocols.h"
 #include "target.h" /* for fm_probe_t */
+#include "socket.h" /* for fm_probe_t */
 
 static fm_rtt_stats_t *	fm_tcp_create_rtt_estimator(const fm_protocol_engine_t *proto, int ipproto, unsigned int netid);
 static fm_probe_t *	fm_tcp_create_port_probe(fm_protocol_engine_t *proto, fm_target_t *target, uint16_t port);
@@ -89,7 +90,18 @@ fm_tcp_port_probe_callback(fm_socket_t *sock, int bits, void *user_data)
 	assert(tcp->sock == sock);
 
 	if (bits & POLLERR) {
-		fm_log_debug("TCP probe %s: error\n", fm_address_format(&tcp->host_address));
+		fm_pkt_info_t info;
+
+		/* Check if there's an ICMP error queued up for us; if so, check it.
+		 * If POLLERR is set but we cannot receive an error, this means
+		 * we received a TCP RST. */
+		if (fm_socket_recverr(sock, &info)) {
+			fm_log_debug("%s %s: %s\n",
+					fm_address_format(&tcp->host_address), tcp->base.name,
+					fm_socket_render_error(&info));
+			if (!fm_socket_error_dest_unreachable(&info))
+				return;
+		}
 		fm_probe_mark_port_unreachable(&tcp->base, "tcp", tcp->port);
 	} else if (bits & POLLOUT) {
 		fm_log_debug("TCP probe %s: reachable\n", fm_address_format(&tcp->host_address));
@@ -111,6 +123,8 @@ fm_tcp_port_probe_send(fm_probe_t *probe)
 			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create TCP socket for %s: %m",
 					fm_address_format(&tcp->host_address));
 		}
+
+		fm_socket_enable_recverr(tcp->sock);
 
 		fm_socket_set_callback(tcp->sock, fm_tcp_port_probe_callback, probe);
 
