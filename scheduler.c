@@ -155,7 +155,7 @@ fm_linear_scheduler_get_next_probe(fm_scheduler_t *sched, fm_target_t *target)
 
 	assert(state != NULL);
 
-	while (!target->scan_done) {
+	while (!target->scan_done && !target->plugged) {
 		action = state->action;
 		if (action == NULL) {
 			if (!(action = fm_scanner_get_action(sched->scanner, state->action_index)))
