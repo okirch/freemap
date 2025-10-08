@@ -82,6 +82,7 @@ extern void		fm_scan_program_free(fm_scan_program_t *program);
 extern fm_scan_exec_t *	fm_scan_program_call_routine(fm_scan_program_t *program, const char *name);
 extern void		fm_scan_exec_set_abort_on_fail(fm_scan_exec_t *, bool);
 extern void		fm_scan_program_dump(const fm_scan_program_t *program);
+extern bool		fm_scan_program_compile(const fm_scan_program_t *, fm_scanner_t *);
 
 extern void		fm_scheduler_transmit_some(fm_scheduler_t *, unsigned int);
 extern fm_probe_t *	fm_scheduler_get_next_probe(fm_scheduler_t *, fm_target_t *);

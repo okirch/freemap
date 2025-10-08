@@ -313,6 +313,88 @@ fm_scan_program_call_routine(fm_scan_program_t *program, const char *name)
 	return fm_scan_program_append_routine(program, exec->routine);
 }
 
+/*
+ * Convert a program into a sequence of scan actions
+ */
+static bool
+fm_scan_step_compile(const fm_scan_exec_t *exec, fm_scanner_t *scanner)
+{
+	const fm_scan_step_t *step = exec->step;
+	fm_scan_action_t *action;
+	unsigned int i;
+
+	switch (step->type) {
+	case FM_SCAN_STEP_HOST_PROBE:
+		return fm_scanner_add_host_probe(scanner, step->proto);
+
+	case FM_SCAN_STEP_PORT_PROBE:
+		for (i = 0; i < step->args.count; ++i) {
+			const char *arg = step->args.entries[i];
+			unsigned int range0, range1;
+
+			if (!fm_parse_port_range(arg, &range0, &range1)) {
+				fm_log_error("Unable to parse port range \"%s\"", arg);
+				return false;
+			}
+
+			if (range1 < range0 || range1 > 65535) {
+				fm_log_error("Invalid port range \"%s\"", arg);
+				return false;
+			}
+
+			action = fm_scanner_add_port_range_scan(scanner, step->proto, range0, range1);
+			if (!action)
+				return false;
+		}
+		return true;
+	}
+	return false;
+}
+
+static bool
+fm_scan_exec_array_compile(const fm_scan_exec_array_t *array, fm_scanner_t *scanner)
+{
+	unsigned int i;
+	bool ok = true;
+
+	for (i = 0; ok && i < array->count; ++i) {
+		fm_scan_exec_t *exec = &array->entries[i];
+
+		if (exec->type == FM_SCAN_EXEC_STEP) {
+			ok = fm_scan_step_compile(exec, scanner);
+		} else if (exec->type == FM_SCAN_EXEC_ROUTINE) {
+			const fm_scan_routine_t *routine = exec->routine;
+
+			if (!routine->allow_parallel_scan)
+				fm_scanner_insert_barrier(scanner);
+
+			ok = fm_scan_exec_array_compile(&routine->body, scanner);
+
+			if (!routine->allow_parallel_scan)
+				fm_scanner_insert_barrier(scanner);
+
+			if (exec->abort_on_fail) {
+				fm_scanner_insert_barrier(scanner);
+				fm_scanner_add_reachability_check(scanner);
+			}
+		} else {
+			fm_log_error("%s: unsupported type %d\n", __func__, exec->type);
+			ok = false;
+		}
+	}
+
+	return ok;
+}
+
+bool
+fm_scan_program_compile(const fm_scan_program_t *program, fm_scanner_t *scanner)
+{
+	return fm_scan_exec_array_compile(&program->body, scanner);
+}
+
+/*
+ * Debugging function: display the contents of a scan program
+ */
 static inline const char *
 fm_scan_step_type_to_string(int type)
 {

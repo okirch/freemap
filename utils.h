@@ -48,4 +48,6 @@ extern void		fm_string_array_append(fm_string_array_t *, const char *);
 extern void		fm_string_array_destroy(fm_string_array_t *);
 extern const char *	fm_string_array_get(fm_string_array_t *, unsigned int);
 
+extern bool		fm_parse_port_range(const char *, unsigned int *, unsigned int *);
+
 #endif /* FREEMAP_UTILS_H */

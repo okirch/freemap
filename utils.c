@@ -52,3 +52,25 @@ fm_string_array_get(fm_string_array_t *sarr, unsigned int index)
 		return NULL;
 	return sarr->entries[index];
 }
+
+/*
+ * Port range
+ */
+bool
+fm_parse_port_range(const char *s, unsigned int *low, unsigned int *high)
+{
+	const char *end;
+
+	*low = strtoul(s, (char **) &end, 0);
+
+	if (high != NULL) {
+		*high = *low;
+		if (*end == '-')
+			*high = strtoul(end + 1, (char **) &end, 0);
+	}
+
+	if (*end != '\0')
+		return false;
+
+	return true;
+}
