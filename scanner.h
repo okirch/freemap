@@ -52,10 +52,10 @@ struct fm_scan_action {
 	} *ops;
 };
 
-struct fm_scan_action_array {
+typedef struct fm_scan_action_array {
 	unsigned int		count;
 	fm_scan_action_t **	entries;
-};
+} fm_scan_action_array_t;
 
 struct fm_scanner {
 	fm_target_manager_t *	target_manager;
@@ -74,7 +74,7 @@ struct fm_scanner {
 
 	fm_scheduler_t *	scheduler;
 
-	struct fm_scan_action_array requests;
+	fm_scan_action_array_t	requests;
 
 	fm_protocol_engine_t *	tcp_engine;
 	fm_protocol_engine_t *	udp_engine;
