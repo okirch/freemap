@@ -26,7 +26,7 @@
 
 
 static void			fm_scanner_map_heisenberg(fm_target_t *);
-static fm_scan_action_t *	fm_scan_action_simple_port_scan(fm_protocol_engine_t *proto, unsigned short port);
+static fm_scan_action_t *	fm_scan_action_port_range_scan(fm_protocol_engine_t *proto, unsigned int low_port, unsigned int high_port);
 static fm_scan_action_t *	fm_scan_action_host_reachability_scan(fm_protocol_engine_t *proto, unsigned int retries);
 
 fm_protocol_engine_t *
@@ -372,7 +372,7 @@ fm_scanner_host_reachability_callback(fm_target_t *target, fm_fact_t *status)
 	}
 }
 
-bool
+fm_scan_action_t *
 fm_scanner_add_host_reachability_check(fm_scanner_t *scanner, const char *protocol_name, bool abort_on_fail)
 {
 	fm_protocol_engine_t *proto;
@@ -401,14 +401,36 @@ fm_scanner_add_single_port_scan(fm_scanner_t *scanner, const char *protocol_name
 
 	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
 		fprintf(stderr, "No protocol engine for protocol id %s/%u\n", protocol_name, port);
-		return false;
+		return NULL;
 	}
 
-	if (!(action = fm_scan_action_simple_port_scan(proto, port)))
-		return false;
+	if (!(action = fm_scan_action_port_range_scan(proto, port, port)))
+		return NULL;
+
+	assert(action->nprobes >= 1);
 
 	fm_scan_action_array_append(&scanner->requests, action);
-	return true;
+	return action;
+}
+
+fm_scan_action_t *
+fm_scanner_add_port_range_scan(fm_scanner_t *scanner, const char *protocol_name, unsigned int low_port, unsigned int high_port)
+{
+	fm_protocol_engine_t *proto;
+	fm_scan_action_t *action;
+
+	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
+		fprintf(stderr, "No protocol engine for protocol id %s/%u-%u\n", protocol_name, low_port, high_port);
+		return NULL;
+	}
+
+	if (!(action = fm_scan_action_port_range_scan(proto, low_port, high_port)))
+		return NULL;
+
+	assert(action->nprobes >= 1);
+
+	fm_scan_action_array_append(&scanner->requests, action);
+	return action;
 }
 
 /*
@@ -447,6 +469,8 @@ fm_scan_action_host_reachability_scan(fm_protocol_engine_t *proto, unsigned int 
 	hostscan->proto = proto;
 	hostscan->retries = retries;
 
+	hostscan->base.nprobes = 1;
+
 	return &hostscan->base;
 }
 
@@ -457,7 +481,9 @@ struct fm_simple_port_scan {
 	fm_scan_action_t	base;
 
 	fm_protocol_engine_t *	proto;
-	uint16_t		port;
+	struct {
+		uint16_t	low, high;
+	} port_range;
 };
 
 static fm_probe_t *
@@ -465,10 +491,10 @@ fm_simple_port_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *
 {
 	struct fm_simple_port_scan *portscan = (struct fm_simple_port_scan *) action;
 
-	if (index != 0)
+	if (index > portscan->port_range.high - portscan->port_range.low)
 		return NULL;
 
-	return fm_protocol_engine_create_port_probe(portscan->proto, target, portscan->port);
+	return fm_protocol_engine_create_port_probe(portscan->proto, target, portscan->port_range.low + index);
 }
 
 static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
@@ -477,16 +503,27 @@ static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
 };
 
 fm_scan_action_t *
-fm_scan_action_simple_port_scan(fm_protocol_engine_t *proto, unsigned short port)
+fm_scan_action_port_range_scan(fm_protocol_engine_t *proto, unsigned int low_port, unsigned int high_port)
 {
 	struct fm_simple_port_scan *portscan;
 	char idbuf[128];
 
-	snprintf(idbuf, sizeof(idbuf), "%s/%u", proto->ops->name, port);
+	if (low_port == 0 || low_port > high_port || high_port > 65535) {
+		fm_log_error("%s: invalid port range %u-%u", proto, low_port, high_port);
+		return false;
+	}
+
+	if (low_port == high_port)
+		snprintf(idbuf, sizeof(idbuf), "%s/%u", proto->ops->name, high_port);
+	else
+		snprintf(idbuf, sizeof(idbuf), "%s/%u-%u", proto->ops->name, low_port, high_port);
 
 	portscan = (struct fm_simple_port_scan *) fm_scan_action_create(&fm_simple_port_scan_ops, idbuf);
 	portscan->proto = proto;
-	portscan->port = port;
+	portscan->port_range.low = low_port;
+	portscan->port_range.high = high_port;
+
+	portscan->base.nprobes = high_port - low_port + 1;
 
 	return &portscan->base;
 }
