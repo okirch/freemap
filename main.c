@@ -24,11 +24,12 @@
 #include "scanner.h"
 
 enum {
+	OPT_PROGRAM,
 	OPT_DUMP,
 };
 
 static struct option long_options[] = {
-	{ "port",		required_argument,	NULL,	'p',	},
+	{ "program",		required_argument,	NULL,	OPT_PROGRAM,	},
 	{ "logfile",		required_argument,	NULL,	'L',	},
 	{ "debug",		no_argument,		NULL,	'd',	},
 	{ "help",		no_argument,		NULL,	'h',	},
@@ -42,8 +43,9 @@ int
 main(int argc, char **argv)
 {
 	const char *opt_logfile = NULL;
+	const char *opt_program = NULL;
 	bool opt_dump = false;
-	fm_scan_program_t *program = NULL;
+	const fm_scan_program_t *program = NULL;
 	fm_scanner_t *scanner;
 	int c;
 
@@ -57,12 +59,19 @@ main(int argc, char **argv)
 		case 'd':
 			fm_debug_level += 1;
 			break;
+
 		case 'L':
 			opt_logfile = optarg;
 			break;
 
 		case OPT_DUMP:
 			opt_dump = true;
+			break;
+
+		case OPT_PROGRAM:
+			if (opt_program)
+				fm_log_fatal("duplicate program option given");
+			opt_program = optarg;
 			break;
 
 		case 'h':
@@ -104,19 +113,14 @@ main(int argc, char **argv)
 		fm_report_add_logfile(report, opt_logfile);
 	}
 
-	{
-		fm_scan_exec_t *exec;
+	if (opt_program == NULL)
+		opt_program = "default";
 
-		program = fm_scan_program_alloc();
-
-		exec = fm_scan_program_call_routine(program, "default-reachability");
-		fm_scan_exec_set_abort_on_fail(exec, true);
-
-		exec = fm_scan_program_call_routine(program, "default-scan");
-
-		if (opt_dump)
-			fm_scan_program_dump(program);
-	}
+	program = fm_scan_library_load_program(opt_program);
+	if (program == NULL)
+		fm_log_fatal("Could not find scan program \"%s\"\n", opt_program);
+	if (opt_dump)
+		fm_scan_program_dump(program);
 
 	if (!fm_scan_program_compile(program, scanner))
 		fm_log_fatal("Failed to compile scan program");

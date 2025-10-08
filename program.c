@@ -96,6 +96,16 @@ fm_scan_library_append_routine(fm_scan_library_t *library, const fm_scan_routine
 	return exec;
 }
 
+static fm_scan_exec_t *
+fm_scan_library_append_program(fm_scan_library_t *library, const fm_scan_program_t *program)
+{
+	fm_scan_exec_t *exec;
+
+	exec = fm_scan_exec_array_append(&library->routines, FM_SCAN_EXEC_PROGRAM);
+	exec->program = program;
+	return exec;
+}
+
 void
 fm_scan_exec_set_abort_on_fail(fm_scan_exec_t *exec, bool value)
 {
@@ -103,7 +113,7 @@ fm_scan_exec_set_abort_on_fail(fm_scan_exec_t *exec, bool value)
 }
 
 static inline const fm_scan_exec_t *
-fm_scan_exec_array_find_routine(struct fm_scan_exec_array *array, const char *name)
+fm_scan_exec_array_find_routine(const fm_scan_exec_array_t *array, const char *name)
 {
 	unsigned int i;
 
@@ -118,6 +128,29 @@ fm_scan_exec_array_find_routine(struct fm_scan_exec_array *array, const char *na
 			routine = exec->routine;
 		
 			if (!strcmp(routine->name, name))
+				return exec;
+		}
+	}
+
+	return NULL;
+}
+
+static inline const fm_scan_exec_t *
+fm_scan_exec_array_find_program(struct fm_scan_exec_array *array, const char *name)
+{
+	unsigned int i;
+
+	if (name == NULL)
+		return NULL;
+
+	for (i = 0; i < array->count; ++i) {
+		fm_scan_exec_t *exec = &array->entries[i];
+		const fm_scan_program_t *program;
+
+		if (exec->type == FM_SCAN_EXEC_PROGRAM) {
+			program = exec->program;
+		
+			if (!strcmp(program->name, name))
 				return exec;
 		}
 	}
@@ -174,6 +207,43 @@ parse_step_definition(struct file_scanner *fs, int type)
 	return step;
 }
 
+static fm_scan_exec_t *
+parse_call(struct file_scanner *fs, const fm_scan_library_t *lib, fm_scan_program_t *program)
+{
+	fm_scan_exec_t *exec = NULL;
+	char *arg;
+
+	while ((arg = file_scanner_continue_entry(fs)) != NULL) {
+		if (!strcmp(arg, ";"))
+			break;
+
+		if (exec == NULL) {
+			const fm_scan_exec_t *callee;
+
+			callee = fm_scan_exec_array_find_routine(&lib->routines, arg);
+			if (callee == NULL) {
+				file_scanner_error(fs, "program %s calls unknown routine \"%s\": %s\n",
+						program->name, arg);
+				return NULL;
+			}
+
+			/* NOTE: routine ends up being shared between to exec objects */
+			exec = fm_scan_program_append_routine(program, callee->routine);
+		} else if (!strcmp(arg, "onfail=abort")) {
+			exec->abort_on_fail = true;
+		} else {
+			file_scanner_error(fs, "invalid argument in call of routine \"%s\": %s\n",
+					exec->routine->name, arg);
+			return NULL;
+		}
+	}
+
+	if (exec == NULL)
+		file_scanner_error(fs, "missing routine name in call (program %s)\n", program->name);
+
+	return exec;
+}
+
 static bool
 parse_routine_definition(struct file_scanner *fs, fm_scan_library_t *lib)
 {
@@ -225,6 +295,45 @@ parse_routine_definition(struct file_scanner *fs, fm_scan_library_t *lib)
 	return true;
 }
 
+static bool
+parse_program_definition(struct file_scanner *fs, fm_scan_library_t *lib)
+{
+	fm_scan_program_t *program;
+	fm_scan_exec_t *exec;
+	char *name, *arg;
+
+	if (!(name = file_scanner_continue_entry(fs)))
+		return file_scanner_error(fs, "missing name in \"program\" declaration\n");
+
+	if (fm_scan_exec_array_find_program(&lib->routines, name) != NULL)
+		return file_scanner_error(fs, "duplicate program name \"%s\"\n", name);
+
+	program = fm_scan_program_alloc(name);
+	exec = fm_scan_library_append_program(lib, program);
+	(void) exec;
+
+	// printf("NEW PROGRAM %s\n", program->name);
+
+	/* program <name> [<attr> ...]: */
+	while ((arg = file_scanner_continue_entry(fs)) != NULL) {
+		if (!strcmp(arg, ":"))
+			break;
+
+		return file_scanner_error(fs, "unsupported program argument \"%s\"\n", arg);
+	}
+
+	while ((arg = file_scanner_continue_entry(fs)) != NULL) {
+		if (!strcmp(arg, "call")) {
+			if (!parse_call(fs, lib, program))
+				return file_scanner_error(fs, "program argument \"%s\"\n", arg);
+		} else {
+			return file_scanner_error(fs, "unsupported program argument \"%s\"\n", arg);
+		}
+	}
+
+	return true;
+}
+
 static fm_scan_library_t *
 __fm_scan_library_load(const char *path)
 {
@@ -241,6 +350,8 @@ __fm_scan_library_load(const char *path)
 	while ((cmd = file_scanner_next_entry(fs)) != NULL) {
 		if (!strcmp(cmd, "routine"))
 			parse_routine_definition(fs, lib);
+		else if (!strcmp(cmd, "program"))
+			parse_program_definition(fs, lib);
 		else
 			file_scanner_error(fs, "unsupported command %s\n", cmd);
 	}
@@ -277,15 +388,29 @@ fm_scan_library_load_routine(const char *name)
 	return fm_scan_exec_array_find_routine(&lib->routines, name);
 }
 
+const fm_scan_program_t *
+fm_scan_library_load_program(const char *name)
+{
+	fm_scan_library_t *lib;
+	const fm_scan_exec_t *exec;
+
+	lib = fm_scan_library_load();
+	if (!(exec = fm_scan_exec_array_find_program(&lib->routines, name)))
+		return NULL;
+
+	return exec->program;
+}
+
 /*
  * fm_scan_program objects
  */
 fm_scan_program_t *
-fm_scan_program_alloc(void)
+fm_scan_program_alloc(const char *name)
 {
 	fm_scan_program_t *ret;
 
 	ret = calloc(1, sizeof(*ret));
+	ret->name = strdup(name);
 	return ret;
 }
 

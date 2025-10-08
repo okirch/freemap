@@ -69,9 +69,15 @@ typedef struct fm_scan_routine {
 	fm_scan_exec_array_t	body;
 } fm_scan_routine_t;
 
+struct fm_scan_program {
+	char *			name;
+	fm_scan_exec_array_t	body;
+};
+
 enum {
 	FM_SCAN_EXEC_STEP,
 	FM_SCAN_EXEC_ROUTINE,
+	FM_SCAN_EXEC_PROGRAM,
 };
 
 struct fm_scan_exec {
@@ -83,16 +89,15 @@ struct fm_scan_exec {
 	union {
 		const fm_scan_step_t *step;
 		const fm_scan_routine_t *routine;
+		const fm_scan_program_t *program;
 	};
 };
 
 typedef struct fm_scan_library {
+	/* it's called "routines" but it also holds other exec types, such as programs */
 	fm_scan_exec_array_t	routines;
 } fm_scan_library_t;
 
-struct fm_scan_program {
-	fm_scan_exec_array_t	body;
-};
-
+extern fm_scan_program_t *	fm_scan_program_alloc(const char *name);
 
 #endif /* FREEMAP_PROGRAM_H */
