@@ -50,6 +50,17 @@ fm_protocol_engine_create_default(void)
 	return proto;
 }
 
+/*
+ * indirection code for handling response packets
+ */
+static bool
+fm_protocol_packet_redirect(fm_socket_t *sock, fm_pkt_t *pkt)
+{
+	fm_protocol_t *proto = sock->response_handle;
+
+	return proto->ops->process_packet(proto, pkt);
+}
+
 fm_socket_t *
 fm_protocol_create_socket(fm_protocol_t *proto, int ipproto)
 {
@@ -58,6 +69,11 @@ fm_protocol_create_socket(fm_protocol_t *proto, int ipproto)
 	if (proto->ops->create_socket == NULL)
 		return NULL;
 	sock = proto->ops->create_socket(proto, ipproto);
+	if (sock != NULL && proto->ops->process_packet != NULL) {
+		sock->process_packet = fm_protocol_packet_redirect;
+		sock->response_handle = proto;
+	}
+
 	return sock;
 }
 
