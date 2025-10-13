@@ -100,9 +100,9 @@ extern unsigned int	fm_target_process_timeouts(fm_target_t *, unsigned int quota
 extern fm_fact_t *	fm_probe_send(fm_probe_t *);
 extern void		fm_probe_free(fm_probe_t *);
 
-extern fm_protocol_engine_t *fm_tcp_engine_create(void);
-extern fm_protocol_engine_t *fm_udp_engine_create(void);
-extern fm_protocol_engine_t *fm_icmp_engine_create(void);
+extern fm_protocol_t *	fm_tcp_engine_create(void);
+extern fm_protocol_t *	fm_udp_engine_create(void);
+extern fm_protocol_t *	fm_icmp_engine_create(void);
 
 extern fm_rtt_stats_t *	fm_rtt_stats_get(int proto_id, unsigned int netid);
 extern fm_rtt_stats_t *	fm_rtt_stats_create(int proto_id, unsigned int netid, unsigned long initial_rtt, unsigned int multiple);

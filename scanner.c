@@ -28,13 +28,13 @@
 
 
 static void			fm_scanner_map_heisenberg(fm_target_t *);
-static fm_scan_action_t *	fm_scan_action_port_range_scan(fm_protocol_engine_t *proto, unsigned int low_port, unsigned int high_port);
+static fm_scan_action_t *	fm_scan_action_port_range_scan(fm_protocol_t *proto, unsigned int low_port, unsigned int high_port);
 static fm_scan_action_t *	fm_scan_action_reachability_check(void);
 
-fm_protocol_engine_t *
-fm_protocol_engine_create(const struct fm_protocol_ops *ops)
+fm_protocol_t *
+fm_protocol_create(const struct fm_protocol_ops *ops)
 {
-	fm_protocol_engine_t *prot;
+	fm_protocol_t *prot;
 
 	prot = calloc(1, ops->obj_size);
 	prot->ops = ops;
@@ -42,7 +42,7 @@ fm_protocol_engine_create(const struct fm_protocol_ops *ops)
 }
 
 static fm_rtt_stats_t *
-fm_protocol_engine_get_rtt(const fm_protocol_engine_t *proto, int ipproto, unsigned int netid)
+fm_protocol_get_rtt(const fm_protocol_t *proto, int ipproto, unsigned int netid)
 {
 	fm_rtt_stats_t *rtt;
 
@@ -55,16 +55,16 @@ fm_protocol_engine_get_rtt(const fm_protocol_engine_t *proto, int ipproto, unsig
 }
 
 static inline void
-fm_protocol_engine_attach_rtt_estimator(fm_protocol_engine_t *proto, fm_probe_t *probe)
+fm_protocol_attach_rtt_estimator(fm_protocol_t *proto, fm_probe_t *probe)
 {
-	probe->rtt = fm_protocol_engine_get_rtt(proto, probe->ipproto, probe->netid);
+	probe->rtt = fm_protocol_get_rtt(proto, probe->ipproto, probe->netid);
 }
 
 /*
  * Create host/port probes
  */
 fm_probe_t *
-fm_protocol_engine_create_port_probe(fm_protocol_engine_t *proto, fm_target_t *target, uint16_t port)
+fm_protocol_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port)
 {
 	fm_probe_t *probe;
 
@@ -74,12 +74,12 @@ fm_protocol_engine_create_port_probe(fm_protocol_engine_t *proto, fm_target_t *t
 	}
 
 	if ((probe = proto->ops->create_port_probe(proto, target, port)) != NULL)
-		fm_protocol_engine_attach_rtt_estimator(proto, probe);
+		fm_protocol_attach_rtt_estimator(proto, probe);
 	return probe;
 }
 
 fm_probe_t *
-fm_protocol_engine_create_host_probe(fm_protocol_engine_t *proto, fm_target_t *target, unsigned int retries)
+fm_protocol_create_host_probe(fm_protocol_t *proto, fm_target_t *target, unsigned int retries)
 {
 	fm_probe_t *probe;
 
@@ -89,7 +89,7 @@ fm_protocol_engine_create_host_probe(fm_protocol_engine_t *proto, fm_target_t *t
 	}
 
 	if ((probe = proto->ops->create_host_probe(proto, target, retries)) != NULL)
-		fm_protocol_engine_attach_rtt_estimator(proto, probe);
+		fm_protocol_attach_rtt_estimator(proto, probe);
 	return probe;
 }
 
@@ -322,7 +322,7 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 	return true;
 }
 
-fm_protocol_engine_t *
+fm_protocol_t *
 fm_scanner_get_protocol_engine(fm_scanner_t *scanner, const char *protocol_name)
 {
 	struct protoent *pe;
@@ -416,7 +416,7 @@ fm_scanner_host_probe_callback(fm_target_t *target, fm_fact_t *status)
 fm_scan_action_t *
 fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name, const fm_string_array_t *args)
 {
-	fm_protocol_engine_t *proto;
+	fm_protocol_t *proto;
 	fm_scan_action_t *action;
 
 	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
@@ -463,7 +463,7 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, cons
 	unsigned int i, nranges = 0;
 	fm_scan_action_t *action = NULL;
 	fm_string_array_t proto_args;
-	fm_protocol_engine_t *proto;
+	fm_protocol_t *proto;
 
 	memset(&proto_args, 0, sizeof(proto_args));
 
@@ -549,7 +549,7 @@ fm_scan_action_reachability_check(void)
 struct fm_simple_port_scan {
 	fm_scan_action_t	base;
 
-	fm_protocol_engine_t *	proto;
+	fm_protocol_t *		proto;
 	struct {
 		uint16_t	low, high;
 	} port_range;
@@ -563,7 +563,7 @@ fm_simple_port_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *
 	if (index > portscan->port_range.high - portscan->port_range.low)
 		return NULL;
 
-	return fm_protocol_engine_create_port_probe(portscan->proto, target, portscan->port_range.low + index);
+	return fm_protocol_create_port_probe(portscan->proto, target, portscan->port_range.low + index);
 }
 
 static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
@@ -572,7 +572,7 @@ static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
 };
 
 fm_scan_action_t *
-fm_scan_action_port_range_scan(fm_protocol_engine_t *proto, unsigned int low_port, unsigned int high_port)
+fm_scan_action_port_range_scan(fm_protocol_t *proto, unsigned int low_port, unsigned int high_port)
 {
 	struct fm_simple_port_scan *portscan;
 	char idbuf[128];

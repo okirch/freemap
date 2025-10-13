@@ -26,7 +26,7 @@
 #include "freemap.h"
 #include "protocols.h"
 
-struct fm_protocol_engine {
+struct fm_protocol {
 	const struct fm_protocol_ops *ops;
 };
 
@@ -34,18 +34,18 @@ struct fm_protocol_ops {
 	size_t		obj_size;
 	const char *	name;
 
-	void		(*destroy)(fm_protocol_engine_t *);
-	fm_network_stats_t *(*create_rtt_estimator)(const fm_protocol_engine_t *, int ipproto, unsigned int netid);
+	void		(*destroy)(fm_protocol_t *);
+	fm_network_stats_t *(*create_rtt_estimator)(const fm_protocol_t *, int ipproto, unsigned int netid);
 
-	fm_scan_action_t *(*create_host_probe_action)(fm_protocol_engine_t *, const fm_string_array_t *args);
+	fm_scan_action_t *(*create_host_probe_action)(fm_protocol_t *, const fm_string_array_t *args);
 
-	fm_probe_t *	(*create_host_probe)(fm_protocol_engine_t *, fm_target_t *, unsigned int retries);
-	fm_probe_t *	(*create_port_probe)(fm_protocol_engine_t *, fm_target_t *, uint16_t);
+	fm_probe_t *	(*create_host_probe)(fm_protocol_t *, fm_target_t *, unsigned int retries);
+	fm_probe_t *	(*create_port_probe)(fm_protocol_t *, fm_target_t *, uint16_t);
 };
 
-extern fm_protocol_engine_t *fm_protocol_engine_create(const struct fm_protocol_ops *ops);
-extern fm_probe_t *	fm_protocol_engine_create_host_probe(fm_protocol_engine_t *, fm_target_t *, unsigned int);
-extern fm_probe_t *	fm_protocol_engine_create_port_probe(fm_protocol_engine_t *, fm_target_t *, uint16_t);
+extern fm_protocol_t *	fm_protocol_create(const struct fm_protocol_ops *ops);
+extern fm_probe_t *	fm_protocol_create_host_probe(fm_protocol_t *, fm_target_t *, unsigned int);
+extern fm_probe_t *	fm_protocol_create_port_probe(fm_protocol_t *, fm_target_t *, uint16_t);
 
 
 static inline uint16_t

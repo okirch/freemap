@@ -368,6 +368,8 @@ fm_target_get_id(const fm_target_t *target)
 	return target->id;
 }
 
+/* FIXME: split update and query into separate functions
+ */
 unsigned int
 fm_target_get_send_quota(fm_target_t *target)
 {

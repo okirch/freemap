@@ -29,11 +29,11 @@
 #include "target.h" /* for fm_probe_t */
 #include "socket.h"
 
-static fm_rtt_stats_t *	fm_udp_create_rtt_estimator(const fm_protocol_engine_t *proto, int ipproto, unsigned int netid);
-static fm_probe_t *	fm_udp_create_port_probe(fm_protocol_engine_t *proto, fm_target_t *target, uint16_t port);
+static fm_rtt_stats_t *	fm_udp_create_rtt_estimator(const fm_protocol_t *proto, int ipproto, unsigned int netid);
+static fm_probe_t *	fm_udp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port);
 
 struct fm_udp_engine_default {
-	fm_protocol_engine_t	base;
+	fm_protocol_t	base;
 };
 
 static struct fm_protocol_ops	fm_udp_engine_default_ops = {
@@ -44,14 +44,14 @@ static struct fm_protocol_ops	fm_udp_engine_default_ops = {
 	.create_port_probe = fm_udp_create_port_probe,
 };
 
-fm_protocol_engine_t *
+fm_protocol_t *
 fm_udp_engine_create(void)
 {
-	return fm_protocol_engine_create(&fm_udp_engine_default_ops);
+	return fm_protocol_create(&fm_udp_engine_default_ops);
 }
 
 static fm_rtt_stats_t *
-fm_udp_create_rtt_estimator(const fm_protocol_engine_t *proto, int ipproto, unsigned int netid)
+fm_udp_create_rtt_estimator(const fm_protocol_t *proto, int ipproto, unsigned int netid)
 {
 	return fm_rtt_stats_create(ipproto, netid, 250 / 2, 2);
 }
@@ -186,7 +186,7 @@ static struct fm_probe_ops fm_udp_port_probe_ops = {
 };
 
 static fm_probe_t *
-fm_udp_create_port_probe(fm_protocol_engine_t *proto, fm_target_t *target, uint16_t port)
+fm_udp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port)
 {
 	struct sockaddr_storage tmp_address = target->address;
 	struct fm_udp_port_probe *probe;

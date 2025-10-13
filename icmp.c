@@ -43,11 +43,11 @@ struct icmp_host_probe_params {
 	const char *	type_name;
 };
 
-static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_engine_t *proto, const fm_string_array_t *args);
-static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_engine_t *proto, int ipproto, unsigned int netid);
+static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
+static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, int ipproto, unsigned int netid);
 
 struct fm_icmp_engine_default {
-	fm_protocol_engine_t	base;
+	fm_protocol_t	base;
 };
 
 static struct fm_protocol_ops	fm_icmp_engine_default_ops = {
@@ -58,14 +58,14 @@ static struct fm_protocol_ops	fm_icmp_engine_default_ops = {
 	.create_host_probe_action = fm_icmp_create_host_probe_action,
 };
 
-fm_protocol_engine_t *
+fm_protocol_t *
 fm_icmp_engine_create(void)
 {
-	return fm_protocol_engine_create(&fm_icmp_engine_default_ops);
+	return fm_protocol_create(&fm_icmp_engine_default_ops);
 }
 
 static fm_rtt_stats_t *
-fm_icmp_create_rtt_estimator(const fm_protocol_engine_t *proto, int ipproto, unsigned int netid)
+fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, int ipproto, unsigned int netid)
 {
 	return fm_rtt_stats_create(ipproto, netid, FM_ICMP_PACKET_SPACING / 5, 5);
 }
@@ -300,7 +300,7 @@ static struct fm_probe_ops fm_icmp_host_probe_ops = {
 };
 
 static fm_probe_t *
-fm_icmp_create_host_probe(fm_protocol_engine_t *proto, fm_target_t *target, const struct icmp_host_probe_params *icmp_args)
+fm_icmp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const struct icmp_host_probe_params *icmp_args)
 {
 	struct fm_icmp_host_probe *probe;
 
@@ -322,7 +322,7 @@ fm_icmp_create_host_probe(fm_protocol_engine_t *proto, fm_target_t *target, cons
 struct fm_icmp_host_scan {
 	fm_scan_action_t	base;
 
-	fm_protocol_engine_t *	proto;
+	fm_protocol_t *		proto;
 	struct icmp_host_probe_params params;
 };
 
@@ -343,7 +343,7 @@ static const struct fm_scan_action_ops	fm_icmp_host_scan_ops = {
 };
 
 fm_scan_action_t *
-fm_icmp_create_host_probe_action(fm_protocol_engine_t *proto, const fm_string_array_t *args)
+fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args)
 {
 	struct fm_icmp_host_scan *hostscan;
 	struct icmp_host_probe_params icmp_args;
