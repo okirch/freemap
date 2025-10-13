@@ -45,6 +45,7 @@ struct icmp_host_probe_params {
 
 static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
 static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
+static int		fm_icmp_protocol_for_family(int af);
 
 static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -127,22 +128,29 @@ fm_icmp_instantiate_params(struct icmp_host_probe_params *params, fm_target_t *t
 	params->seq = target->host_probe_seq;
 	target->host_probe_seq += params->retries;
 
-	switch (target->address.ss_family) {
-	case AF_INET:
-		params->ipproto = IPPROTO_ICMP;
-		break;
-
-	case AF_INET6:
-		params->ipproto = IPPROTO_ICMPV6;
-		break;
-
-	default:
+	params->ipproto = fm_icmp_protocol_for_family(target->address.ss_family);
+	if (params->ipproto < 0) {
 		fm_log_error("Cannot create ICMP probe for %s", fm_address_format(&target->address));
 		return false;
 	}
 
 	params->ident = 0x1234;
 	return true;
+}
+
+int
+fm_icmp_protocol_for_family(int af)
+{
+	switch (af) {
+	case AF_INET:
+		return IPPROTO_ICMP;
+
+	case AF_INET6:
+		return IPPROTO_ICMPV6;
+
+	default:
+		return -1;
+	}
 }
 
 /*
