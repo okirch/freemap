@@ -44,9 +44,13 @@ struct icmp_host_probe_params {
 };
 
 static fm_socket_t *	fm_icmp_create_bsd_socket(fm_protocol_t *proto, int ipproto);
+static fm_socket_t *	fm_icmp_create_raw_socket(fm_protocol_t *proto, int ipproto);
+static bool		fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
+
 static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
 static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
 static int		fm_icmp_protocol_for_family(int af);
+static fm_extant_t *	fm_icmp_locate_probe(const fm_pkt_t *pkt, const struct icmp *);
 
 static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -58,10 +62,28 @@ static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.create_host_probe_action = fm_icmp_create_host_probe_action,
 };
 
+static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
+	.obj_size	= sizeof(fm_protocol_t),
+	.name		= "icmp-raw",
+	.id		= FM_PROTO_ICMP,
+
+	.create_socket	= fm_icmp_create_raw_socket,
+	.process_packet	= fm_icmp_process_raw_packet,
+
+	.create_rtt_estimator = fm_icmp_create_rtt_estimator,
+	.create_host_probe_action = fm_icmp_create_host_probe_action,
+};
+
 fm_protocol_t *
 fm_icmp_bsdsock_create(void)
 {
 	return fm_protocol_create(&fm_icmp_bsdsock_ops);
+}
+
+fm_protocol_t *
+fm_icmp_rawsock_create(void)
+{
+	return fm_protocol_create(&fm_icmp_rawsock_ops);
 }
 
 static fm_rtt_stats_t *
@@ -81,6 +103,86 @@ fm_icmp_create_bsd_socket(fm_protocol_t *proto, int af)
 		return NULL;
 
 	return fm_socket_create(af, SOCK_DGRAM, ipproto);
+}
+
+/*
+ * Raw sockets
+ */
+static fm_socket_t *
+fm_icmp_create_raw_socket(fm_protocol_t *proto, int af)
+{
+	int ipproto;
+
+	/* This should not fail; the caller should have taken care of this check already */
+	ipproto = fm_icmp_protocol_for_family(af);
+	if (ipproto < 0)
+		return NULL;
+
+	return fm_socket_create(af, SOCK_RAW, ipproto);
+}
+
+static bool
+fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
+{
+	const unsigned char *p = pkt->data;
+	unsigned int len = pkt->len;
+	fm_ip_info_t ip;
+	fm_extant_t *extant = NULL;
+
+	fm_print_hexdump(p, len);
+
+	if (!fm_pkt_pull_ip_hdr(pkt, &ip)) {
+		fm_log_debug("%s: bad IP header", proto->ops->name);
+		return false;
+	}
+
+	if (pkt->family == AF_INET && ip.ipproto == IPPROTO_ICMP) {
+		const struct icmp *icmph;
+
+		fm_log_debug("%s: %s -> %s: have an icmp packet", __func__,
+				fm_address_format(&ip.src_addr),
+				fm_address_format(&ip.dst_addr));
+
+		icmph = fm_pkt_pull(pkt, sizeof(*icmph));
+		if (icmph == NULL) {
+			fm_log_debug("%s: %s -> %s: truncated icmp packet", __func__,
+					fm_address_format(&ip.src_addr),
+					fm_address_format(&ip.dst_addr));
+			return false;
+		}
+
+		extant = fm_icmp_locate_probe(pkt, icmph);
+		if (extant == NULL) {
+			fm_log_debug("%s: %s -> %s: no matching probe (type %d code %d seq %d)", __func__,
+					fm_address_format(&ip.src_addr),
+					fm_address_format(&ip.dst_addr),
+					icmph->icmp_type,
+					icmph->icmp_code,
+					icmph->icmp_seq
+					);
+			return false;
+		}
+	} else
+	if (pkt->family == AF_INET6 && ip.ipproto == IPPROTO_ICMPV6) {
+		fm_log_error("ICMP6 response processing not yet implemented\n");
+	} else {
+		fm_log_debug("%s: %s -> %s: unexpected protocol %d", __func__,
+				fm_address_format(&ip.src_addr),
+				fm_address_format(&ip.dst_addr),
+				ip.ipproto);
+		return false;
+	}
+
+	if (extant != NULL) {
+		/* FIXME: use
+		   fm_probe_complete(extant->probe, "icmp", HOST_REACHABLE, rtt);
+		   and get an accurate rtt estimate using kernel packet timestamping
+		 */
+		fm_probe_mark_host_reachable(extant->probe, "icmp");
+		fm_extant_free(extant);
+	}
+
+	return true;
 }
 
 /*
@@ -247,6 +349,90 @@ fm_icmp_build_echo_request(int af, const struct icmp_host_probe_params *params, 
 	return rsize;
 }
 
+/*
+ * Build the response match
+ */
+static inline int
+get_icmp4_response_type(int type)
+{
+	switch (type) {
+	case ICMP_ECHO:
+		return ICMP_ECHOREPLY;
+	case ICMP_TIMESTAMP:
+		return ICMP_TIMESTAMPREPLY;
+	case ICMP_INFO_REQUEST:
+		return ICMP_INFO_REPLY;
+	}
+	return -1;
+}
+
+static inline int
+get_icmp6_response_type(int type)
+{
+	switch (type) {
+	case ICMP6_ECHO_REQUEST:
+		return ICMP6_ECHO_REPLY;
+	}
+	return -1;
+}
+
+static bool
+fm_icmp_expect_response(int af, const struct icmp_host_probe_params *params, fm_probe_t *probe)
+{
+	struct icmp_host_probe_params expect = *params;
+
+	if (params->icmp_type >= 0) {
+		if ((expect.icmp_type = get_icmp4_response_type(params->icmp_type)) < 0)
+			return false;
+	}
+
+	if (params->icmp6_type >= 0) {
+		if ((expect.icmp6_type = get_icmp6_response_type(params->icmp6_type)) < 0)
+			return false;
+	}
+
+	if (expect.icmp_type < 0 && expect.icmp6_type < 0)
+		return false;
+
+	fm_extant_alloc(probe, af, expect.ipproto, &expect, sizeof(expect));
+	return true;
+}
+
+fm_extant_t *
+fm_icmp_locate_probe(const fm_pkt_t *pkt, const struct icmp *icmph)
+{
+	fm_target_t *target;
+	hlist_iterator_t iter;
+	fm_extant_t *extant;
+	u_int8_t match_type = icmph->icmp_type;
+	u_int16_t match_id = ntohs(icmph->icmp_id);
+	u_int16_t match_seq = ntohs(icmph->icmp_seq);
+
+	target = fm_target_pool_find(&pkt->recv_addr);
+	if (target == NULL)
+		return NULL;
+
+        for (extant = fm_extant_iterator_first(&iter, &target->expecting);
+             extant != NULL;
+             extant = fm_extant_iterator_next(&iter)) {
+		const struct icmp_host_probe_params *expect;
+
+		if (extant->family != pkt->family || extant->ipproto != IPPROTO_ICMP)
+			continue;
+
+		expect = (struct icmp_host_probe_params *) (extant + 1);
+
+		if (expect->ident != match_id
+		 || expect->seq != match_seq
+		 || expect->icmp_type != match_type)
+			continue;
+
+                return extant;
+        }
+
+	return NULL;
+}
+
 static fm_fact_t *
 fm_icmp_host_probe_send(fm_probe_t *probe)
 {
@@ -276,6 +462,9 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 	pktlen = fm_icmp_build_echo_request(af, &icmp->params, pktbuf, sizeof(pktbuf));
 	if (pktlen == 0)
 		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Don't know hot to build ICMP packet for address family %d", af);
+
+	/* inform the ICMP response matching code that we're waiting for this packet */
+	fm_icmp_expect_response(af, &icmp->params, probe);
 
 	icmp->params.seq += 1;
 
