@@ -310,6 +310,34 @@ fm_address_format(const fm_address_t *ap)
 	}
 }
 
+bool
+fm_address_equal(const fm_address_t *a, const fm_address_t *b, bool with_port)
+{
+	if (a->ss_family != b->ss_family)
+		return false;
+
+	if (a->ss_family == AF_INET) {
+		const struct sockaddr_in *sina = (const struct sockaddr_in *) a;
+		const struct sockaddr_in *sinb = (const struct sockaddr_in *) b;
+
+		if (with_port && sina->sin_port != sinb->sin_port)
+			return false;
+
+		return sina->sin_addr.s_addr == sinb->sin_addr.s_addr;
+	} else
+	if (a->ss_family == AF_INET6) {
+		const struct sockaddr_in6 *sixa = (const struct sockaddr_in6 *) a;
+		const struct sockaddr_in6 *sixb = (const struct sockaddr_in6 *) b;
+
+		if (with_port && sixa->sin6_port != sixb->sin6_port)
+			return false;
+
+		return !memcmp(&sixa->sin6_addr, &sixb->sin6_addr, 16);
+	}
+
+	return false;
+}
+
 /*
  * The "simple" enumerator that is initialized with a single address
  */
