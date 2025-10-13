@@ -16,7 +16,9 @@
  */
 
 #include <assert.h>
+#include <netinet/ip.h>
 #include "protocols.h"
+#include "socket.h"
 
 static fm_protocol_engine_t *
 fm_protocol_engine_create_socket(void)
@@ -57,4 +59,38 @@ fm_protocol_create_socket(fm_protocol_t *proto, int ipproto)
 		return NULL;
 	sock = proto->ops->create_socket(proto, ipproto);
 	return sock;
+}
+
+/*
+ * IPv4 header analysis
+ */
+static bool
+fm_pkt_pull_ipv4_hdr(fm_pkt_t *pkt, fm_ip_info_t *info)
+{
+	const struct iphdr *ip = (const struct iphdr *) fm_pkt_peek(pkt, sizeof(struct iphdr));
+	unsigned int hlen;
+
+	hlen = ip->ihl << 2;
+	if (hlen < 20 || !fm_pkt_pull(pkt, hlen))
+		return false;
+
+	if (ip->version != 4)
+		return false;
+
+	fm_address_set_ipv4(&info->src_addr, ip->saddr);
+	fm_address_set_ipv4(&info->dst_addr, ip->daddr);
+	info->ipproto = ip->protocol;
+
+	return true;
+}
+
+bool
+fm_pkt_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_info_t *info)
+{
+	if (pkt->family == AF_INET)
+		return fm_pkt_pull_ipv4_hdr(pkt, info);
+	if (pkt->family == AF_INET6)
+		abort();
+
+	return false;
 }

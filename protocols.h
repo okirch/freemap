@@ -89,7 +89,39 @@ in_csum(const void *data, size_t noctets)
         return res;
 }
 
+/*
+ * Utility functions for packet parsing
+ */
+static inline const void *
+fm_pkt_peek(const fm_pkt_t *pkt, unsigned int wanted)
+{
+	unsigned int avail = pkt->len - pkt->rpos;
 
+	if (avail < wanted)
+		return NULL;
+	return pkt->data + pkt->rpos;
+}
+
+static inline const void *
+fm_pkt_pull(fm_pkt_t *pkt, unsigned int wanted)
+{
+	const void *p;
+
+	if ((p = fm_pkt_peek(pkt, wanted)) != NULL)
+		pkt->rpos += wanted;
+	return p;
+}
+
+/*
+ * IP header information
+ */
+typedef struct fm_ip_info {
+	fm_address_t		src_addr, dst_addr;
+	int			ipproto;
+} fm_ip_info_t;
+
+
+extern bool		fm_pkt_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_info_t *info);
 
 #endif /* FREEMAP_PROTOCOLS_H */
 
