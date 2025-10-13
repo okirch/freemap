@@ -47,9 +47,10 @@ struct fm_probe_ops {
 struct fm_probe {
 	struct hlist		link;
 
+	fm_protocol_t *		proto;
+
 	/* name of the probe, like udp/53 or icmp/echo */
 	char *			name;
-	int			ipproto;
 	unsigned int		netid;
 
 	const struct fm_probe_ops *ops;
@@ -131,7 +132,7 @@ struct fm_target_manager {
 
 extern fm_probe_t *	fm_probe_alloc(const char *id,
 				const struct fm_probe_ops *ops,
-				int ipproto,
+				fm_protocol_t *proto,
 				const fm_target_t *target);
 
 

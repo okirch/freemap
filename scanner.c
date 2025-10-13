@@ -42,22 +42,23 @@ fm_protocol_create(const struct fm_protocol_ops *ops)
 }
 
 static fm_rtt_stats_t *
-fm_protocol_get_rtt(const fm_protocol_t *proto, int ipproto, unsigned int netid)
+fm_protocol_get_rtt(const fm_protocol_t *proto, unsigned int netid)
 {
+	int proto_id = proto->ops->id;
 	fm_rtt_stats_t *rtt;
 
 	if (proto->ops->create_rtt_estimator == NULL)
 		return NULL;
 
-	if ((rtt = fm_rtt_stats_get(ipproto, netid)) == NULL)
-		rtt = proto->ops->create_rtt_estimator(proto, ipproto, netid);
+	if ((rtt = fm_rtt_stats_get(proto_id, netid)) == NULL)
+		rtt = proto->ops->create_rtt_estimator(proto, netid);
 	return rtt;
 }
 
 static inline void
 fm_protocol_attach_rtt_estimator(fm_protocol_t *proto, fm_probe_t *probe)
 {
-	probe->rtt = fm_protocol_get_rtt(proto, probe->ipproto, probe->netid);
+	probe->rtt = fm_protocol_get_rtt(proto, probe->netid);
 }
 
 /*

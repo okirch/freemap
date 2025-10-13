@@ -28,12 +28,13 @@
 #include "target.h" /* for fm_probe_t */
 #include "socket.h" /* for fm_probe_t */
 
-static fm_rtt_stats_t *	fm_tcp_create_rtt_estimator(const fm_protocol_t *proto, int ipproto, unsigned int netid);
+static fm_rtt_stats_t *	fm_tcp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
 static fm_probe_t *	fm_tcp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port);
 
 static struct fm_protocol_ops	fm_tcp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "tcp",
+	.id		= FM_PROTO_TCP,
 
 	.create_rtt_estimator = fm_tcp_create_rtt_estimator,
 	.create_port_probe = fm_tcp_create_port_probe,
@@ -46,9 +47,9 @@ fm_tcp_bsdsock_create(void)
 }
 
 static fm_rtt_stats_t *
-fm_tcp_create_rtt_estimator(const fm_protocol_t *proto, int ipproto, unsigned int netid)
+fm_tcp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid)
 {
-	return fm_rtt_stats_create(ipproto, netid, 250 / 2, 2);
+	return fm_rtt_stats_create(proto->ops->id, netid, 250 / 2, 2);
 }
 
 /*
@@ -149,7 +150,7 @@ fm_tcp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t por
 
 	snprintf(name, sizeof(name), "tcp/%u", port);
 
-	probe = (struct fm_tcp_port_probe *) fm_probe_alloc(name, &fm_tcp_port_probe_ops, IPPROTO_TCP, target);
+	probe = (struct fm_tcp_port_probe *) fm_probe_alloc(name, &fm_tcp_port_probe_ops, proto, target);
 
 	probe->port = port;
 	probe->host_address = tmp_address;

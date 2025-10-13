@@ -54,6 +54,14 @@ static const unsigned int	FM_ICMP_PROBE_RETRIES = 3;
 static const unsigned int	FM_ICMP_PACKET_SPACING = 250;
 static const unsigned int	FM_ICMP_RESPONSE_TIMEOUT = 1000;
 
+/* Protocol IDs, used internally */
+enum {
+	FM_PROTO_NONE = 0,
+	FM_PROTO_ICMP,
+	FM_PROTO_UDP,
+	FM_PROTO_TCP,
+};
+
 /*
  * Network stats. For now, we use it to build a reasonable RTT estimate
  */

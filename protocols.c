@@ -15,6 +15,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <assert.h>
 #include "protocols.h"
 
 static fm_protocol_engine_t *
@@ -36,6 +37,14 @@ fm_protocol_engine_create_socket(void)
 fm_protocol_engine_t *
 fm_protocol_engine_create_default(void)
 {
-	return fm_protocol_engine_create_socket();
+	fm_protocol_engine_t *proto;
+
+	proto = fm_protocol_engine_create_socket();
+
+	assert(proto->icmp == NULL || proto->icmp->ops->id == FM_PROTO_ICMP);
+	assert(proto->udp == NULL || proto->udp->ops->id == FM_PROTO_UDP);
+	assert(proto->tcp == NULL || proto->tcp->ops->id == FM_PROTO_TCP);
+
+	return proto;
 }
 

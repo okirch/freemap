@@ -29,12 +29,13 @@
 #include "target.h" /* for fm_probe_t */
 #include "socket.h"
 
-static fm_rtt_stats_t *	fm_udp_create_rtt_estimator(const fm_protocol_t *proto, int ipproto, unsigned int netid);
+static fm_rtt_stats_t *	fm_udp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
 static fm_probe_t *	fm_udp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port);
 
 static struct fm_protocol_ops	fm_udp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "udp",
+	.id		= FM_PROTO_UDP,
 
 	.create_rtt_estimator = fm_udp_create_rtt_estimator,
 	.create_port_probe = fm_udp_create_port_probe,
@@ -47,9 +48,9 @@ fm_udp_bsdsock_create(void)
 }
 
 static fm_rtt_stats_t *
-fm_udp_create_rtt_estimator(const fm_protocol_t *proto, int ipproto, unsigned int netid)
+fm_udp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid)
 {
-	return fm_rtt_stats_create(ipproto, netid, 250 / 2, 2);
+	return fm_rtt_stats_create(proto->ops->id, netid, 250 / 2, 2);
 }
 
 /*
@@ -193,7 +194,7 @@ fm_udp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t por
 
 	snprintf(name, sizeof(name), "udp/%u", port);
 
-	probe = (struct fm_udp_port_probe *) fm_probe_alloc(name, &fm_udp_port_probe_ops, IPPROTO_UDP, target);
+	probe = (struct fm_udp_port_probe *) fm_probe_alloc(name, &fm_udp_port_probe_ops, proto, target);
 
 	probe->port = port;
 	probe->host_address = tmp_address;

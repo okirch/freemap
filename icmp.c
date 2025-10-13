@@ -44,11 +44,12 @@ struct icmp_host_probe_params {
 };
 
 static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
-static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, int ipproto, unsigned int netid);
+static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
 
 static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "icmp",
+	.id		= FM_PROTO_ICMP,
 
 	.create_rtt_estimator = fm_icmp_create_rtt_estimator,
 	.create_host_probe_action = fm_icmp_create_host_probe_action,
@@ -61,9 +62,9 @@ fm_icmp_bsdsock_create(void)
 }
 
 static fm_rtt_stats_t *
-fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, int ipproto, unsigned int netid)
+fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid)
 {
-	return fm_rtt_stats_create(ipproto, netid, FM_ICMP_PACKET_SPACING / 5, 5);
+	return fm_rtt_stats_create(proto->ops->id, netid, FM_ICMP_PACKET_SPACING / 5, 5);
 }
 
 /*
@@ -300,7 +301,7 @@ fm_icmp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const struc
 {
 	struct fm_icmp_host_probe *probe;
 
-	probe = (struct fm_icmp_host_probe *) fm_probe_alloc("icmp/echo", &fm_icmp_host_probe_ops, icmp_args->ipproto, target);
+	probe = (struct fm_icmp_host_probe *) fm_probe_alloc("icmp/echo", &fm_icmp_host_probe_ops, proto, target);
 
 	probe->sock = NULL;
 	probe->params = *icmp_args;

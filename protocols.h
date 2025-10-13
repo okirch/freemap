@@ -34,8 +34,10 @@ struct fm_protocol_ops {
 	size_t		obj_size;
 	const char *	name;
 
+	int		id; /* FM_PROTO_* */
+
 	void		(*destroy)(fm_protocol_t *);
-	fm_network_stats_t *(*create_rtt_estimator)(const fm_protocol_t *, int ipproto, unsigned int netid);
+	fm_network_stats_t *(*create_rtt_estimator)(const fm_protocol_t *, unsigned int netid);
 
 	fm_scan_action_t *(*create_host_probe_action)(fm_protocol_t *, const fm_string_array_t *args);
 

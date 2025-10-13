@@ -24,7 +24,7 @@ static bool		fm_target_inspect_pending(fm_target_t *target);
 static void		fm_target_pool_check(fm_target_pool_t *pool);
 
 fm_probe_t *
-fm_probe_alloc(const char *id, const struct fm_probe_ops *ops, int ipproto, const fm_target_t *target)
+fm_probe_alloc(const char *id, const struct fm_probe_ops *ops, fm_protocol_t *proto, const fm_target_t *target)
 {
 	fm_probe_t *probe;
 
@@ -32,7 +32,7 @@ fm_probe_alloc(const char *id, const struct fm_probe_ops *ops, int ipproto, cons
 	probe = calloc(1, ops->obj_size);
 	probe->name = strdup(id);
 	probe->ops = ops;
-	probe->ipproto = ipproto;
+	probe->proto = proto;
 	probe->netid = target->netid;
 
 	assert(probe->netid);
