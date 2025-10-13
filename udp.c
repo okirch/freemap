@@ -32,12 +32,8 @@
 static fm_rtt_stats_t *	fm_udp_create_rtt_estimator(const fm_protocol_t *proto, int ipproto, unsigned int netid);
 static fm_probe_t *	fm_udp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port);
 
-struct fm_udp_engine_default {
-	fm_protocol_t	base;
-};
-
-static struct fm_protocol_ops	fm_udp_engine_default_ops = {
-	.obj_size	= sizeof(struct fm_udp_engine_default),
+static struct fm_protocol_ops	fm_udp_bsdsock_ops = {
+	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "udp",
 
 	.create_rtt_estimator = fm_udp_create_rtt_estimator,
@@ -45,9 +41,9 @@ static struct fm_protocol_ops	fm_udp_engine_default_ops = {
 };
 
 fm_protocol_t *
-fm_udp_engine_create(void)
+fm_udp_bsdsock_create(void)
 {
-	return fm_protocol_create(&fm_udp_engine_default_ops);
+	return fm_protocol_create(&fm_udp_bsdsock_ops);
 }
 
 static fm_rtt_stats_t *

@@ -170,9 +170,7 @@ fm_scanner_create(void)
 			FM_DEFAULT_GLOBAL_PACKET_RATE,
 			FM_DEFAULT_GLOBAL_PACKET_RATE / 10);
 
-	scanner->tcp_engine = fm_tcp_engine_create();
-	scanner->udp_engine = fm_udp_engine_create();
-	scanner->icmp_engine = fm_icmp_engine_create();
+	scanner->proto = fm_protocol_engine_create_default();
 
 	return scanner;
 }
@@ -180,8 +178,6 @@ fm_scanner_create(void)
 bool
 fm_scanner_ready(fm_scanner_t *scanner)
 {
-	if (scanner->tcp_engine == NULL)
-		scanner->tcp_engine = fm_tcp_engine_create();
 	fm_timestamp_update(&scanner->scan_started);
 	fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
 
@@ -333,13 +329,13 @@ fm_scanner_get_protocol_engine(fm_scanner_t *scanner, const char *protocol_name)
 
 	switch (pe->p_proto) {
 	case IPPROTO_TCP:
-		return scanner->tcp_engine;
+		return scanner->proto->tcp;
 
 	case IPPROTO_UDP:
-		return scanner->udp_engine;
+		return scanner->proto->udp;
 
 	case IPPROTO_ICMP:
-		return scanner->icmp_engine;
+		return scanner->proto->icmp;
 	}
 
 	return NULL;

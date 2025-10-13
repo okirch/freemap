@@ -46,12 +46,8 @@ struct icmp_host_probe_params {
 static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
 static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, int ipproto, unsigned int netid);
 
-struct fm_icmp_engine_default {
-	fm_protocol_t	base;
-};
-
-static struct fm_protocol_ops	fm_icmp_engine_default_ops = {
-	.obj_size	= sizeof(struct fm_icmp_engine_default),
+static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
+	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "icmp",
 
 	.create_rtt_estimator = fm_icmp_create_rtt_estimator,
@@ -59,9 +55,9 @@ static struct fm_protocol_ops	fm_icmp_engine_default_ops = {
 };
 
 fm_protocol_t *
-fm_icmp_engine_create(void)
+fm_icmp_bsdsock_create(void)
 {
-	return fm_protocol_create(&fm_icmp_engine_default_ops);
+	return fm_protocol_create(&fm_icmp_bsdsock_ops);
 }
 
 static fm_rtt_stats_t *

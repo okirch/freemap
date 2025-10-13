@@ -76,9 +76,7 @@ struct fm_scanner {
 
 	fm_scan_action_array_t	requests;
 
-	fm_protocol_t *		tcp_engine;
-	fm_protocol_t *		udp_engine;
-	fm_protocol_t *		icmp_engine;
+	const fm_protocol_engine_t *proto;
 };
 
 extern fm_scan_action_t *	fm_scan_action_create(const struct fm_scan_action_ops *ops, const char *id);

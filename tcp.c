@@ -31,12 +31,8 @@
 static fm_rtt_stats_t *	fm_tcp_create_rtt_estimator(const fm_protocol_t *proto, int ipproto, unsigned int netid);
 static fm_probe_t *	fm_tcp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port);
 
-struct fm_tcp_engine_default {
-	fm_protocol_t	base;
-};
-
-static struct fm_protocol_ops	fm_tcp_engine_default_ops = {
-	.obj_size	= sizeof(struct fm_tcp_engine_default),
+static struct fm_protocol_ops	fm_tcp_bsdsock_ops = {
+	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "tcp",
 
 	.create_rtt_estimator = fm_tcp_create_rtt_estimator,
@@ -44,13 +40,9 @@ static struct fm_protocol_ops	fm_tcp_engine_default_ops = {
 };
 
 fm_protocol_t *
-fm_tcp_engine_create(void)
+fm_tcp_bsdsock_create(void)
 {
-	struct fm_tcp_engine_default *tcp;
-
-	tcp = (struct fm_tcp_engine_default *) fm_protocol_create(&fm_tcp_engine_default_ops);
-
-	return &tcp->base;
+	return fm_protocol_create(&fm_tcp_bsdsock_ops);
 }
 
 static fm_rtt_stats_t *
