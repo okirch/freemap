@@ -81,5 +81,31 @@ hlist_remove(struct hlist *entry)
 	entry->next = NULL;
 }
 
+typedef struct list_iterator {
+	struct hlist *next;
+} hlist_iterator_t;
+
+static inline void *
+hlist_iterator_first(hlist_iterator_t *iter, struct hlist_head *list_head)
+{
+	struct hlist *cur;
+
+	iter->next = NULL;
+	if ((cur = list_head->first) != NULL)
+		iter->next = cur->next;
+	return cur;
+}
+
+static inline void *
+hlist_iterator_next(hlist_iterator_t *iter)
+{
+	struct hlist *cur = iter->next;
+
+	iter->next = NULL;
+	if (cur != NULL)
+		iter->next = cur->next;
+	return cur;
+}
+
 #endif /* FREEMAP_LISTS_H */
 
