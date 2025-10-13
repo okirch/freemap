@@ -35,6 +35,9 @@ struct fm_socket {
 	socklen_t		addrlen;
 	int			rpoll;
 
+	bool			(*process_packet)(fm_socket_t *, fm_pkt_t *);
+	void *			response_handle; /* maybe we should just have socket->proto */
+
 	void			(*callback)(fm_socket_t *, int, void *user_data);
 	void *			user_data;
 
