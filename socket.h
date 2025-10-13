@@ -51,7 +51,6 @@ enum {
 	FM_ERROR_CLASS_OTHER,
 };
 
-extern int		fm_socket_recv(fm_socket_t *sock, void *buffer, size_t size, fm_pkt_info_t *info);
 extern bool		fm_socket_recverr(fm_socket_t *sock, fm_pkt_info_t *info);
 extern const char *	fm_socket_render_error(const fm_pkt_info_t *info);
 extern int		fm_socket_error_class(const fm_pkt_info_t *info);

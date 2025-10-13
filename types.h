@@ -100,8 +100,6 @@ typedef struct fm_port_range {
  * Information about a packet received from somewhere
  */
 typedef struct fm_pkt_info {
-	struct sockaddr_storage recv_addr;
-
 	double			recv_time;
 	int			recv_ttl;
 
@@ -113,6 +111,9 @@ typedef struct fm_pkt_info {
 } fm_pkt_info_t;
 
 typedef struct fm_pkt {
+	int			family;
+	struct sockaddr_storage recv_addr;
+
 	fm_pkt_info_t		info;
 	const unsigned char *	data;
 	size_t			len;
