@@ -60,6 +60,7 @@ extern fm_protocol_engine_t *fm_protocol_engine_create_default(void);
 extern fm_protocol_t *	fm_tcp_bsdsock_create(void);
 extern fm_protocol_t *	fm_udp_bsdsock_create(void);
 extern fm_protocol_t *	fm_icmp_bsdsock_create(void);
+extern fm_protocol_t *	fm_icmp_rawsock_create(void);
 
 extern fm_protocol_t *	fm_protocol_create(const struct fm_protocol_ops *ops);
 extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);

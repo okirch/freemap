@@ -21,7 +21,7 @@
 #include "socket.h"
 
 static fm_protocol_engine_t *
-fm_protocol_engine_create_socket(void)
+fm_protocol_engine_create_bsd_socket(void)
 {
 	static struct fm_protocol_engine *engine = NULL;
 
@@ -36,12 +36,40 @@ fm_protocol_engine_create_socket(void)
 	return engine;
 }
 
+static fm_protocol_engine_t *
+fm_protocol_engine_create_raw_socket(void)
+{
+	static struct fm_protocol_engine *engine = NULL;
+	static bool initialized = false;
+
+	if (!initialized) {
+		fm_socket_t *sock;
+
+		initialized = true;
+
+		sock = fm_socket_create(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+		if (sock == NULL)
+			return NULL;
+		fm_socket_free(sock);
+
+		engine = calloc(1, sizeof(*engine));
+
+		engine->icmp = fm_icmp_rawsock_create();
+		engine->tcp = fm_tcp_bsdsock_create();
+		engine->udp = fm_udp_bsdsock_create();
+	}
+
+	return engine;
+}
+
 fm_protocol_engine_t *
 fm_protocol_engine_create_default(void)
 {
 	fm_protocol_engine_t *proto;
 
-	proto = fm_protocol_engine_create_socket();
+	proto = fm_protocol_engine_create_raw_socket();
+	if (proto == NULL)
+		proto = fm_protocol_engine_create_bsd_socket();
 
 	assert(proto->icmp == NULL || proto->icmp->ops->id == FM_PROTO_ICMP);
 	assert(proto->udp == NULL || proto->udp->ops->id == FM_PROTO_UDP);
