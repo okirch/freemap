@@ -97,6 +97,29 @@ typedef struct fm_port_range {
 } fm_port_range_t;
 
 /*
+ * Information about a packet received from somewhere
+ */
+typedef struct fm_pkt_info {
+	struct sockaddr_storage recv_addr;
+
+	double			recv_time;
+	int			recv_ttl;
+
+	int			error_class;
+
+	struct sock_extended_err *ee;
+	const struct sockaddr_storage *offender;
+	unsigned char		eebuf[256];
+} fm_pkt_info_t;
+
+typedef struct fm_pkt {
+	fm_pkt_info_t		info;
+	const unsigned char *	data;
+	size_t			len;
+	unsigned int		rpos;
+} fm_pkt_t;
+
+/*
  * Representation of errors, and information about a target
  */
 typedef enum {

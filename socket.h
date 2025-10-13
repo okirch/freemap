@@ -40,17 +40,6 @@ struct fm_socket {
 
 };
 
-typedef struct fm_pkt_info {
-	double		recv_time;
-	int		recv_ttl;
-
-	int		error_class;
-
-	struct sock_extended_err *ee;
-	const struct sockaddr_storage *offender;
-	unsigned char	eebuf[256];
-} fm_pkt_info_t;
-
 enum {
 	FM_ERROR_CLASS_IGNORE = 0,
 	FM_ERROR_CLASS_TRANSIENT,
