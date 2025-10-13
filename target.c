@@ -23,6 +23,8 @@
 static bool		fm_target_inspect_pending(fm_target_t *target);
 static void		fm_target_pool_check(fm_target_pool_t *pool);
 
+static fm_target_pool_t *fm_active_target_pool = NULL;
+
 fm_probe_t *
 fm_probe_alloc(const char *id, const struct fm_probe_ops *ops, fm_protocol_t *proto, fm_target_t *target)
 {
@@ -289,6 +291,34 @@ fm_target_pool_reap_completed(fm_target_pool_t *pool)
 	return completed_some;
 }
 
+void
+fm_target_pool_make_active(fm_target_pool_t *pool)
+{
+	fm_active_target_pool = pool;
+}
+
+fm_target_t *
+fm_target_pool_find(const fm_address_t *addr)
+{
+	fm_target_pool_t *pool;
+	unsigned int i;
+
+	assert(fm_active_target_pool);
+	pool = fm_active_target_pool;
+
+	for (i = 0; i < pool->size; ++i) {
+		fm_target_t *target = pool->slots[pool->cursor];
+
+		if (fm_address_equal(&target->address, addr, false))
+			return target;
+	}
+
+	return NULL;
+}
+
+/*
+ * abstract target manager
+ */
 fm_target_manager_t *
 fm_target_manager_create(void)
 {

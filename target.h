@@ -162,6 +162,9 @@ extern fm_extant_t *	fm_extant_alloc(fm_probe_t *, int af, int ipproto,
 extern void		fm_extant_free(fm_extant_t *extant);
 extern void		fm_target_forget_pending(fm_target_t *target, const fm_probe_t *probe);
 
+extern void		fm_target_pool_make_active(fm_target_pool_t *);
+extern fm_target_t *	fm_target_pool_find(const fm_address_t *);
+
 static inline void
 fm_probe_insert(struct fm_probe_list *list, fm_probe_t *probe)
 {

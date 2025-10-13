@@ -185,6 +185,8 @@ fm_scanner_ready(fm_scanner_t *scanner)
 	if (scanner->scheduler == NULL)
 		scanner->scheduler = fm_linear_scheduler_create(scanner);
 
+	fm_target_pool_make_active(scanner->target_pool);
+
 	return true;
 }
 
