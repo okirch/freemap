@@ -16,6 +16,8 @@
  */
 
 #include <string.h>
+#include <stdio.h>
+#include <ctype.h>
 #include "utils.h"
 
 void
@@ -111,3 +113,41 @@ fm_parse_string_argument(const char *arg, const char *option_name, const char **
 	*value_p = arg + optlen + 1;
 	return true;
 }
+
+/*
+ * Print buffer as hexdump
+ */
+void
+fm_print_hexdump(const unsigned char *p, unsigned int len)
+{
+	unsigned int i;
+
+	if (len == 0) {
+		printf("0000: EMPTY buffer\n");
+		return;
+	}
+
+	for (i = 0; i < len; i += 32) {
+		unsigned int n, k;
+
+		if ((n = len - i) > 32)
+			n = 32;
+
+		printf("%04x:", i);
+		for (k = 0; k < 32; ++k) {
+			if (k + i < len)
+				printf(" %02x", p[k + i]);
+			else
+				printf("   ");
+		}
+
+		printf(" ");
+		for (k = 0; k < n && i + k < len; ++k) {
+			unsigned char cc = p[i + k];
+
+			printf("%c", isalnum(cc)? cc : '.');
+		}
+		printf("\n");
+	}
+}
+
