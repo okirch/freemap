@@ -61,7 +61,7 @@ struct fm_probe {
 	fm_rtt_stats_t *	rtt;
 
 	/* When probing eg UDP based services, we need to slap some
-	 * constant value in the timeout derived from the RTT estimate,
+	 * constant value on the timeout derived from the RTT estimate,
 	 * because the RTT will be largely based on the network timing;
 	 * but for us to receive a UDP response, we need to take into
 	 * account the time it takes the server to actually cook up a
