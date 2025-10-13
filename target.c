@@ -50,6 +50,9 @@ fm_probe_free(fm_probe_t *probe)
 	if (probe->status != NULL)
 		fm_fact_free(probe->status);
 
+	if (probe->target != NULL)
+		fm_target_forget_pending(probe->target, probe);
+
 	fm_probe_unlink(probe);
 
 	memset(probe, 0, sizeof(*probe));
@@ -129,6 +132,38 @@ void
 fm_probe_mark_port_heisenberg(fm_probe_t *probe, const char *proto_id, unsigned int port)
 {
 	fm_probe_set_status(probe, fm_fact_create_port_heisenberg(proto_id, port));
+}
+
+/*
+ * Tracking of extant requests
+ */
+fm_extant_t *
+fm_extant_alloc(fm_probe_t *probe, int af, int ipproto, const void *payload, size_t payload_size)
+{
+	fm_target_t *target = probe->target;
+	fm_extant_t *extant;
+
+	extant = calloc(1, sizeof(*extant) + payload_size);
+
+	extant->family = af;
+	extant->ipproto = ipproto;
+	extant->probe = probe;
+
+	fm_timestamp_init(&extant->timestamp);
+
+	if (payload != NULL)
+		memcpy(extant + 1, payload, payload_size);
+
+	fm_extant_append(&target->expecting, extant);
+
+	return extant;
+}
+
+void
+fm_extant_free(fm_extant_t *extant)
+{
+	fm_extant_unlink(extant);
+	free(extant);
 }
 
 /*
@@ -476,6 +511,24 @@ fm_target_inspect_pending(fm_target_t *target)
 
 	return rv;
 }
+
+/*
+ * Management of extant packets awaiting a reply
+ */
+void
+fm_target_forget_pending(fm_target_t *target, const fm_probe_t *probe)
+{
+	hlist_iterator_t iter;
+	fm_extant_t *extant;
+
+	for (extant = fm_extant_iterator_first(&iter, &target->expecting);
+	     extant != NULL;
+	     extant = fm_extant_iterator_next(&iter)) {
+		if (extant->probe == probe)
+			fm_extant_free(extant);
+	}
+}
+
 
 /*
  * Deal with network stats

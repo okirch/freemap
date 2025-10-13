@@ -84,6 +84,23 @@ struct fm_probe_list {
 	struct hlist_head	hlist;
 };
 
+/*
+ * Hold the state of an extant request
+ */
+typedef struct fm_extant {
+	struct hlist		link;
+
+	int			family;
+	int			ipproto;
+
+	struct timeval		timestamp;
+	fm_probe_t *		probe;
+} fm_extant_t;
+
+struct fm_extant_list {
+	struct hlist_head	hlist;
+};
+
 struct fm_target {
 	fm_address_t		address;
 	char *			id;
@@ -109,7 +126,10 @@ struct fm_target {
 	/* scheduler stores per-target state here: */
 	void *			sched_state;
 
+	/* should be renamed to "active_probes" */
 	struct fm_probe_list	pending_probes;
+
+	struct fm_extant_list	expecting;
 
 	fm_fact_log_t		log;
 };
@@ -137,6 +157,10 @@ extern fm_probe_t *	fm_probe_alloc(const char *id,
 				fm_target_t *target);
 
 
+extern fm_extant_t *	fm_extant_alloc(fm_probe_t *, int af, int ipproto,
+				const void *payload, size_t payload_size);
+extern void		fm_extant_free(fm_extant_t *extant);
+extern void		fm_target_forget_pending(fm_target_t *target, const fm_probe_t *probe);
 
 static inline void
 fm_probe_insert(struct fm_probe_list *list, fm_probe_t *probe)
@@ -174,5 +198,29 @@ fm_probe_list_is_empty(const struct fm_probe_list *list)
 
 #define fm_probe_foreach(list, iter_var) \
 	for (iter_var = (fm_probe_t *) ((list)->hlist.first); iter_var != NULL; iter_var = (fm_probe_t *) (iter_var->next))
+
+static inline void
+fm_extant_append(struct fm_extant_list *list, fm_extant_t *extant)
+{
+	hlist_append(&list->hlist, &extant->link);
+}
+
+static inline void
+fm_extant_unlink(fm_extant_t *extant)
+{
+	hlist_remove(&extant->link);
+}
+
+static inline fm_extant_t *
+fm_extant_iterator_first(hlist_iterator_t *iter, struct fm_extant_list *list)
+{
+	return (fm_extant_t *) hlist_iterator_first(iter, &list->hlist);
+}
+
+static inline fm_extant_t *
+fm_extant_iterator_next(hlist_iterator_t *iter)
+{
+	return (fm_extant_t *) hlist_iterator_next(iter);
+}
 
 #endif /* FREEMAP_TARGET_H */
