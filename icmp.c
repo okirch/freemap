@@ -43,6 +43,7 @@ struct icmp_host_probe_params {
 	const char *	type_name;
 };
 
+static fm_socket_t *	fm_icmp_create_bsd_socket(fm_protocol_t *proto, int ipproto);
 static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
 static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
 static int		fm_icmp_protocol_for_family(int af);
@@ -52,6 +53,7 @@ static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.name		= "icmp",
 	.id		= FM_PROTO_ICMP,
 
+	.create_socket	= fm_icmp_create_bsd_socket,
 	.create_rtt_estimator = fm_icmp_create_rtt_estimator,
 	.create_host_probe_action = fm_icmp_create_host_probe_action,
 };
@@ -66,6 +68,19 @@ static fm_rtt_stats_t *
 fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid)
 {
 	return fm_rtt_stats_create(proto->ops->id, netid, FM_ICMP_PACKET_SPACING / 5, 5);
+}
+
+static fm_socket_t *
+fm_icmp_create_bsd_socket(fm_protocol_t *proto, int af)
+{
+	int ipproto;
+
+	/* This should not fail; the caller should have taken care of this check already */
+	ipproto = fm_icmp_protocol_for_family(af);
+	if (ipproto < 0)
+		return NULL;
+
+	return fm_socket_create(af, SOCK_DGRAM, ipproto);
 }
 
 /*
@@ -240,8 +255,9 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 	unsigned char pktbuf[128];
 	size_t pktlen;
 
+	/* For the time being, always connect - even when using a raw socket */
 	if (icmp->sock == NULL) {
-		icmp->sock = fm_socket_create(af, SOCK_DGRAM, icmp->params.ipproto);
+		icmp->sock = fm_protocol_create_socket(probe->proto, af);
 		if (icmp->sock == NULL) {
 			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create ICMP socket for %s: %m",
 					fm_address_format(&icmp->params.host_address));

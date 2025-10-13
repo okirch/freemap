@@ -28,6 +28,7 @@
 #include "target.h" /* for fm_probe_t */
 #include "socket.h" /* for fm_probe_t */
 
+static fm_socket_t *	fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af);
 static fm_rtt_stats_t *	fm_tcp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
 static fm_probe_t *	fm_tcp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port);
 
@@ -36,6 +37,7 @@ static struct fm_protocol_ops	fm_tcp_bsdsock_ops = {
 	.name		= "tcp",
 	.id		= FM_PROTO_TCP,
 
+	.create_socket	= fm_tcp_create_bsd_socket,
 	.create_rtt_estimator = fm_tcp_create_rtt_estimator,
 	.create_port_probe = fm_tcp_create_port_probe,
 };
@@ -50,6 +52,12 @@ static fm_rtt_stats_t *
 fm_tcp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid)
 {
 	return fm_rtt_stats_create(proto->ops->id, netid, 250 / 2, 2);
+}
+
+static fm_socket_t *
+fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af)
+{
+	return fm_socket_create(af, SOCK_STREAM, 0);
 }
 
 /*
@@ -111,7 +119,7 @@ fm_tcp_port_probe_send(fm_probe_t *probe)
 	struct fm_tcp_port_probe *tcp = (struct fm_tcp_port_probe *) probe;
 
 	if (tcp->sock == NULL) {
-		tcp->sock = fm_socket_create(tcp->host_address.ss_family, SOCK_STREAM, 0);
+		tcp->sock = fm_protocol_create_socket(probe->proto, tcp->host_address.ss_family);
 		if (tcp->sock == NULL) {
 			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create TCP socket for %s: %m",
 					fm_address_format(&tcp->host_address));

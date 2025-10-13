@@ -29,6 +29,7 @@
 #include "target.h" /* for fm_probe_t */
 #include "socket.h"
 
+static fm_socket_t *	fm_udp_create_bsd_socket(fm_protocol_t *proto, int af);
 static fm_rtt_stats_t *	fm_udp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
 static fm_probe_t *	fm_udp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port);
 
@@ -37,6 +38,7 @@ static struct fm_protocol_ops	fm_udp_bsdsock_ops = {
 	.name		= "udp",
 	.id		= FM_PROTO_UDP,
 
+	.create_socket	= fm_udp_create_bsd_socket,
 	.create_rtt_estimator = fm_udp_create_rtt_estimator,
 	.create_port_probe = fm_udp_create_port_probe,
 };
@@ -51,6 +53,12 @@ static fm_rtt_stats_t *
 fm_udp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid)
 {
 	return fm_rtt_stats_create(proto->ops->id, netid, 250 / 2, 2);
+}
+
+static fm_socket_t *
+fm_udp_create_bsd_socket(fm_protocol_t *proto, int af)
+{
+	return fm_socket_create(af, SOCK_DGRAM, 0);
 }
 
 /*
@@ -120,7 +128,7 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 	const fm_probe_packet_t *pkt;
 
 	if (udp->sock == NULL) {
-		udp->sock = fm_socket_create(udp->host_address.ss_family, SOCK_DGRAM, 0);
+		udp->sock = fm_protocol_create_socket(probe->proto, udp->host_address.ss_family);
 		if (udp->sock == NULL) {
 			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create UDP socket for %s: %m",
 					fm_address_format(&udp->host_address));

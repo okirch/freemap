@@ -41,6 +41,8 @@ struct fm_protocol_ops {
 
 	fm_scan_action_t *(*create_host_probe_action)(fm_protocol_t *, const fm_string_array_t *args);
 
+	fm_socket_t *	(*create_socket)(fm_protocol_t *, int af);
+
 	fm_probe_t *	(*create_host_probe)(fm_protocol_t *, fm_target_t *, unsigned int retries);
 	fm_probe_t *	(*create_port_probe)(fm_protocol_t *, fm_target_t *, uint16_t);
 };
@@ -59,6 +61,7 @@ extern fm_protocol_t *	fm_udp_bsdsock_create(void);
 extern fm_protocol_t *	fm_icmp_bsdsock_create(void);
 
 extern fm_protocol_t *	fm_protocol_create(const struct fm_protocol_ops *ops);
+extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);
 extern fm_probe_t *	fm_protocol_create_host_probe(fm_protocol_t *, fm_target_t *, unsigned int);
 extern fm_probe_t *	fm_protocol_create_port_probe(fm_protocol_t *, fm_target_t *, uint16_t);
 

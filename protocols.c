@@ -48,3 +48,13 @@ fm_protocol_engine_create_default(void)
 	return proto;
 }
 
+fm_socket_t *
+fm_protocol_create_socket(fm_protocol_t *proto, int ipproto)
+{
+	fm_socket_t *sock;
+
+	if (proto->ops->create_socket == NULL)
+		return NULL;
+	sock = proto->ops->create_socket(proto, ipproto);
+	return sock;
+}
