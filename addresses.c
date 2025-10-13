@@ -175,6 +175,14 @@ fm_address_get_raw_addr(const struct sockaddr_storage *ss, unsigned int *nbits)
 	return fm_get_raw_addr(ss->ss_family, (struct sockaddr_storage *) ss, nbits);
 }
 
+void
+fm_address_set_ipv4(struct sockaddr_storage *ss, u_int32_t raw_addr)
+{
+	memset(ss, 0, sizeof(*ss));
+	ss->ss_family = AF_INET;
+	((struct sockaddr_in *) ss)->sin_addr.s_addr = raw_addr;
+}
+
 unsigned int
 fm_addrfamily_sockaddr_size(int family)
 {

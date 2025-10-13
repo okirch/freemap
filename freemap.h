@@ -113,6 +113,7 @@ extern bool		fm_fact_check_protocol(const fm_fact_t *fact, const char *protocol_
 extern const fm_fact_t *fm_fact_log_find(const fm_fact_log_t *, fm_fact_type_t);
 extern const fm_fact_t *fm_fact_log_find_iter(const fm_fact_log_t *, fm_fact_type_t, unsigned int *);
 
+extern void		fm_address_set_ipv4(struct sockaddr_storage *ss, u_int32_t raw_addr);
 extern bool		fm_address_set_port(fm_address_t *address, unsigned short port);
 extern unsigned int	fm_addrfamily_sockaddr_size(int family);
 
