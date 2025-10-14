@@ -52,7 +52,7 @@ static bool		fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
 static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
 static int		fm_icmp_protocol_for_family(int af);
-static fm_extant_t *	fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, const struct icmp *icmph, bool is_response);
+static fm_extant_t *	fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response);
 
 static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -127,47 +127,19 @@ fm_icmp_create_raw_socket(fm_protocol_t *proto, int af)
 static bool
 fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
-	const unsigned char *p = pkt->data;
-	unsigned int len = pkt->len;
-	fm_ip_info_t ip;
 	fm_extant_t *extant = NULL;
+	fm_ip_info_t ip;
 
-	fm_print_hexdump(p, len);
+	/* fm_print_hexdump(pkt->data, pkt->len); */
 
 	if (!fm_pkt_pull_ip_hdr(pkt, &ip)) {
 		fm_log_debug("%s: bad IP header", proto->ops->name);
 		return false;
 	}
 
-	if (pkt->family == AF_INET && ip.ipproto == IPPROTO_ICMP) {
-		const struct icmp *icmph;
-
-		fm_log_debug("%s: %s -> %s: have an icmp packet", __func__,
-				fm_address_format(&ip.src_addr),
-				fm_address_format(&ip.dst_addr));
-
-		icmph = fm_pkt_pull(pkt, sizeof(*icmph));
-		if (icmph == NULL) {
-			fm_log_debug("%s: %s -> %s: truncated icmp packet", __func__,
-					fm_address_format(&ip.src_addr),
-					fm_address_format(&ip.dst_addr));
-			return false;
-		}
-
-		extant = fm_icmp_locate_probe(&pkt->recv_addr, icmph, true);
-		if (extant == NULL) {
-			fm_log_debug("%s: %s -> %s: no matching probe (type %d code %d seq %d)", __func__,
-					fm_address_format(&ip.src_addr),
-					fm_address_format(&ip.dst_addr),
-					icmph->icmp_type,
-					icmph->icmp_code,
-					icmph->icmp_seq
-					);
-			return false;
-		}
-	} else
-	if (pkt->family == AF_INET6 && ip.ipproto == IPPROTO_ICMPV6) {
-		fm_log_error("ICMP6 response processing not yet implemented\n");
+	if ((pkt->family == AF_INET && ip.ipproto == IPPROTO_ICMP) 
+	 || (pkt->family == AF_INET6 && ip.ipproto == IPPROTO_ICMPV6)) {
+		extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, true);
 	} else {
 		fm_log_debug("%s: %s -> %s: unexpected protocol %d", __func__,
 				fm_address_format(&ip.src_addr),
@@ -200,12 +172,6 @@ fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 		return false;
 
 	if (pkt->family == AF_INET && ee->ee_origin == SO_EE_ORIGIN_ICMP) {
-		const struct icmp *icmph;
-
-		icmph = fm_pkt_pull(pkt, sizeof(*icmph));
-		if (icmph == NULL)
-			return false;
-
 		if (ee->ee_type != ICMP_DEST_UNREACH) {
 			fm_log_debug("%s ignoring icmp packet with type %d.%d",
 					fm_address_format(&pkt->recv_addr),
@@ -220,7 +186,7 @@ fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 		 * ICMP packet, the "from" address is the IP we originally sent the packet
 		 * to, and the offender is the address of the host that generated the
 		 * ICMP packet. */
-		extant = fm_icmp_locate_probe(&pkt->recv_addr, icmph, false);
+		extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, false);
 
 		/* TODO: record the gateway that generated this error code;
 		 * we could build a rough sketch of the network topo and avoid swamping
@@ -496,14 +462,13 @@ fm_icmp_expect_response(int af, const void *sent_data, unsigned int sent_len, fm
 }
 
 fm_extant_t *
-fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, const struct icmp *icmph, bool is_response)
+fm_icmp4_locate_probe(fm_target_t *target, fm_pkt_t *pkt, bool is_response)
 {
-	fm_target_t *target;
+	const struct icmp *icmph;
 	hlist_iterator_t iter;
 	fm_extant_t *extant;
 
-	target = fm_target_pool_find(target_addr);
-	if (target == NULL)
+	if (!(icmph = fm_pkt_pull(pkt, sizeof(*icmph))))
 		return NULL;
 
         fm_extant_iterator_init(&iter, &target->expecting);
@@ -516,6 +481,50 @@ fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, const struct ic
 		 && match->icmp_seq == icmph->icmp_seq)
 			return extant;
         }
+
+	return NULL;
+}
+
+static fm_extant_t *
+fm_icmp6_locate_probe(fm_target_t *target, fm_pkt_t *pkt, bool is_response)
+{
+	const struct icmp6_hdr *icmph;
+	hlist_iterator_t iter;
+	fm_extant_t *extant;
+
+	if (!(icmph = fm_pkt_pull(pkt, sizeof(*icmph))))
+		return NULL;
+
+        fm_extant_iterator_init(&iter, &target->expecting);
+        while ((extant = fm_extant_iterator_match(&iter, AF_INET6, IPPROTO_ICMPV6)) != NULL) {
+		const struct icmp6_extant_info *ei = (struct icmp6_extant_info *) (extant + 1);
+		const struct icmp6_hdr *match = is_response? &ei->expect_hdr : &ei->sent_hdr;
+
+		if (match->icmp6_type == icmph->icmp6_type
+		 && match->icmp6_id == icmph->icmp6_id
+		 && match->icmp6_seq == icmph->icmp6_seq)
+			return extant;
+        }
+
+	return NULL;
+}
+
+fm_extant_t *
+fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response)
+{
+	fm_target_t *target;
+
+	if (pkt->family != target_addr->ss_family)
+		return NULL;
+
+	target = fm_target_pool_find(target_addr);
+	if (target == NULL)
+		return NULL;
+
+	if (pkt->family == AF_INET)
+		return fm_icmp4_locate_probe(target, pkt, is_response);
+	if (pkt->family == AF_INET6)
+		return fm_icmp6_locate_probe(target, pkt, is_response);
 
 	return NULL;
 }
