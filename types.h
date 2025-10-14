@@ -115,9 +115,10 @@ typedef struct fm_pkt {
 	struct sockaddr_storage recv_addr;
 
 	fm_pkt_info_t		info;
-	const unsigned char *	data;
 	size_t			len;
 	unsigned int		rpos;
+
+	unsigned char		data[0];
 } fm_pkt_t;
 
 /*
