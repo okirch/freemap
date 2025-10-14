@@ -565,12 +565,11 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 			pkt = fm_socket_recv_packet(sock);
 			if (pkt == NULL) {
 				fm_log_error("socket %d: POLLIN set but recvmsg failed: %m", sock->fd);
-			} else
-			if (sock->process_packet(sock, pkt)) {
-				bits &= ~POLLIN;
+			} else {
+				if (sock->process_packet(sock, pkt))
+					bits &= ~POLLIN;
+				free(pkt);
 			}
-
-			free(pkt);
 		}
 	}
 
