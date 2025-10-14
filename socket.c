@@ -123,13 +123,16 @@ double
 fm_pkt_rtt(const fm_pkt_t *pkt, const fm_socket_timestamp_t *send_ts)
 {
 	const struct timeval *sent = &send_ts->when;
-	const struct timeval *recv = &pkt->info.recv_time.when;
+	const struct timeval *recv = NULL;
 	struct timeval now, delta;
 
 	if (!timerisset(sent))
 		return -1;
 
-	if (!timerisset(recv)) {
+	if (pkt != NULL)
+		recv = &pkt->info.recv_time.when;
+
+	if (!recv || !timerisset(recv)) {
 		gettimeofday(&now, NULL);
 		recv = &now;
 	}
