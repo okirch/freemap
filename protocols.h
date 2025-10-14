@@ -41,6 +41,8 @@ struct fm_protocol_ops {
 
 	fm_scan_action_t *(*create_host_probe_action)(fm_protocol_t *, const fm_string_array_t *args);
 
+	fm_socket_t *	(*create_host_shared_socket)(fm_protocol_t *, fm_target_t *);
+
 	fm_socket_t *	(*create_socket)(fm_protocol_t *, int af);
 	bool		(*process_packet)(fm_protocol_t *, fm_pkt_t *);
 	bool		(*process_error)(fm_protocol_t *, fm_pkt_t *);
@@ -67,6 +69,7 @@ extern fm_protocol_t *	fm_protocol_create(const struct fm_protocol_ops *ops);
 extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);
 extern fm_probe_t *	fm_protocol_create_host_probe(fm_protocol_t *, fm_target_t *, unsigned int);
 extern fm_probe_t *	fm_protocol_create_port_probe(fm_protocol_t *, fm_target_t *, uint16_t);
+extern fm_socket_t *	fm_protocol_create_host_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 
 static inline uint16_t
 in_csum(const void *data, size_t noctets)

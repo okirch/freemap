@@ -462,6 +462,20 @@ fm_target_free(fm_target_t *target)
 
 	drop_string(&target->id);
 
+	if (target->raw_icmp4_sock) {
+		fm_log_debug("%s closing shared ICMP socket", fm_address_format(&target->address));
+		fm_socket_free(target->raw_icmp4_sock);
+		target->raw_icmp4_sock = NULL;
+	}
+
+	if (target->raw_icmp6_sock) {
+		fm_log_debug("%s closing shared ICMPv6 socket", fm_address_format(&target->address));
+		fm_socket_free(target->raw_icmp6_sock);
+		target->raw_icmp6_sock = NULL;
+	}
+
+	/* destroy extant requests */
+
 	/* destroy the log, too */
 
 	free(target);
