@@ -50,7 +50,7 @@ static bool		fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
 static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
 static int		fm_icmp_protocol_for_family(int af);
-static fm_extant_t *	fm_icmp_locate_probe(const fm_pkt_t *pkt, const struct icmp *);
+static fm_extant_t *	fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, const struct icmp *icmph, bool is_response);
 
 static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -151,7 +151,7 @@ fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 			return false;
 		}
 
-		extant = fm_icmp_locate_probe(pkt, icmph);
+		extant = fm_icmp_locate_probe(&pkt->recv_addr, icmph, true);
 		if (extant == NULL) {
 			fm_log_debug("%s: %s -> %s: no matching probe (type %d code %d seq %d)", __func__,
 					fm_address_format(&ip.src_addr),
@@ -376,58 +376,90 @@ get_icmp6_response_type(int type)
 	return -1;
 }
 
+struct icmp_extant_info {
+	struct icmp		sent_hdr;
+	struct icmp		expect_hdr;
+};
+
+struct icmp6_extant_info {
+	struct icmp6_hdr	sent_hdr;
+	struct icmp6_hdr	expect_hdr;
+};
+
 static bool
-fm_icmp_expect_response(int af, const struct icmp_host_probe_params *params, fm_probe_t *probe)
+fm_icmp4_expect_response(const void *sent_data, unsigned int sent_len, fm_probe_t *probe)
 {
-	struct icmp_host_probe_params expect = *params;
+	struct icmp_extant_info info;
+	int expect_type = -1;
 
-	if (params->icmp_type >= 0) {
-		if ((expect.icmp_type = get_icmp4_response_type(params->icmp_type)) < 0)
-			return false;
-	}
-
-	if (params->icmp6_type >= 0) {
-		if ((expect.icmp6_type = get_icmp6_response_type(params->icmp6_type)) < 0)
-			return false;
-	}
-
-	if (expect.icmp_type < 0 && expect.icmp6_type < 0)
+	if (sent_len < sizeof(info.sent_hdr))
 		return false;
 
-	fm_extant_alloc(probe, af, expect.ipproto, &expect, sizeof(expect));
+	memcpy(&info.sent_hdr, sent_data, sizeof(info.sent_hdr));
+
+	if ((expect_type = get_icmp4_response_type(info.sent_hdr.icmp_type)) < 0)
+		return false;
+
+	info.expect_hdr = info.sent_hdr;
+	info.expect_hdr.icmp_type = expect_type;
+
+	fm_extant_alloc(probe, AF_INET, IPPROTO_ICMP, &info, sizeof(info));
 	return true;
 }
 
+static bool
+fm_icmp6_expect_response(const void *sent_data, unsigned int sent_len, fm_probe_t *probe)
+{
+	struct icmp6_extant_info info;
+	int expect_type = -1;
+
+	if (sent_len < sizeof(info.sent_hdr))
+		return false;
+
+	memcpy(&info.sent_hdr, sent_data, sizeof(info.sent_hdr));
+
+	if ((expect_type = get_icmp6_response_type(info.sent_hdr.icmp6_type)) < 0)
+		return false;
+
+	info.expect_hdr = info.sent_hdr;
+	info.expect_hdr.icmp6_type = expect_type;
+
+	fm_extant_alloc(probe, AF_INET6, IPPROTO_ICMPV6, &info, sizeof(info));
+	return true;
+}
+
+static bool
+fm_icmp_expect_response(int af, const void *sent_data, unsigned int sent_len, fm_probe_t *probe)
+{
+	if (af == AF_INET) {
+		return fm_icmp4_expect_response(sent_data, sent_len, probe);
+	} else if (af == AF_INET6) {
+		return fm_icmp6_expect_response(sent_data, sent_len, probe);
+	}
+
+	return false;
+}
+
 fm_extant_t *
-fm_icmp_locate_probe(const fm_pkt_t *pkt, const struct icmp *icmph)
+fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, const struct icmp *icmph, bool is_response)
 {
 	fm_target_t *target;
 	hlist_iterator_t iter;
 	fm_extant_t *extant;
-	u_int8_t match_type = icmph->icmp_type;
-	u_int16_t match_id = ntohs(icmph->icmp_id);
-	u_int16_t match_seq = ntohs(icmph->icmp_seq);
 
-	target = fm_target_pool_find(&pkt->recv_addr);
+	target = fm_target_pool_find(target_addr);
 	if (target == NULL)
 		return NULL;
 
-        for (extant = fm_extant_iterator_first(&iter, &target->expecting);
-             extant != NULL;
-             extant = fm_extant_iterator_next(&iter)) {
-		const struct icmp_host_probe_params *expect;
+        fm_extant_iterator_init(&iter, &target->expecting);
+        while ((extant = fm_extant_iterator_match(&iter, AF_INET, IPPROTO_ICMP)) != NULL) {
+		const struct icmp_extant_info *ei = (struct icmp_extant_info *) (extant + 1);
+		const struct icmp *match = is_response? &ei->expect_hdr : &ei->sent_hdr;
 
-		if (extant->family != pkt->family || extant->ipproto != IPPROTO_ICMP)
-			continue;
-
-		expect = (struct icmp_host_probe_params *) (extant + 1);
-
-		if (expect->ident != match_id
-		 || expect->seq != match_seq
-		 || expect->icmp_type != match_type)
-			continue;
-
-                return extant;
+		if (match->icmp_type == icmph->icmp_type
+		 && match->icmp_id == icmph->icmp_id
+		 && match->icmp_seq == icmph->icmp_seq)
+			return extant;
         }
 
 	return NULL;
@@ -463,8 +495,8 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 	if (pktlen == 0)
 		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Don't know hot to build ICMP packet for address family %d", af);
 
-	/* inform the ICMP response matching code that we're waiting for this packet */
-	fm_icmp_expect_response(af, &icmp->params, probe);
+	/* inform the ICMP response matching code that we're waiting for a response to this packet */
+	fm_icmp_expect_response(af, pktbuf, pktlen, probe);
 
 	icmp->params.seq += 1;
 
