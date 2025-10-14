@@ -33,6 +33,13 @@ extern fm_fact_t *		fm_fact_create_port_heisenberg(const char *proto_id, unsigne
 extern fm_fact_t *		fm_fact_create_host_reachable(const char *proto_id);
 extern fm_fact_t *		fm_fact_create_host_unreachable(const char *proto_id);
 
+typedef enum {
+	FM_PROBE_VERDICT_NONE = 0,
+	FM_PROBE_VERDICT_REACHABLE,
+	FM_PROBE_VERDICT_UNREACHABLE,
+	FM_PROBE_VERDICT_TIMEOUT,
+} fm_probe_verdict_t;
+
 struct fm_probe_ops {
 	const char *		name;
 	size_t			obj_size;
@@ -42,6 +49,7 @@ struct fm_probe_ops {
 	void			(*destroy)(fm_probe_t *);
 	fm_fact_t *		(*send)(fm_probe_t *);
 	bool			(*should_resend)(fm_probe_t *);
+	fm_fact_t *		(*render_verdict)(fm_probe_t *, fm_probe_verdict_t verdict);
 };
 
 struct fm_probe {
@@ -164,6 +172,10 @@ extern void		fm_target_forget_pending(fm_target_t *target, const fm_probe_t *pro
 
 extern void		fm_target_pool_make_active(fm_target_pool_t *);
 extern fm_target_t *	fm_target_pool_find(const fm_address_t *);
+
+extern void		fm_probe_received_reply(fm_probe_t *, const struct timeval *timestamp);
+extern void		fm_probe_received_error(fm_probe_t *, const struct timeval *timestamp);
+extern void		fm_probe_timed_out(fm_probe_t *);
 
 static inline void
 fm_probe_insert(struct fm_probe_list *list, fm_probe_t *probe)

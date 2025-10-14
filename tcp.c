@@ -103,10 +103,10 @@ fm_tcp_port_probe_callback(fm_socket_t *sock, int bits, void *user_data)
 			if (!fm_socket_error_dest_unreachable(&info))
 				return;
 		}
-		fm_probe_mark_port_unreachable(&tcp->base, "tcp", tcp->port);
+		fm_probe_received_error(&tcp->base, NULL);
 	} else if (bits & POLLOUT) {
 		fm_log_debug("TCP probe %s: reachable\n", fm_address_format(&tcp->host_address));
-		fm_probe_mark_port_reachable(&tcp->base, "tcp", tcp->port);
+		fm_probe_received_reply(&tcp->base, NULL);
 	}
 
 	fm_probe_reply_received(&tcp->base);
@@ -138,12 +138,35 @@ fm_tcp_port_probe_send(fm_probe_t *probe)
 	return NULL;
 }
 
+static fm_fact_t *
+fm_tcp_port_probe_render_verdict(fm_probe_t *probe, fm_probe_verdict_t verdict)
+{
+	struct fm_tcp_port_probe *tcp = (struct fm_tcp_port_probe *) probe;
+
+	switch (verdict) {
+	case FM_PROBE_VERDICT_REACHABLE:
+		return fm_fact_create_port_reachable("tcp", tcp->port);
+
+	case FM_PROBE_VERDICT_UNREACHABLE:
+		return fm_fact_create_port_unreachable("tcp", tcp->port);
+
+	case FM_PROBE_VERDICT_TIMEOUT:
+		return fm_fact_create_port_heisenberg("tcp", tcp->port);
+
+	default:
+		break;
+	}
+
+	return NULL;
+}
+
 static struct fm_probe_ops fm_tcp_port_probe_ops = {
 	.obj_size	= sizeof(struct fm_tcp_port_probe),
 	.name 		= "tcp",
 
 	.destroy	= fm_tcp_port_probe_destroy,
 	.send		= fm_tcp_port_probe_send,
+	.render_verdict	= fm_tcp_port_probe_render_verdict,
 };
 
 static fm_probe_t *

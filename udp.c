@@ -108,10 +108,10 @@ fm_udp_port_probe_callback(fm_socket_t *sock, int bits, void *user_data)
 					fm_address_format(&udp->host_address), udp->base.name);
 		}
 
-		fm_probe_mark_port_unreachable(&udp->base, "udp", udp->port);
+		fm_probe_received_error(&udp->base, NULL);
 	} else if (bits & POLLIN) {
 		fm_log_debug("UDP probe %s: reachable\n", fm_address_format(&udp->host_address));
-		fm_probe_mark_port_reachable(&udp->base, "udp", udp->port);
+		fm_probe_received_reply(&udp->base, NULL);
 
 		/* FIXME: we may want to receive the response and do something useful with it. */
 	}
@@ -175,10 +175,30 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 static bool
 fm_udp_port_probe_should_resend(fm_probe_t *probe)
 {
+	fm_probe_timed_out(probe);
+	return false;
+}
+
+static fm_fact_t *
+fm_udp_port_probe_render_verdict(fm_probe_t *probe, fm_probe_verdict_t verdict)
+{
 	struct fm_udp_port_probe *udp = (struct fm_udp_port_probe *) probe;
 
-	fm_probe_mark_port_heisenberg(probe, "udp", udp->port);
-	return false;
+	switch (verdict) {
+	case FM_PROBE_VERDICT_REACHABLE:
+		return fm_fact_create_port_reachable("udp", udp->port);
+
+	case FM_PROBE_VERDICT_UNREACHABLE:
+		return fm_fact_create_port_unreachable("udp", udp->port);
+
+	case FM_PROBE_VERDICT_TIMEOUT:
+		return fm_fact_create_port_heisenberg("udp", udp->port);
+
+	default:
+		break;
+	}
+
+	return NULL;
 }
 
 static struct fm_probe_ops fm_udp_port_probe_ops = {
@@ -188,6 +208,7 @@ static struct fm_probe_ops fm_udp_port_probe_ops = {
 	.destroy	= fm_udp_port_probe_destroy,
 	.send		= fm_udp_port_probe_send,
 	.should_resend	= fm_udp_port_probe_should_resend,
+	.render_verdict	= fm_udp_port_probe_render_verdict,
 };
 
 static fm_probe_t *

@@ -106,6 +106,47 @@ fm_probe_set_status(fm_probe_t *probe, fm_fact_t *fact)
 	}
 }
 
+static void
+fm_probe_render_verdict(fm_probe_t *probe, fm_probe_verdict_t verdict)
+{
+	fm_fact_t *fact;
+
+	if (probe->status != NULL) {
+		fm_log_error("%s: ignoring redundant verdict", probe->name);
+		return;
+	}
+
+	fact = probe->ops->render_verdict(probe, verdict);
+	if (fact == NULL) {
+		fm_log_error("%s: cannot render verdict %d", probe->name, verdict);
+		return;
+	}
+
+	fact->elapsed = fm_timestamp_since(&probe->sent);
+	probe->status = fact;
+}
+
+void
+fm_probe_received_reply(fm_probe_t *probe, const struct timeval *timestamp)
+{
+	fm_probe_render_verdict(probe, FM_PROBE_VERDICT_REACHABLE);
+	/* ignore timestamp for now */
+}
+
+void
+fm_probe_received_error(fm_probe_t *probe, const struct timeval *timestamp)
+{
+	fm_probe_render_verdict(probe, FM_PROBE_VERDICT_UNREACHABLE);
+	/* ignore timestamp for now */
+}
+
+void
+fm_probe_timed_out(fm_probe_t *probe)
+{
+	fm_probe_render_verdict(probe, FM_PROBE_VERDICT_TIMEOUT);
+}
+
+
 void
 fm_probe_mark_host_reachable(fm_probe_t *probe, const char *proto_id)
 {

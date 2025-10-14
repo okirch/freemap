@@ -153,7 +153,7 @@ fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 		   fm_probe_complete(extant->probe, "icmp", HOST_REACHABLE, rtt);
 		   and get an accurate rtt estimate using kernel packet timestamping
 		 */
-		fm_probe_mark_host_reachable(extant->probe, "icmp");
+		fm_probe_received_reply(extant->probe, NULL);
 		fm_extant_free(extant);
 	}
 
@@ -199,7 +199,7 @@ fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 		   fm_probe_complete(extant->probe, "icmp", HOST_UNREACHABLE, rtt);
 		   and get an accurate rtt estimate using kernel packet timestamping
 		 */
-		fm_probe_mark_host_unreachable(extant->probe, "icmp");
+		fm_probe_received_error(extant->probe, NULL);
 		fm_extant_free(extant);
 	}
 
@@ -324,11 +324,11 @@ fm_icmp_host_probe_callback(fm_socket_t *sock, int bits, void *user_data)
 	 * were looking for. */
 	if (bits & POLLIN) {
 		fm_log_debug("ICMP probe %s: reachable\n", fm_address_format(&icmp->params.host_address));
-		fm_probe_mark_host_reachable(&icmp->base, "icmp");
+		fm_probe_received_reply(&icmp->base, NULL);
 	}
 	if (bits & POLLERR) {
 		fm_log_debug("ICMP probe %s: unreachable\n", fm_address_format(&icmp->params.host_address));
-		fm_probe_mark_host_unreachable(&icmp->base, "icmp");
+		fm_probe_received_error(&icmp->base, NULL);
 	}
 
 	fm_probe_reply_received(&icmp->base);
@@ -587,11 +587,29 @@ fm_icmp_host_probe_should_resend(fm_probe_t *probe)
 
 	/* This is overly aggressive - icmp/echo may be just one of several reachability probes */
 	if (icmp->params.retries == 0) {
-		fm_probe_mark_host_unreachable(probe, probe->name);
+		fm_probe_timed_out(probe);
 		return false;
 	}
 
 	return true;
+}
+
+static fm_fact_t *
+fm_icmp_host_probe_render_verdict(fm_probe_t *probe, fm_probe_verdict_t verdict)
+{
+	switch (verdict) {
+	case FM_PROBE_VERDICT_REACHABLE:
+		return fm_fact_create_host_reachable("icmp");
+
+	case FM_PROBE_VERDICT_UNREACHABLE:
+	case FM_PROBE_VERDICT_TIMEOUT:
+		return fm_fact_create_host_unreachable("icmp");
+		break;
+
+	default:
+		break;
+	}
+	return NULL;
 }
 
 static struct fm_probe_ops fm_icmp_host_probe_ops = {
@@ -603,6 +621,7 @@ static struct fm_probe_ops fm_icmp_host_probe_ops = {
 	.destroy	= fm_icmp_host_probe_destroy,
 	.send		= fm_icmp_host_probe_send,
 	.should_resend	= fm_icmp_host_probe_should_resend,
+	.render_verdict	= fm_icmp_host_probe_render_verdict,
 };
 
 static fm_probe_t *
