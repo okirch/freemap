@@ -35,6 +35,8 @@ struct fm_socket {
 	socklen_t		addrlen;
 	int			rpoll;
 
+	fm_address_t		peer_address;
+
 	fm_protocol_t *		proto;	/* must be set when using the two process_* functions below */
 	bool			(*process_packet)(fm_socket_t *, fm_pkt_t *);
 	bool			(*process_error)(fm_socket_t *, fm_pkt_t *);
@@ -60,6 +62,11 @@ extern const char *	fm_socket_render_error(const fm_pkt_info_t *info);
 extern int		fm_socket_error_class(const fm_pkt_info_t *info);
 extern bool		fm_socket_error_dest_unreachable(const fm_pkt_info_t *);
 
+static inline bool
+fm_socket_is_connected(const fm_socket_t *sock)
+{
+	return sock->peer_address.ss_family != AF_UNSPEC;
+}
 
 struct fm_socket_list {
 	struct hlist_head	hlist;

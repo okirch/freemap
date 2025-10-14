@@ -197,6 +197,7 @@ fm_socket_connect(fm_socket_t *sock, const fm_address_t *address)
 		sock->rpoll = POLLIN;
 	}
 
+	sock->peer_address = *address;
 	return true;
 }
 
