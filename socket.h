@@ -40,6 +40,7 @@ struct fm_socket {
 	fm_protocol_t *		proto;	/* must be set when using the two process_* functions below */
 	bool			(*process_packet)(fm_socket_t *, fm_pkt_t *);
 	bool			(*process_error)(fm_socket_t *, fm_pkt_t *);
+	bool			(*connection_established)(fm_socket_t *);
 
 	void			(*callback)(fm_socket_t *, int, void *user_data);
 	void *			user_data;

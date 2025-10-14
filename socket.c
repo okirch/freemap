@@ -629,6 +629,11 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		bits &= ~POLLIN;
 	}
 
+	if ((bits & POLLOUT) && sock->connection_established != NULL) {
+		sock->connection_established(sock);
+		bits &= ~POLLOUT;
+	}
+
 	if (sock->callback == NULL) {
 		/* clear the bits we couldn't handle above */
 		sock->rpoll &= ~bits;

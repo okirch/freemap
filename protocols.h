@@ -46,6 +46,7 @@ struct fm_protocol_ops {
 	fm_socket_t *	(*create_socket)(fm_protocol_t *, int af);
 	bool		(*process_packet)(fm_protocol_t *, fm_pkt_t *);
 	bool		(*process_error)(fm_protocol_t *, fm_pkt_t *);
+	bool		(*connection_established)(fm_protocol_t *, const fm_address_t *);
 
 	fm_probe_t *	(*create_host_probe)(fm_protocol_t *, fm_target_t *, unsigned int retries);
 	fm_probe_t *	(*create_port_probe)(fm_protocol_t *, fm_target_t *, uint16_t);

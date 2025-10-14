@@ -97,6 +97,17 @@ fm_protocol_error_redirect(fm_socket_t *sock, fm_pkt_t *pkt)
 	return proto->ops->process_error(proto, pkt);
 }
 
+static bool
+fm_protocol_connection_established_redirect(fm_socket_t *sock)
+{
+	fm_protocol_t *proto = sock->proto;
+
+	if (!fm_socket_is_connected(sock))
+		return false;
+
+	return proto->ops->connection_established(proto, &sock->peer_address);
+}
+
 fm_socket_t *
 fm_protocol_create_socket(fm_protocol_t *proto, int ipproto)
 {
@@ -111,6 +122,10 @@ fm_protocol_create_socket(fm_protocol_t *proto, int ipproto)
 	}
 	if (sock != NULL && proto->ops->process_error != NULL) {
 		sock->process_error = fm_protocol_error_redirect;
+		sock->proto = proto;
+	}
+	if (sock != NULL && proto->ops->connection_established != NULL) {
+		sock->connection_established = fm_protocol_connection_established_redirect;
 		sock->proto = proto;
 	}
 
