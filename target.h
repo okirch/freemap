@@ -214,6 +214,12 @@ fm_extant_unlink(fm_extant_t *extant)
 	hlist_remove(&extant->link);
 }
 
+static inline void
+fm_extant_iterator_init(hlist_iterator_t *iter, struct fm_extant_list *list)
+{
+	hlist_iterator_init(iter, &list->hlist);
+}
+
 static inline fm_extant_t *
 fm_extant_iterator_first(hlist_iterator_t *iter, struct fm_extant_list *list)
 {
@@ -224,6 +230,17 @@ static inline fm_extant_t *
 fm_extant_iterator_next(hlist_iterator_t *iter)
 {
 	return (fm_extant_t *) hlist_iterator_next(iter);
+}
+
+static inline fm_extant_t *
+fm_extant_iterator_match(hlist_iterator_t *iter, int af, int ipproto)
+{
+	fm_extant_t *extant;
+
+	while ((extant = fm_extant_iterator_next(iter)) != NULL
+	    && extant->family != af && extant->ipproto != ipproto)
+		;
+	return extant;
 }
 
 #endif /* FREEMAP_TARGET_H */

@@ -85,6 +85,12 @@ typedef struct list_iterator {
 	struct hlist *next;
 } hlist_iterator_t;
 
+static inline void
+hlist_iterator_init(hlist_iterator_t *iter, struct hlist_head *list_head)
+{
+	iter->next = list_head->first;
+}
+
 static inline void *
 hlist_iterator_first(hlist_iterator_t *iter, struct hlist_head *list_head)
 {
