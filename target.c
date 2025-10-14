@@ -119,24 +119,32 @@ fm_probe_render_verdict(fm_probe_t *probe, fm_probe_verdict_t verdict)
 	probe->status = fact;
 }
 
-void
-fm_probe_received_reply(fm_probe_t *probe, const struct timeval *timestamp)
+static inline void
+fm_probe_update_rtt_estimate(fm_probe_t *probe, double *rtt)
 {
-	fm_probe_render_verdict(probe, FM_PROBE_VERDICT_REACHABLE);
+	if (probe->rtt) {
+		if (rtt == NULL || *rtt < 0) {
+			/* This fallback should probably go away soon */
+			fm_rtt_stats_update(probe->rtt, fm_timestamp_since(&probe->sent));
+		} else {
+			fm_rtt_stats_update(probe->rtt, *rtt);
+		}
 
-	/* ignore timestamp for now */
-	if (probe->rtt)
-		fm_rtt_stats_update(probe->rtt, fm_timestamp_since(&probe->sent));
+	}
 }
 
 void
-fm_probe_received_error(fm_probe_t *probe, const struct timeval *timestamp)
+fm_probe_received_reply(fm_probe_t *probe, double *rtt)
+{
+	fm_probe_render_verdict(probe, FM_PROBE_VERDICT_REACHABLE);
+	fm_probe_update_rtt_estimate(probe, rtt);
+}
+
+void
+fm_probe_received_error(fm_probe_t *probe, double *rtt)
 {
 	fm_probe_render_verdict(probe, FM_PROBE_VERDICT_UNREACHABLE);
-
-	/* ignore timestamp for now */
-	if (probe->rtt)
-		fm_rtt_stats_update(probe->rtt, fm_timestamp_since(&probe->sent));
+	fm_probe_update_rtt_estimate(probe, rtt);
 }
 
 void
@@ -160,7 +168,7 @@ fm_extant_alloc(fm_probe_t *probe, int af, int ipproto, const void *payload, siz
 	extant->ipproto = ipproto;
 	extant->probe = probe;
 
-	fm_timestamp_init(&extant->timestamp);
+	fm_socket_timestamp_update(&extant->timestamp);
 
 	if (payload != NULL)
 		memcpy(extant + 1, payload, payload_size);
@@ -175,6 +183,28 @@ fm_extant_free(fm_extant_t *extant)
 {
 	fm_extant_unlink(extant);
 	free(extant);
+}
+
+/*
+ * Process the verdict on an extant packet.
+ * If the kernel did not give us a timestamp via SO_TIMESTAMP, recv_time will be
+ * unset. In this case, fm_timestamp_delta() will just use the current wall time
+ * instead.
+ */
+void
+fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt)
+{
+	double rtt = fm_pkt_rtt(pkt, &extant->timestamp);
+
+	fm_probe_received_reply(extant->probe, &rtt);
+}
+
+void
+fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt)
+{
+	double rtt = fm_pkt_rtt(pkt, &extant->timestamp);
+
+	fm_probe_received_error(extant->probe, &rtt);
 }
 
 /*

@@ -17,6 +17,7 @@
 
 #include <sys/socket.h>
 #include <sys/param.h>
+#include <sys/time.h>
 #include <arpa/inet.h>
 #include <linux/errqueue.h>
 #include <netinet/icmp6.h>
@@ -88,7 +89,53 @@ fm_socket_create(int family, int type, int protocol)
 	 * a callback set up or we have initiated a connection. */
 	sock->rpoll = 0;
 
+	fm_socket_enable_timestamp(sock);
+
 	return sock;
+}
+
+/*
+ * Socket time stamping
+ */
+bool
+fm_socket_enable_timestamp(fm_socket_t *sock)
+{
+	int optval = 1;
+
+	if (sock->fd < 0)
+		return false;
+
+	if (setsockopt(sock->fd, SOL_SOCKET, SO_TIMESTAMP, &optval, sizeof(optval)) < 0) {
+		fm_log_error("Cannot set socket's SO_TIMESTAMP option: %m");
+		return false;
+	}
+
+	return true;
+}
+
+void
+fm_socket_timestamp_update(fm_socket_timestamp_t *ts)
+{
+	gettimeofday(&ts->when, NULL);
+}
+
+double
+fm_pkt_rtt(const fm_pkt_t *pkt, const fm_socket_timestamp_t *send_ts)
+{
+	const struct timeval *sent = &send_ts->when;
+	const struct timeval *recv = &pkt->info.recv_time.when;
+	struct timeval now, delta;
+
+	if (!timerisset(sent))
+		return -1;
+
+	if (!timerisset(recv)) {
+		gettimeofday(&now, NULL);
+		recv = &now;
+	}
+
+	timersub(recv, sent, &delta);
+	return delta.tv_sec + 1e-6 * delta.tv_usec;
 }
 
 bool
@@ -220,9 +267,7 @@ fm_process_cmsg(struct fm_recv_data *rd, fm_pkt_info_t *info)
 		void *ptr = CMSG_DATA(cm);
 
 		if (cm->cmsg_level == SOL_SOCKET && cm->cmsg_type == SO_TIMESTAMP) {
-			struct timeval *tv = (struct timeval *) ptr;
-
-			info->recv_time = tv->tv_sec + tv->tv_usec / 1000000.;
+			info->recv_time.when = *(struct timeval *) ptr;
 		} else
 		if ((cm->cmsg_level == SOL_IP && cm->cmsg_type == IP_TTL)
 		 || (cm->cmsg_level == SOL_IPV6 && cm->cmsg_type == IPV6_HOPLIMIT)) {

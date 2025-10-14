@@ -124,9 +124,12 @@ extern void		fm_socket_set_callback(fm_socket_t *,
 				void *user_data);
 extern bool		fm_socket_connect(fm_socket_t *, const fm_address_t *);
 extern bool		fm_socket_enable_recverr(fm_socket_t *);
+extern bool		fm_socket_enable_timestamp(fm_socket_t *);
 extern bool		fm_socket_send(fm_socket_t *sock, const fm_address_t *dstaddr, const void *pkt, size_t len);
 extern void		fm_socket_close(fm_socket_t *);
 extern bool		fm_socket_poll_all(void);
+extern void		fm_socket_timestamp_update(fm_socket_timestamp_t *);
+extern double		fm_pkt_rtt(const fm_pkt_t *pkt, const fm_socket_timestamp_t *send_ts);
 
 extern void		fm_set_logfile(FILE *fp);
 extern void		fm_trace(const char *fmt, ...);

@@ -99,8 +99,14 @@ typedef struct fm_port_range {
 /*
  * Information about a packet received from somewhere
  */
+typedef struct fm_socket_timestamp {
+	/* For now, use old timestamps with msec resolution and using
+	 * the wall clock. */
+	struct timeval		when;
+} fm_socket_timestamp_t;
+
 typedef struct fm_pkt_info {
-	double			recv_time;
+	fm_socket_timestamp_t	recv_time;
 	int			recv_ttl;
 
 	int			error_class;

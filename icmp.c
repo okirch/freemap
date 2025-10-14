@@ -149,11 +149,8 @@ fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 	}
 
 	if (extant != NULL) {
-		/* FIXME: use
-		   fm_probe_complete(extant->probe, "icmp", HOST_REACHABLE, rtt);
-		   and get an accurate rtt estimate using kernel packet timestamping
-		 */
-		fm_probe_received_reply(extant->probe, NULL);
+		/* Mark the probe as successful, and update the RTT estimate */
+		fm_extant_received_reply(extant, pkt);
 		fm_extant_free(extant);
 	}
 
@@ -195,11 +192,8 @@ fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 	}
 
 	if (extant != NULL) {
-		/* FIXME: use
-		   fm_probe_complete(extant->probe, "icmp", HOST_UNREACHABLE, rtt);
-		   and get an accurate rtt estimate using kernel packet timestamping
-		 */
-		fm_probe_received_error(extant->probe, NULL);
+		/* Mark the probe as failed, and update the RTT estimate */
+		fm_extant_received_error(extant, pkt);
 		fm_extant_free(extant);
 	}
 

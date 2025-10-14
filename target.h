@@ -101,7 +101,7 @@ typedef struct fm_extant {
 	int			family;
 	int			ipproto;
 
-	struct timeval		timestamp;
+	fm_socket_timestamp_t	timestamp;
 	fm_probe_t *		probe;
 } fm_extant_t;
 
@@ -173,9 +173,12 @@ extern void		fm_target_forget_pending(fm_target_t *target, const fm_probe_t *pro
 extern void		fm_target_pool_make_active(fm_target_pool_t *);
 extern fm_target_t *	fm_target_pool_find(const fm_address_t *);
 
-extern void		fm_probe_received_reply(fm_probe_t *, const struct timeval *timestamp);
-extern void		fm_probe_received_error(fm_probe_t *, const struct timeval *timestamp);
+extern void		fm_probe_received_reply(fm_probe_t *, double *rtt);
+extern void		fm_probe_received_error(fm_probe_t *, double *rtt);
 extern void		fm_probe_timed_out(fm_probe_t *);
+
+extern void		fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt);
+extern void		fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt);
 
 static inline void
 fm_probe_insert(struct fm_probe_list *list, fm_probe_t *probe)
