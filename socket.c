@@ -203,18 +203,6 @@ fm_socket_build_error_packet(const fm_address_t *addr, int err)
 	return pkt;
 }
 
-void
-fm_socket_set_callback(fm_socket_t *sock,
-			void (*callback)(fm_socket_t *, int, void *user_data),
-			void *user_data)
-{
-	sock->callback = callback;
-	sock->user_data = user_data;
-
-	if (sock->rpoll == 0)
-		sock->rpoll = POLLIN;
-}
-
 bool
 fm_socket_connect(fm_socket_t *sock, const fm_address_t *address)
 {
@@ -682,13 +670,8 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		bits &= ~POLLOUT;
 	}
 
-	if (sock->callback == NULL) {
-		/* clear the bits we couldn't handle above */
-		sock->rpoll &= ~bits;
-		return;
-	}
-
-	sock->callback(sock, bits, sock->user_data);
+	/* clear the bits we couldn't handle above */
+	sock->rpoll &= ~bits;
 }
 
 bool

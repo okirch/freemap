@@ -42,9 +42,6 @@ struct fm_socket {
 	bool			(*process_error)(fm_socket_t *, fm_pkt_t *);
 	bool			(*connection_established)(fm_socket_t *);
 
-	void			(*callback)(fm_socket_t *, int, void *user_data);
-	void *			user_data;
-
 };
 
 enum {

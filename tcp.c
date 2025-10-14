@@ -178,7 +178,6 @@ fm_tcp_port_probe_destroy(fm_probe_t *probe)
 	struct fm_tcp_port_probe *tcp = (struct fm_tcp_port_probe *) probe;
 
 	if (tcp->sock != NULL) {
-		fm_socket_set_callback(tcp->sock, NULL, NULL);
 		fm_socket_free(tcp->sock);
 		tcp->sock = NULL;
 	}

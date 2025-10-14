@@ -160,7 +160,6 @@ fm_udp_port_probe_destroy(fm_probe_t *probe)
 	struct fm_udp_port_probe *udp = (struct fm_udp_port_probe *) probe;
 
 	if (udp->sock != NULL) {
-		fm_socket_set_callback(udp->sock, NULL, NULL);
 		fm_socket_free(udp->sock);
 		udp->sock = NULL;
 	}

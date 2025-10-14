@@ -120,9 +120,6 @@ extern unsigned int	fm_addrfamily_sockaddr_size(int family);
 
 extern fm_socket_t *	fm_socket_create(int family, int type, int proto);
 extern void		fm_socket_free(fm_socket_t *);
-extern void		fm_socket_set_callback(fm_socket_t *,
-				void (*callback)(fm_socket_t *, int, void *user_data),
-				void *user_data);
 extern bool		fm_socket_connect(fm_socket_t *, const fm_address_t *);
 extern bool		fm_socket_enable_recverr(fm_socket_t *);
 extern bool		fm_socket_enable_timestamp(fm_socket_t *);

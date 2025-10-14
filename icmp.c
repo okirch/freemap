@@ -323,31 +323,9 @@ fm_icmp_host_probe_destroy(fm_probe_t *probe)
 	struct fm_icmp_host_probe *icmp = (struct fm_icmp_host_probe *) probe;
 
 	if (icmp->sock != NULL) {
-		fm_socket_set_callback(icmp->sock, NULL, NULL);
 		fm_socket_free(icmp->sock);
 		icmp->sock = NULL;
 	}
-}
-
-static void
-fm_icmp_host_probe_callback(fm_socket_t *sock, int bits, void *user_data)
-{
-	struct fm_icmp_host_probe *icmp = user_data;
-
-	assert(icmp->sock == sock);
-
-	/* FIXME actually receive the packet and make sure it's the response we
-	 * were looking for. */
-	if (bits & POLLIN) {
-		fm_log_debug("ICMP probe %s: reachable\n", fm_address_format(&icmp->params.host_address));
-		fm_probe_received_reply(&icmp->base, NULL);
-	}
-	if (bits & POLLERR) {
-		fm_log_debug("ICMP probe %s: unreachable\n", fm_address_format(&icmp->params.host_address));
-		fm_probe_received_error(&icmp->base, NULL);
-	}
-
-	fm_socket_close(sock);
 }
 
 static unsigned int
@@ -584,7 +562,6 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create ICMP socket for %s: %m",
 					fm_address_format(&target->address));
 
-		fm_socket_set_callback(icmp->sock, fm_icmp_host_probe_callback, probe);
 		sock = icmp->sock;
 	}
 
