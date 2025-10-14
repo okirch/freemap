@@ -296,24 +296,20 @@ fm_socket_recv(fm_socket_t *sock, struct sockaddr_storage *peer_addr, void *buff
 static fm_pkt_t *
 fm_socket_recv_packet(fm_socket_t *sock)
 {
-	struct sockaddr_storage peer_addr;
-	fm_pkt_info_t info;
+	const unsigned int MAX_PAYLOAD = 512;
 	fm_pkt_t *pkt;
-	char data[512];
 	int n;
 
-	n = fm_socket_recv(sock, &peer_addr, data, sizeof(data), &info);
-	if (n < 0)
-		return NULL;
-
-	pkt = calloc(1, sizeof(*pkt) + n);
-	pkt->recv_addr = peer_addr;
+	pkt = calloc(1, sizeof(*pkt) + MAX_PAYLOAD);
 	pkt->family = sock->family;
-	pkt->info = info;
-	pkt->data = (unsigned char *) (pkt + 1);
-	pkt->len = n;
 
-	memcpy(pkt + 1, data, n);
+	n = fm_socket_recv(sock, &pkt->recv_addr, pkt->data, MAX_PAYLOAD, &pkt->info);
+	if (n < 0) {
+		free(pkt);
+		return NULL;
+	}
+
+	pkt->len = n;
 
 	return pkt;
 }
