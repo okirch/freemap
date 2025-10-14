@@ -271,7 +271,7 @@ fm_socket_recverr(fm_socket_t *sock, fm_pkt_info_t *info)
 }
 
 static int
-fm_socket_recv(fm_socket_t *sock, struct sockaddr_storage *peer_addr, void *buffer, size_t size, fm_pkt_info_t *info)
+fm_socket_recv(fm_socket_t *sock, struct sockaddr_storage *peer_addr, void *buffer, size_t size, fm_pkt_info_t *info, int flags)
 {
 	struct fm_recv_data *rd;
 	int n;
@@ -279,9 +279,9 @@ fm_socket_recv(fm_socket_t *sock, struct sockaddr_storage *peer_addr, void *buff
 	if (sock->fd < 0)
 		return -1;
 
-	rd = fm_recvmsg_prepare(buffer, size, 0);
+	rd = fm_recvmsg_prepare(buffer, size, flags);
 
-	n = recvmsg(sock->fd, &rd->msg, 0);
+	n = recvmsg(sock->fd, &rd->msg, flags);
 	if (n >= 0) {
 		if (info != NULL)
 			fm_process_cmsg(rd, info);
@@ -294,7 +294,7 @@ fm_socket_recv(fm_socket_t *sock, struct sockaddr_storage *peer_addr, void *buff
 }
 
 static fm_pkt_t *
-fm_socket_recv_packet(fm_socket_t *sock)
+fm_socket_recv_packet(fm_socket_t *sock, int flags)
 {
 	const unsigned int MAX_PAYLOAD = 512;
 	fm_pkt_t *pkt;
@@ -303,7 +303,7 @@ fm_socket_recv_packet(fm_socket_t *sock)
 	pkt = calloc(1, sizeof(*pkt) + MAX_PAYLOAD);
 	pkt->family = sock->family;
 
-	n = fm_socket_recv(sock, &pkt->recv_addr, pkt->data, MAX_PAYLOAD, &pkt->info);
+	n = fm_socket_recv(sock, &pkt->recv_addr, pkt->data, MAX_PAYLOAD, &pkt->info, flags);
 	if (n < 0) {
 		free(pkt);
 		return NULL;
@@ -558,7 +558,7 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		if ((bits & (POLLERR|POLLIN)) == POLLIN) {
 			fm_pkt_t *pkt;
 
-			pkt = fm_socket_recv_packet(sock);
+			pkt = fm_socket_recv_packet(sock, 0);
 			if (pkt == NULL) {
 				fm_log_error("socket %d: POLLIN set but recvmsg failed: %m", sock->fd);
 			} else {
