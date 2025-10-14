@@ -599,34 +599,30 @@ fm_socket_error_dest_unreachable(const fm_pkt_info_t *info)
 static void
 fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 {
-	if (sock->process_error != NULL) {
-		if (bits & POLLERR) {
-			fm_pkt_t *pkt;
+	fm_pkt_t *pkt;
 
-			pkt = fm_socket_recv_packet(sock, MSG_ERRQUEUE);
-			if (pkt == NULL) {
-				fm_log_error("socket %d: POLLERR set but recvmsg failed: %m", sock->fd);
-			} else {
-				if (sock->process_error(sock, pkt))
-					bits &= ~POLLERR;
-				free(pkt);
-			}
+	if ((bits & POLLERR) && sock->process_error != NULL) {
+		pkt = fm_socket_recv_packet(sock, MSG_ERRQUEUE);
+		if (pkt == NULL) {
+			fm_log_error("socket %d: POLLERR set but recvmsg failed: %m", sock->fd);
+		} else {
+			sock->process_error(sock, pkt);
+			free(pkt);
 		}
+
+		bits &= ~POLLERR;
 	}
 
-	if (sock->process_packet != NULL) {
-		if ((bits & (POLLERR|POLLIN)) == POLLIN) {
-			fm_pkt_t *pkt;
-
-			pkt = fm_socket_recv_packet(sock, 0);
-			if (pkt == NULL) {
-				fm_log_error("socket %d: POLLIN set but recvmsg failed: %m", sock->fd);
-			} else {
-				if (sock->process_packet(sock, pkt))
-					bits &= ~POLLIN;
-				free(pkt);
-			}
+	if ((bits & POLLIN) && sock->process_packet != NULL) {
+		pkt = fm_socket_recv_packet(sock, 0);
+		if (pkt == NULL) {
+			fm_log_error("socket %d: POLLIN set but recvmsg failed: %m", sock->fd);
+		} else {
+			sock->process_packet(sock, pkt);
+			free(pkt);
 		}
+
+		bits &= ~POLLIN;
 	}
 
 	if (sock->callback == NULL) {
