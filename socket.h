@@ -35,8 +35,8 @@ struct fm_socket {
 	socklen_t		addrlen;
 	int			rpoll;
 
+	fm_protocol_t *		proto;	/* must be set when using the two process_* functions below */
 	bool			(*process_packet)(fm_socket_t *, fm_pkt_t *);
-	void *			response_handle; /* maybe we should just have socket->proto */
 
 	void			(*callback)(fm_socket_t *, int, void *user_data);
 	void *			user_data;
