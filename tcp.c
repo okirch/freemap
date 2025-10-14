@@ -148,10 +148,6 @@ fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
 	fm_extant_t *extant;
 
-	if (pkt->info.ee && pkt->info.ee->ee_origin == SO_EE_ORIGIN_LOCAL) {
-		fm_log_debug("%s: local error %u", fm_address_format(&pkt->recv_addr), pkt->info.ee->ee_errno);
-	}
-
 	extant = fm_tcp_locate_probe(pkt->family, &pkt->recv_addr);
 	if (extant != NULL) {
 		fm_extant_received_error(extant, pkt);
