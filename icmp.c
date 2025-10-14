@@ -25,6 +25,7 @@
 #include <netinet/icmp6.h>
 #include <netinet/ip_icmp.h>
 #include <netinet/in.h>
+#include <linux/errqueue.h>
 
 #include "scanner.h"
 #include "protocols.h"
@@ -46,6 +47,7 @@ struct icmp_host_probe_params {
 static fm_socket_t *	fm_icmp_create_bsd_socket(fm_protocol_t *proto, int ipproto);
 static fm_socket_t *	fm_icmp_create_raw_socket(fm_protocol_t *proto, int ipproto);
 static bool		fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
+static bool		fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 
 static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
 static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
@@ -69,6 +71,7 @@ static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
 
 	.create_socket	= fm_icmp_create_raw_socket,
 	.process_packet	= fm_icmp_process_raw_packet,
+	.process_error	= fm_icmp_process_raw_error,
 
 	.create_rtt_estimator = fm_icmp_create_rtt_estimator,
 	.create_host_probe_action = fm_icmp_create_host_probe_action,
@@ -179,6 +182,58 @@ fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 		   and get an accurate rtt estimate using kernel packet timestamping
 		 */
 		fm_probe_mark_host_reachable(extant->probe, "icmp");
+		fm_extant_free(extant);
+	}
+
+	return true;
+}
+
+bool
+fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt)
+{
+	const struct sock_extended_err *ee;
+	fm_extant_t *extant = NULL;
+
+	/* fm_print_hexdump(pkt->data, pkt->len); */
+
+	if ((ee = pkt->info.ee) == NULL)
+		return false;
+
+	if (pkt->family == AF_INET && ee->ee_origin == SO_EE_ORIGIN_ICMP) {
+		const struct icmp *icmph;
+
+		icmph = fm_pkt_pull(pkt, sizeof(*icmph));
+		if (icmph == NULL)
+			return false;
+
+		if (ee->ee_type != ICMP_DEST_UNREACH) {
+			fm_log_debug("%s ignoring icmp packet with type %d.%d",
+					fm_address_format(&pkt->recv_addr),
+					ee->ee_type, ee->ee_code);
+			return false;
+		}
+
+		fm_log_debug("%s destination unreachable (code %d)\n",
+				fm_address_format(&pkt->recv_addr), ee->ee_code);
+
+		/* The errqueue stuff is a bit non-intuitive at times. When receiving an
+		 * ICMP packet, the "from" address is the IP we originally sent the packet
+		 * to, and the offender is the address of the host that generated the
+		 * ICMP packet. */
+		extant = fm_icmp_locate_probe(&pkt->recv_addr, icmph, false);
+
+		/* TODO: record the gateway that generated this error code;
+		 * we could build a rough sketch of the network topo and avoid swamping
+		 * the gateway with too many packets (which would result in ICMP errors
+		 * being dropped). */
+	}
+
+	if (extant != NULL) {
+		/* FIXME: use
+		   fm_probe_complete(extant->probe, "icmp", HOST_UNREACHABLE, rtt);
+		   and get an accurate rtt estimate using kernel packet timestamping
+		 */
+		fm_probe_mark_host_unreachable(extant->probe, "icmp");
 		fm_extant_free(extant);
 	}
 
