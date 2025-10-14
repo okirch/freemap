@@ -129,11 +129,6 @@ extern void		fm_socket_close(fm_socket_t *);
 extern bool		fm_socket_poll_all(void);
 
 extern void		fm_probe_reply_received(fm_probe_t *);
-extern void		fm_probe_mark_port_reachable(fm_probe_t *, const char *proto, unsigned int port);
-extern void		fm_probe_mark_port_unreachable(fm_probe_t *, const char *proto, unsigned int port);
-extern void		fm_probe_mark_port_heisenberg(fm_probe_t *, const char *proto, unsigned int port);
-extern void		fm_probe_mark_host_reachable(fm_probe_t *, const char *proto);
-extern void		fm_probe_mark_host_unreachable(fm_probe_t *, const char *proto);
 
 extern void		fm_set_logfile(FILE *fp);
 extern void		fm_trace(const char *fmt, ...);

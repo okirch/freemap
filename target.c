@@ -146,37 +146,6 @@ fm_probe_timed_out(fm_probe_t *probe)
 	fm_probe_render_verdict(probe, FM_PROBE_VERDICT_TIMEOUT);
 }
 
-
-void
-fm_probe_mark_host_reachable(fm_probe_t *probe, const char *proto_id)
-{
-	fm_probe_set_status(probe, fm_fact_create_host_reachable(proto_id));
-}
-
-void
-fm_probe_mark_host_unreachable(fm_probe_t *probe, const char *proto_id)
-{
-	fm_probe_set_status(probe, fm_fact_create_host_unreachable(proto_id));
-}
-
-void
-fm_probe_mark_port_reachable(fm_probe_t *probe, const char *proto_id, unsigned int port)
-{
-	fm_probe_set_status(probe, fm_fact_create_port_reachable(proto_id, port));
-}
-
-void
-fm_probe_mark_port_unreachable(fm_probe_t *probe, const char *proto_id, unsigned int port)
-{
-	fm_probe_set_status(probe, fm_fact_create_port_unreachable(proto_id, port));
-}
-
-void
-fm_probe_mark_port_heisenberg(fm_probe_t *probe, const char *proto_id, unsigned int port)
-{
-	fm_probe_set_status(probe, fm_fact_create_port_heisenberg(proto_id, port));
-}
-
 /*
  * Tracking of extant requests
  */
