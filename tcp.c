@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <poll.h>
+#include <linux/errqueue.h>
 
 #include "scanner.h"
 #include "protocols.h"
@@ -29,6 +30,9 @@
 #include "socket.h" /* for fm_probe_t */
 
 static fm_socket_t *	fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af);
+static bool		fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
+static bool		fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
+static bool		fm_tcp_connecton_established(fm_protocol_t *proto, const fm_address_t *);
 static fm_rtt_stats_t *	fm_tcp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
 static fm_probe_t *	fm_tcp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port);
 
@@ -38,6 +42,10 @@ static struct fm_protocol_ops	fm_tcp_bsdsock_ops = {
 	.id		= FM_PROTO_TCP,
 
 	.create_socket	= fm_tcp_create_bsd_socket,
+	.process_packet = fm_tcp_process_packet,
+	.process_error	= fm_tcp_process_error,
+	.connection_established = fm_tcp_connecton_established,
+
 	.create_rtt_estimator = fm_tcp_create_rtt_estimator,
 	.create_port_probe = fm_tcp_create_port_probe,
 };
@@ -58,6 +66,99 @@ static fm_socket_t *
 fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af)
 {
 	return fm_socket_create(af, SOCK_STREAM, 0);
+}
+
+/*
+ * Track extant TCP requests.
+ * We currently do not track individual packets and their response(s), we just
+ * record the fact that we *did* send to a specific port.
+ * We do not even distinguish by the source port used on our end.
+ */
+struct tcp_extant_info {
+	unsigned int		port;
+};
+
+static bool
+fm_tcp_expect_response(fm_probe_t *probe, int af, unsigned int port)
+{
+	struct tcp_extant_info info = { .port = port };
+
+	fm_extant_alloc(probe, af, IPPROTO_TCP, &info, sizeof(info));
+	return true;
+}
+
+static fm_extant_t *
+fm_tcp_locate_probe(int af, const fm_address_t *target_addr)
+{
+	fm_target_t *target;
+	unsigned short port;
+	hlist_iterator_t iter;
+	fm_extant_t *extant;
+
+	target = fm_target_pool_find(target_addr);
+	if (target == NULL)
+		return NULL;
+
+	port = fm_address_get_port(target_addr);
+
+	fm_extant_iterator_init(&iter, &target->expecting);
+	while ((extant = fm_extant_iterator_match(&iter, af, IPPROTO_TCP)) != NULL) {
+		const struct tcp_extant_info *info = (struct tcp_extant_info *) (extant + 1);
+
+		if (info->port == port)
+			return extant;
+	}
+
+	return extant;
+}
+
+/*
+ * Handle TCP reply packet
+ */
+static bool
+fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
+{
+	fm_extant_t *extant;
+
+	extant = fm_tcp_locate_probe(pkt->family, &pkt->recv_addr);
+	if (extant != NULL) {
+		fm_extant_received_reply(extant, pkt);
+		fm_extant_free(extant);
+	}
+
+	return true;
+}
+
+static bool
+fm_tcp_connecton_established(fm_protocol_t *proto, const fm_address_t *target_addr)
+{
+	fm_extant_t *extant;
+
+	extant = fm_tcp_locate_probe(target_addr->ss_family, target_addr);
+	if (extant != NULL) {
+		fm_extant_received_reply(extant, NULL);
+		fm_extant_free(extant);
+	}
+
+	return true;
+}
+
+static bool
+fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
+{
+	fm_extant_t *extant;
+
+	if (pkt->info.ee && pkt->info.ee->ee_origin == SO_EE_ORIGIN_LOCAL) {
+		fm_log_debug("%s: local error %u", fm_address_format(&pkt->recv_addr), pkt->info.ee->ee_errno);
+	}
+
+	extant = fm_tcp_locate_probe(pkt->family, &pkt->recv_addr);
+	if (extant != NULL) {
+		fm_extant_received_error(extant, pkt);
+		fm_extant_free(extant);
+	}
+
+	return true;
 }
 
 /*
@@ -83,35 +184,6 @@ fm_tcp_port_probe_destroy(fm_probe_t *probe)
 	}
 }
 
-static void
-fm_tcp_port_probe_callback(fm_socket_t *sock, int bits, void *user_data)
-{
-	struct fm_tcp_port_probe *tcp = user_data;
-
-	assert(tcp->sock == sock);
-
-	if (bits & POLLERR) {
-		fm_pkt_info_t info;
-
-		/* Check if there's an ICMP error queued up for us; if so, check it.
-		 * If POLLERR is set but we cannot receive an error, this means
-		 * we received a TCP RST. */
-		if (fm_socket_recverr(sock, &info)) {
-			fm_log_debug("%s %s: %s\n",
-					fm_address_format(&tcp->host_address), tcp->base.name,
-					fm_socket_render_error(&info));
-			if (!fm_socket_error_dest_unreachable(&info))
-				return;
-		}
-		fm_probe_received_error(&tcp->base, NULL);
-	} else if (bits & POLLOUT) {
-		fm_log_debug("TCP probe %s: reachable\n", fm_address_format(&tcp->host_address));
-		fm_probe_received_reply(&tcp->base, NULL);
-	}
-
-	fm_socket_close(sock);
-}
-
 static fm_fact_t *
 fm_tcp_port_probe_send(fm_probe_t *probe)
 {
@@ -124,15 +196,15 @@ fm_tcp_port_probe_send(fm_probe_t *probe)
 					fm_address_format(&tcp->host_address));
 		}
 
-		fm_socket_enable_recverr(tcp->sock);
-
-		fm_socket_set_callback(tcp->sock, fm_tcp_port_probe_callback, probe);
+		/* fm_socket_enable_recverr(tcp->sock); */
 
 		if (!fm_socket_connect(tcp->sock, &tcp->host_address)) {
 			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to connect TCP socket for %s: %m",
 					fm_address_format(&tcp->host_address));
 		}
 	}
+
+	fm_tcp_expect_response(probe, tcp->host_address.ss_family, tcp->port);
 
 	return NULL;
 }

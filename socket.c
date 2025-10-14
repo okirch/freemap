@@ -141,6 +141,9 @@ fm_pkt_rtt(const fm_pkt_t *pkt, const fm_socket_timestamp_t *send_ts)
 	return delta.tv_sec + 1e-6 * delta.tv_usec;
 }
 
+/*
+ * Access to socket level errors
+ */
 bool
 fm_socket_enable_recverr(fm_socket_t *sock)
 {
@@ -166,6 +169,38 @@ fm_socket_enable_recverr(fm_socket_t *sock)
         }
 
 	return false;
+}
+
+bool
+fm_socket_get_pending_error(fm_socket_t *sock, int *ret)
+{
+	socklen_t opt_size = sizeof(*ret);
+	int saved_errno = errno;
+
+	if (getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, ret, &opt_size) < 0) {
+		printf("getsockopt(SO_ERROR): %m\n");
+		errno = saved_errno;
+		return false;
+	}
+
+	return true;
+}
+
+static fm_pkt_t *
+fm_socket_build_error_packet(const fm_address_t *addr, int err)
+{
+	fm_pkt_t *pkt;
+	struct sock_extended_err *ee;
+
+	pkt = calloc(1, sizeof(*pkt));
+	pkt->recv_addr = *addr;
+
+	ee = (struct sock_extended_err *) pkt->info.eebuf;
+	ee->ee_errno = err;
+	ee->ee_origin = SO_EE_ORIGIN_LOCAL;
+
+	pkt->info.ee = ee;
+	return pkt;
 }
 
 void
@@ -605,13 +640,18 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 {
 	fm_pkt_t *pkt;
 
+	/* When we receive a TCP RST, the kernel asserts POLLERR|POLLIN
+	 * but will not propagate the error via its ERRQUEUE.
+	 * Instead we get an EAGAIN here, and the recvmsg for the regular
+	 * POLLIN below will see ECONNREFUSED.
+	 */
 	if ((bits & POLLERR) && sock->process_error != NULL) {
 		pkt = fm_socket_recv_packet(sock, MSG_ERRQUEUE);
-		if (pkt == NULL) {
-			fm_log_error("socket %d: POLLERR set but recvmsg failed: %m", sock->fd);
-		} else {
+		if (pkt != NULL) {
 			sock->process_error(sock, pkt);
 			free(pkt);
+		} else if (errno != EAGAIN) {
+			fm_log_error("socket %d: POLLERR set but recvmsg failed: %m", sock->fd);
 		}
 
 		bits &= ~POLLERR;
@@ -619,11 +659,19 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 
 	if ((bits & POLLIN) && sock->process_packet != NULL) {
 		pkt = fm_socket_recv_packet(sock, 0);
-		if (pkt == NULL) {
-			fm_log_error("socket %d: POLLIN set but recvmsg failed: %m", sock->fd);
-		} else {
+
+		if (pkt == NULL && errno == ECONNREFUSED
+		 && fm_socket_is_connected(sock)
+		 && sock->process_error != NULL) {
+			pkt = fm_socket_build_error_packet(&sock->peer_address, errno);
+			sock->process_error(sock, pkt);
+			free(pkt);
+		} else
+		if (pkt != NULL) {
 			sock->process_packet(sock, pkt);
 			free(pkt);
+		} else if (errno != EAGAIN) {
+			fm_log_error("socket %d: POLLIN set but recvmsg failed: %m", sock->fd);
 		}
 
 		bits &= ~POLLIN;
