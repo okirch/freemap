@@ -115,6 +115,7 @@ extern const fm_fact_t *fm_fact_log_find_iter(const fm_fact_log_t *, fm_fact_typ
 
 extern void		fm_address_set_ipv4(struct sockaddr_storage *ss, u_int32_t raw_addr);
 extern bool		fm_address_set_port(fm_address_t *address, unsigned short port);
+extern unsigned short	fm_address_get_port(const struct sockaddr_storage *ss);
 extern unsigned int	fm_addrfamily_sockaddr_size(int family);
 
 extern fm_socket_t *	fm_socket_create(int family, int type, int proto);

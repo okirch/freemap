@@ -30,6 +30,8 @@
 #include "socket.h"
 
 static fm_socket_t *	fm_udp_create_bsd_socket(fm_protocol_t *proto, int af);
+static bool		fm_udp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
+static bool		fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static fm_rtt_stats_t *	fm_udp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
 static fm_probe_t *	fm_udp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port);
 
@@ -39,6 +41,9 @@ static struct fm_protocol_ops	fm_udp_bsdsock_ops = {
 	.id		= FM_PROTO_UDP,
 
 	.create_socket	= fm_udp_create_bsd_socket,
+	.process_packet = fm_udp_process_packet,
+	.process_error	= fm_udp_process_error,
+
 	.create_rtt_estimator = fm_udp_create_rtt_estimator,
 	.create_port_probe = fm_udp_create_port_probe,
 };
@@ -59,6 +64,81 @@ static fm_socket_t *
 fm_udp_create_bsd_socket(fm_protocol_t *proto, int af)
 {
 	return fm_socket_create(af, SOCK_DGRAM, 0);
+}
+
+/*
+ * Track extant UDP requests.
+ * We currently do not track individual packets and their response(s), we just
+ * record the fact that we *did* send to a specific port.
+ * We do not even distinguish by the source port used on our end.
+ */
+struct udp_extant_info {
+	unsigned int		port;
+};
+
+static bool
+fm_udp_expect_response(fm_probe_t *probe, int af, unsigned int port)
+{
+	struct udp_extant_info info = { .port = port };
+
+	fm_extant_alloc(probe, af, IPPROTO_UDP, &info, sizeof(info));
+	return true;
+}
+
+static fm_extant_t *
+fm_udp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt)
+{
+	fm_target_t *target;
+	unsigned short port;
+	hlist_iterator_t iter;
+	fm_extant_t *extant;
+
+	target = fm_target_pool_find(&pkt->recv_addr);
+	if (target == NULL)
+		return NULL;
+
+	port = fm_address_get_port(&pkt->recv_addr);
+
+	fm_extant_iterator_init(&iter, &target->expecting);
+	while ((extant = fm_extant_iterator_match(&iter, pkt->family, IPPROTO_UDP)) != NULL) {
+		const struct udp_extant_info *info = (struct udp_extant_info *) (extant + 1);
+
+		if (info->port == port)
+			return extant;
+	}
+
+	return extant;
+}
+
+/*
+ * Handle UDP reply packet
+ */
+static bool
+fm_udp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
+{
+	fm_extant_t *extant;
+
+	extant = fm_udp_locate_probe(proto, pkt);
+	if (extant != NULL) {
+		fm_extant_received_reply(extant, pkt);
+		fm_extant_free(extant);
+	}
+
+	return true;
+}
+
+static bool
+fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
+{
+	fm_extant_t *extant;
+
+	extant = fm_udp_locate_probe(proto, pkt);
+	if (extant != NULL) {
+		fm_extant_received_error(extant, pkt);
+		fm_extant_free(extant);
+	}
+
+	return true;
 }
 
 /*
@@ -86,39 +166,6 @@ fm_udp_port_probe_destroy(fm_probe_t *probe)
 	}
 }
 
-static void
-fm_udp_port_probe_callback(fm_socket_t *sock, int bits, void *user_data)
-{
-	struct fm_udp_port_probe *udp = user_data;
-
-	assert(udp->sock == sock);
-
-	if (bits & POLLERR) {
-		fm_pkt_info_t info;
-
-		/* Check if there's an ICMP error queued up for us */
-		if (fm_socket_recverr(sock, &info)) {
-			fm_log_debug("%s %s: %s\n",
-					fm_address_format(&udp->host_address), udp->base.name,
-					fm_socket_render_error(&info));
-			if (!fm_socket_error_dest_unreachable(&info) && 0)
-				return;
-		} else {
-			fm_log_error("%s %s: recvmsg(MSG_ERRQUEUE) failed: %m",
-					fm_address_format(&udp->host_address), udp->base.name);
-		}
-
-		fm_probe_received_error(&udp->base, NULL);
-	} else if (bits & POLLIN) {
-		fm_log_debug("UDP probe %s: reachable\n", fm_address_format(&udp->host_address));
-		fm_probe_received_reply(&udp->base, NULL);
-
-		/* FIXME: we may want to receive the response and do something useful with it. */
-	}
-
-	fm_socket_close(sock);
-}
-
 static fm_fact_t *
 fm_udp_port_probe_send(fm_probe_t *probe)
 {
@@ -134,8 +181,6 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 		}
 
 		fm_socket_enable_recverr(udp->sock);
-
-		fm_socket_set_callback(udp->sock, fm_udp_port_probe_callback, probe);
 
 		if (!fm_socket_connect(udp->sock, &udp->host_address)) {
 			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to connect UDP socket for %s: %m",
@@ -157,6 +202,8 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 	pkt = wks->probe_packet;
 	if (!fm_socket_send(udp->sock, NULL, pkt->data, pkt->len))
 		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to send UDP packet: %m");
+
+	fm_udp_expect_response(probe, udp->host_address.ss_family, udp->port);
 
 	return NULL;
 }
