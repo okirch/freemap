@@ -46,9 +46,11 @@ struct icmp_host_probe_params {
 
 static fm_socket_t *	fm_icmp_create_bsd_socket(fm_protocol_t *proto, int ipproto);
 static fm_socket_t *	fm_icmp_create_raw_socket(fm_protocol_t *proto, int ipproto);
+static fm_socket_t *	fm_icmp_create_raw_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 static bool		fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 
+static fm_socket_t *	fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr);
 static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
 static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
 static int		fm_icmp_protocol_for_family(int af);
@@ -70,6 +72,7 @@ static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
 	.id		= FM_PROTO_ICMP,
 
 	.create_socket	= fm_icmp_create_raw_socket,
+	.create_host_shared_socket = fm_icmp_create_raw_shared_socket,
 	.process_packet	= fm_icmp_process_raw_packet,
 	.process_error	= fm_icmp_process_raw_error,
 
@@ -122,6 +125,25 @@ fm_icmp_create_raw_socket(fm_protocol_t *proto, int af)
 		return NULL;
 
 	return fm_socket_create(af, SOCK_RAW, ipproto);
+}
+
+static fm_socket_t *
+fm_icmp_create_raw_shared_socket(fm_protocol_t *proto, fm_target_t *target)
+{
+	const fm_address_t *addr = &target->address;
+	fm_socket_t **sharedp;
+
+	if (addr->ss_family == AF_INET)
+		sharedp = &target->raw_icmp4_sock;
+	else if (addr->ss_family == AF_INET6)
+		sharedp = &target->raw_icmp4_sock;
+	else
+		return NULL;
+
+	if (*sharedp == NULL)
+		*sharedp = fm_icmp_create_connected_socket(proto, addr);
+
+	return *sharedp;
 }
 
 static bool
@@ -522,30 +544,48 @@ fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, 
 	return NULL;
 }
 
+static fm_socket_t *
+fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr)
+{
+	fm_socket_t *sock;
+
+	sock = fm_protocol_create_socket(proto, addr->ss_family);
+	if (sock == NULL)
+		return NULL;
+
+	fm_socket_enable_recverr(sock);
+
+	if (!fm_socket_connect(sock, addr)) {
+		fm_socket_free(sock);
+		return NULL;
+	}
+
+	return sock;
+}
+
 static fm_fact_t *
 fm_icmp_host_probe_send(fm_probe_t *probe)
 {
+	fm_target_t *target = probe->target;
+	fm_socket_t *sock;
 	struct fm_icmp_host_probe *icmp = (struct fm_icmp_host_probe *) probe;
 	int af = icmp->params.host_address.ss_family;
 	unsigned char pktbuf[128];
 	size_t pktlen;
 
-	/* For the time being, always connect - even when using a raw socket */
-	if (icmp->sock == NULL) {
-		icmp->sock = fm_protocol_create_socket(probe->proto, af);
-		if (icmp->sock == NULL) {
-			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create ICMP socket for %s: %m",
-					fm_address_format(&icmp->params.host_address));
-		}
+	/* When using raw sockets, create a single ICMP socket per target host */
+	sock = fm_protocol_create_host_shared_socket(probe->proto, probe->target);
 
-		fm_socket_enable_recverr(icmp->sock);
+	if (sock == NULL) {
+		if (icmp->sock == NULL) {
+			icmp->sock = fm_icmp_create_connected_socket(probe->proto, &target->address);
+		}
+		if (icmp->sock == NULL)
+			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create ICMP socket for %s: %m",
+					fm_address_format(&target->address));
 
 		fm_socket_set_callback(icmp->sock, fm_icmp_host_probe_callback, probe);
-
-		if (!fm_socket_connect(icmp->sock, &icmp->params.host_address)) {
-			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to connect ICMP socket for %s: %m",
-					fm_address_format(&icmp->params.host_address));
-		}
+		sock = icmp->sock;
 	}
 
 	pktlen = fm_icmp_build_echo_request(af, &icmp->params, pktbuf, sizeof(pktbuf));
@@ -557,7 +597,7 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 
 	icmp->params.seq += 1;
 
-	if (!fm_socket_send(icmp->sock, NULL, pktbuf, pktlen))
+	if (!fm_socket_send(sock, NULL, pktbuf, pktlen))
 		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to send ICMP packet: %m");
 
 	if (icmp->params.retries > 0)
