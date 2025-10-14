@@ -109,7 +109,6 @@ fm_tcp_port_probe_callback(fm_socket_t *sock, int bits, void *user_data)
 		fm_probe_received_reply(&tcp->base, NULL);
 	}
 
-	fm_probe_reply_received(&tcp->base);
 	fm_socket_close(sock);
 }
 

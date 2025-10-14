@@ -128,8 +128,6 @@ extern bool		fm_socket_send(fm_socket_t *sock, const fm_address_t *dstaddr, cons
 extern void		fm_socket_close(fm_socket_t *);
 extern bool		fm_socket_poll_all(void);
 
-extern void		fm_probe_reply_received(fm_probe_t *);
-
 extern void		fm_set_logfile(FILE *fp);
 extern void		fm_trace(const char *fmt, ...);
 extern void		fm_log_fatal(const char *fmt, ...);

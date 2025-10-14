@@ -116,7 +116,6 @@ fm_udp_port_probe_callback(fm_socket_t *sock, int bits, void *user_data)
 		/* FIXME: we may want to receive the response and do something useful with it. */
 	}
 
-	fm_probe_reply_received(&udp->base);
 	fm_socket_close(sock);
 }
 

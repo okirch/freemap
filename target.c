@@ -89,13 +89,6 @@ fm_probe_send(fm_probe_t *probe)
 }
 
 void
-fm_probe_reply_received(fm_probe_t *probe)
-{
-	if (probe->rtt)
-		fm_rtt_stats_update(probe->rtt, fm_timestamp_since(&probe->sent));
-}
-
-void
 fm_probe_set_status(fm_probe_t *probe, fm_fact_t *fact)
 {
 	if (probe->status) {
@@ -130,14 +123,20 @@ void
 fm_probe_received_reply(fm_probe_t *probe, const struct timeval *timestamp)
 {
 	fm_probe_render_verdict(probe, FM_PROBE_VERDICT_REACHABLE);
+
 	/* ignore timestamp for now */
+	if (probe->rtt)
+		fm_rtt_stats_update(probe->rtt, fm_timestamp_since(&probe->sent));
 }
 
 void
 fm_probe_received_error(fm_probe_t *probe, const struct timeval *timestamp)
 {
 	fm_probe_render_verdict(probe, FM_PROBE_VERDICT_UNREACHABLE);
+
 	/* ignore timestamp for now */
+	if (probe->rtt)
+		fm_rtt_stats_update(probe->rtt, fm_timestamp_since(&probe->sent));
 }
 
 void
