@@ -712,7 +712,17 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 	}
 
 	/* clear the bits we couldn't handle above */
-	sock->rpoll &= ~bits;
+	if (sock->rpoll & bits) {
+		fm_log_error("socket %d (af=%d type=%d) invalid poll setup",
+				sock->fd, sock->family, sock->type);
+		if (bits & POLLIN)
+			fm_log_error("   POLLIN not handled by protocol");
+		if (bits & POLLOUT)
+			fm_log_error("   POLLOUT not handled by protocol");
+		if (bits & POLLERR)
+			fm_log_error("   POLLERR not handled by protocol");
+		sock->rpoll &= ~bits;
+	}
 }
 
 bool
