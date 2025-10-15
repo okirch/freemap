@@ -30,6 +30,7 @@
 #include "socket.h"
 
 static fm_socket_t *	fm_udp_create_bsd_socket(fm_protocol_t *proto, int af);
+static fm_socket_t *	fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 static bool		fm_udp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static fm_rtt_stats_t *	fm_udp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
@@ -41,6 +42,7 @@ static struct fm_protocol_ops	fm_udp_bsdsock_ops = {
 	.id		= FM_PROTO_UDP,
 
 	.create_socket	= fm_udp_create_bsd_socket,
+	.create_host_shared_socket = fm_udp_create_shared_socket,
 	.process_packet = fm_udp_process_packet,
 	.process_error	= fm_udp_process_error,
 
@@ -64,6 +66,67 @@ static fm_socket_t *
 fm_udp_create_bsd_socket(fm_protocol_t *proto, int af)
 {
 	return fm_socket_create(af, SOCK_DGRAM, 0);
+}
+
+static fm_socket_t *
+fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
+{
+	const fm_address_t *dst_address = &target->address;
+	fm_address_t bind_address;
+	fm_socket_t *sock = NULL;
+
+	sock = fm_protocol_create_socket(proto, dst_address->ss_family);
+
+	/* The following code is not used yet. We will use that eg for
+	 * allocating source ports from a given range.
+	 * Before we get there, we would have to implement something like a port pool
+	 */
+	if (0) {
+		/* Pick the local host address to use when talking to this target. */
+		if (!fm_target_get_local_bind_address(target, &bind_address)) {
+			fm_log_error("%s: unable to determine local address to use when binding",
+					fm_address_format(dst_address));
+			goto failed;
+		}
+
+		/* make sure the port number is 0 */
+		fm_address_set_port(&bind_address, 0);
+
+		if (!fm_socket_bind(sock, &bind_address)) {
+			fm_log_error("%s: unable to bind to local address %s",
+					fm_address_format(dst_address),
+					fm_address_format(&bind_address));
+			goto failed;
+		}
+	}
+
+	fm_socket_enable_recverr(sock);
+	target->udp_sock = sock;
+
+	return sock;
+
+failed:
+	fm_socket_free(sock);
+	return NULL;
+}
+
+static fm_socket_t *
+fm_udp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr)
+{
+	fm_socket_t *sock;
+
+	sock = fm_protocol_create_socket(proto, addr->ss_family);
+	if (sock == NULL)
+		return NULL;
+
+	fm_socket_enable_recverr(sock);
+
+	if (!fm_socket_connect(sock, addr)) {
+		fm_socket_free(sock);
+		return NULL;
+	}
+
+	return sock;
 }
 
 /*
@@ -147,6 +210,11 @@ fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 struct fm_udp_port_probe {
 	fm_probe_t	base;
 
+	/* This should be configurable at the probe level, but
+	 * we're not handling that yet.
+	 */
+	bool		use_connected_socket;
+
 	unsigned int	send_retries;
 
 	unsigned int	port;
@@ -171,21 +239,18 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 	struct fm_udp_port_probe *udp = (struct fm_udp_port_probe *) probe;
 	fm_wellknown_service_t *wks;
 	const fm_probe_packet_t *pkt;
+	fm_socket_t *sock;
 
-	if (udp->sock == NULL) {
-		udp->sock = fm_protocol_create_socket(probe->proto, udp->host_address.ss_family);
-		if (udp->sock == NULL) {
-			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create UDP socket for %s: %m",
-					fm_address_format(&udp->host_address));
-		}
-
-		fm_socket_enable_recverr(udp->sock);
-
-		if (!fm_socket_connect(udp->sock, &udp->host_address)) {
-			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to connect UDP socket for %s: %m",
-					fm_address_format(&udp->host_address));
-		}
+	if (udp->use_connected_socket) {
+		udp->sock = fm_udp_create_connected_socket(probe->proto, &udp->host_address);
+		sock = udp->sock;
+	} else {
+		sock = fm_protocol_create_host_shared_socket(probe->proto, probe->target);
 	}
+
+	if (sock == NULL)
+		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create UDP socket for %s: %m",
+				fm_address_format(&udp->host_address));
 
 	/* Check if we can guess a well-known service */
 	if ((wks = fm_wellknown_service_for_port("udp", udp->port)) == NULL) {
@@ -199,7 +264,7 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 	}
 
 	pkt = wks->probe_packet;
-	if (!fm_socket_send(udp->sock, NULL, pkt->data, pkt->len))
+	if (!fm_socket_send(sock, &udp->host_address, pkt->data, pkt->len))
 		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to send UDP packet: %m");
 
 	fm_udp_expect_response(probe, udp->host_address.ss_family, udp->port);
