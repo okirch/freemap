@@ -230,11 +230,10 @@ out:
 static bool
 fm_address_clear_host_bits(struct sockaddr_storage *ss, unsigned int cidr_bits)
 {
-	unsigned int addr_bits, addr_octets, pos;
-	const unsigned char *raw_addr;
-	unsigned char *mask;
+	unsigned int host_bits, addr_bits, addr_octets, pos;
+	unsigned char *raw_addr;
 
-	if (!(raw_addr = fm_address_get_raw_addr(ss, &addr_bits)))
+	if (!(raw_addr = fm_get_raw_addr(ss->ss_family, ss, &addr_bits)))
 		return false;
 
 	if (cidr_bits > addr_bits)
@@ -244,17 +243,14 @@ fm_address_clear_host_bits(struct sockaddr_storage *ss, unsigned int cidr_bits)
 		return false;
 	addr_octets = addr_bits / 8;
 
-	mask = alloca(addr_octets);
-	memset(mask, 0, addr_octets);
+	host_bits = addr_bits - cidr_bits;
 
-	for (pos = 0; cidr_bits > 0; ++pos) {
-		unsigned int nbits = MAX(cidr_bits, 8);
-		unsigned char octet = 0xFF;
-
-		if (nbits < 8)
-			octet <<= (8 - nbits);
-		mask[pos] = octet;
-		cidr_bits -= nbits;
+	for (pos = addr_octets; pos--; host_bits -= 8) {
+		if (host_bits < 8) {
+			raw_addr[pos] &= 0xff << host_bits;
+			break;
+		}
+		raw_addr[pos] = 0;
 	}
 
 	return true;
@@ -436,13 +432,13 @@ fm_create_cidr_address_enumerator(const char *addr_string)
 		return NULL;
 
 	if (cidr_bits > host_bits) {
-		// errmsg("%s: network size of %lu bits bigger than address size", addr_string, cidr_bits);
+		fm_log_error("%s: network size of %lu bits bigger than address size", addr_string, cidr_bits);
 		return NULL;
 	}
 	host_bits -= cidr_bits;
 
 	if (host_bits >= 8 * sizeof(sagen->last_host)) {
-		// errmsg("%s: network size of %lu bits exceeds my capacity", addr_string, cidr_bits);
+		fm_log_error("%s: network size of %lu bits exceeds my capacity", addr_string, cidr_bits);
 		return NULL;
 	}
 

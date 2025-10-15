@@ -38,6 +38,9 @@ main(int argc, char **argv)
 {
 	render_all(fm_create_simple_address_enumerator("192.168.1.1"));
 	render_all(fm_create_cidr_address_enumerator("192.168.1.0/24"));
-	render_all(fm_create_cidr_address_enumerator("192.168.1.128/26"));
+
+	/* Note that the host part of this addr is not zero. The generator
+	 * should generate addresses starting from .129 */
+	render_all(fm_create_cidr_address_enumerator("192.168.1.131/26"));
 	return 0;
 }
