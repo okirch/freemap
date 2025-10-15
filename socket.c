@@ -204,6 +204,18 @@ fm_socket_build_error_packet(const fm_address_t *addr, int err)
 }
 
 bool
+fm_socket_bind(fm_socket_t *sock, const fm_address_t *address)
+{
+	if (sock->fd < 0)
+		return false;
+
+	if (bind(sock->fd, (struct sockaddr *) address, sock->addrlen) < 0)
+		return false;
+
+	return true;
+}
+
+bool
 fm_socket_connect(fm_socket_t *sock, const fm_address_t *address)
 {
 	if (sock->fd < 0)
@@ -221,6 +233,25 @@ fm_socket_connect(fm_socket_t *sock, const fm_address_t *address)
 	}
 
 	sock->peer_address = *address;
+	return true;
+}
+
+bool
+fm_socket_get_local_address(const fm_socket_t *sock, fm_address_t *addr)
+{
+	struct sockaddr_storage ss;
+	socklen_t slen = sizeof(ss);
+
+	if (sock->fd < 0)
+		return false;
+
+	memset(&ss, 0, sizeof(ss));
+	if (getsockname(sock->fd, (struct sockaddr *) &ss, &slen) < 0) {
+		fm_log_error("getsockname: %m");
+		return false;
+	}
+
+	*addr = ss;
 	return true;
 }
 
