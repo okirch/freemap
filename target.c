@@ -462,6 +462,12 @@ fm_target_free(fm_target_t *target)
 
 	drop_string(&target->id);
 
+	if (target->udp_sock) {
+		fm_log_debug("%s closing shared UDP socket", fm_address_format(&target->address));
+		fm_socket_free(target->udp_sock);
+		target->udp_sock = NULL;
+	}
+
 	if (target->raw_icmp4_sock) {
 		fm_log_debug("%s closing shared ICMP socket", fm_address_format(&target->address));
 		fm_socket_free(target->raw_icmp4_sock);
