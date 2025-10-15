@@ -1,0 +1,37 @@
+ * reduce the zoo of types (exec steps vs actions vs probe). The current
+   implementation is too complex, and many settings are evaluated too late for
+   timely error reporting.
+ * the file parser is very brittle; use something better
+    - maybe embed python for more complex stuff.
+ * have a "local" address enumerator that loops through all local networks
+ * improve on the netid idea
+ * use traceroute probes to detect network topo and seed RTT estimates?
+ * implement PF_RAW sockets
+ * perform send rate limiting based on class C networks so that we're
+   not running into gateway ICMP rate limit problems with unreachable
+   hosts.
+ * use nanosecond timestamps for measuring RTTs
+
+Other probes to implement
+ - A host probe that uses invalid protocol numbers to elicit a response
+ - A host probe using TCP, UDP, SCTP to a well-known port
+ - (for locally connected networks): ARP and IPv6 NDISC probes
+
+Gauge resource needs of a probe
+ - "I may trigger an ICMP error" (-> ICMP rate limits apply)
+ - "I may trip TCP SYN flood protection" (-> TCP SYN rate limits apply)
+ - "I need to open a socket" (-> file desc limits apply)
+
+UDP source port setting
+ - we could do this at the probe level, but this doesn't sound right
+ - we could introduce per-protocol options, and allow stuff like
+   "for all UDP probes, use source ports in the range of 30000-40000"
+ - similarly, we could use one or more globally shared UDP sockets
+   that are bound to a fixed port, such as 53.
+
+Dealing with fdesc limits
+ - increase the limit to max (setrlimit(NOFILE))
+ - count the open fds by scanning /proc/self/fd
+ - add info to probes on whether they will need additional sockets
+    * default: 1 socket for each probe
+    * but account for shared sockets (eg icmp raw)
