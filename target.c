@@ -18,6 +18,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "target.h"
+#include "network.h"
 #include "utils.h"
 
 static bool		fm_target_inspect_pending(fm_target_t *target);
@@ -387,19 +388,23 @@ fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 	fm_target_t *target = NULL;
 
 	while (target == NULL) {
+		fm_network_t *target_net;
 		fm_address_t target_addr;
-		unsigned int netid;
 
 		if (!(agen = fm_address_enumerator_list_head(&mgr->address_generators)))
 			break;
 
-		if (!(netid = fm_address_enumerator_get_one(agen, &target_addr))) {
+		if (!fm_address_enumerator_get_one(agen, &target_addr)) {
 			/* This address generator is spent; move to the next */
 			fm_address_enumerator_destroy(agen);
 			continue;
 		}
 
-		target = fm_target_create(&target_addr, netid);
+		target_net = fm_network_for_host(&target_addr);
+		if (target_net->last_hop == NULL)
+			target_net->last_hop = agen->unknown_gateway;
+
+		target = fm_target_create(&target_addr, target_net->netid);
 
 		/* Set the packet send rate per host.
 		 * The maximum burst size defaults to 0.1 sec worth of packets. */

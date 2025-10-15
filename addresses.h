@@ -29,6 +29,8 @@
 struct fm_address_enumerator {
 	struct hlist		link;
 
+	fm_gateway_t *		unknown_gateway;
+
 	/* every enumerator has its unique id */
 	unsigned int		id;
 
@@ -73,5 +75,7 @@ fm_address_enumerator_list_pop(struct fm_address_enumerator_list *list)
 		hlist_remove(&entry->link);
 	return entry;
 }
+
+extern const unsigned char *	fm_address_get_raw_addr(const fm_address_t *, unsigned int *nbits);
 
 #endif /* FREEMAP_ADDRESSES_H */

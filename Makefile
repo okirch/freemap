@@ -9,6 +9,7 @@ OBJS	= scanner.o \
 	  icmp.o \
 	  ratelimit.o \
 	  addresses.o \
+	  network.o \
 	  socket.o \
 	  facts.o \
 	  report.o \

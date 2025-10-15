@@ -26,6 +26,7 @@
 #include <errno.h>
 
 #include "addresses.h"
+#include "network.h"
 
 /*
  * Common address handling functions
@@ -41,6 +42,9 @@ fm_address_enumerator_alloc(const struct fm_address_enumerator_ops *ops)
 	agen = calloc(1, ops->obj_size);
 	agen->ops = ops;
 	agen->id = allocator_id++;
+
+	agen->unknown_gateway = fm_gateway_alloc(NULL);
+
 	return agen;
 }
 
@@ -62,16 +66,13 @@ fm_address_enumerator_name(const fm_address_enumerator_t *agen)
 	return agen->ops->name;
 }
 
-unsigned int
+bool
 fm_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
 {
 	assert(agen->ops != NULL);
 	assert(agen->ops->get_one_address != NULL);
 
-	if (!agen->ops->get_one_address(agen, ret))
-		return 0;
-
-	return agen->id;
+	return agen->ops->get_one_address(agen, ret);
 }
 
 
@@ -169,7 +170,7 @@ fm_address_set_port(struct sockaddr_storage *ss, unsigned short port)
 
 }
 
-static const unsigned char *
+const unsigned char *
 fm_address_get_raw_addr(const struct sockaddr_storage *ss, unsigned int *nbits)
 {
 	return fm_get_raw_addr(ss->ss_family, (struct sockaddr_storage *) ss, nbits);
