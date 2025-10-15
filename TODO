@@ -35,3 +35,7 @@ Dealing with fdesc limits
  - add info to probes on whether they will need additional sockets
     * default: 1 socket for each probe
     * but account for shared sockets (eg icmp raw)
+
+Local IPv6 target discovery
+ - broadcast ICMPv6 probe to ff02::1. Pick local address from different
+   prefix to elicit responses using different addrs from other nodes
