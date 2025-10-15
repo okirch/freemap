@@ -78,36 +78,6 @@ fm_protocol_engine_create_default(void)
 	return proto;
 }
 
-/*
- * indirection code for handling response packets and errors
- */
-static bool
-fm_protocol_packet_redirect(fm_socket_t *sock, fm_pkt_t *pkt)
-{
-	fm_protocol_t *proto = sock->proto;
-
-	return proto->ops->process_packet(proto, pkt);
-}
-
-static bool
-fm_protocol_error_redirect(fm_socket_t *sock, fm_pkt_t *pkt)
-{
-	fm_protocol_t *proto = sock->proto;
-
-	return proto->ops->process_error(proto, pkt);
-}
-
-static bool
-fm_protocol_connection_established_redirect(fm_socket_t *sock)
-{
-	fm_protocol_t *proto = sock->proto;
-
-	if (!fm_socket_is_connected(sock))
-		return false;
-
-	return proto->ops->connection_established(proto, &sock->peer_address);
-}
-
 fm_socket_t *
 fm_protocol_create_socket(fm_protocol_t *proto, int ipproto)
 {
@@ -116,17 +86,10 @@ fm_protocol_create_socket(fm_protocol_t *proto, int ipproto)
 	if (proto->ops->create_socket == NULL)
 		return NULL;
 	sock = proto->ops->create_socket(proto, ipproto);
-	if (sock != NULL && proto->ops->process_packet != NULL) {
-		sock->process_packet = fm_protocol_packet_redirect;
-		sock->proto = proto;
-	}
-	if (sock != NULL && proto->ops->process_error != NULL) {
-		sock->process_error = fm_protocol_error_redirect;
-		sock->proto = proto;
-	}
-	if (sock != NULL && proto->ops->connection_established != NULL) {
-		sock->connection_established = fm_protocol_connection_established_redirect;
-		sock->proto = proto;
+
+	if (sock->proto == NULL) {
+		fm_log_warning("protocol driver %s forgot to attach itself to new socket", proto->ops->name);
+		fm_socket_attach_protocol(sock, proto);
 	}
 
 	return sock;

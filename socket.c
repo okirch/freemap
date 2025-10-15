@@ -32,6 +32,7 @@
 #include <poll.h>
 
 #include "socket.h"
+#include "protocols.h"
 
 static struct fm_socket_list	socket_list;
 
@@ -102,6 +103,26 @@ fm_socket_create(int family, int type, int protocol)
 	fm_socket_enable_timestamp(sock);
 
 	return sock;
+}
+
+void
+fm_socket_attach_protocol(fm_socket_t *sock, fm_protocol_t *proto)
+{
+	assert(proto);
+
+	sock->proto = proto;
+
+	/* datagram sockets are ready to receive after
+	 *  (a) we have connected, or
+	 *  (b) we have sent a packet using sendto()
+	 * Don't bother with this fine print and just pretend we can receive
+	 * as soon as we have attached a protocol handler.
+	 *
+	 * For stream sockets, we don't start polling until we have
+	 * initiated a connection.
+	 */
+	if (sock->type == SOCK_DGRAM)
+		sock->rpoll = POLLIN;
 }
 
 /*
@@ -667,17 +688,21 @@ fm_socket_error_dest_unreachable(const fm_pkt_info_t *info)
 static void
 fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 {
+	fm_protocol_t *proto;
 	fm_pkt_t *pkt;
+
+	if ((proto = sock->proto) == NULL)
+		goto bad_setup;
 
 	/* When we receive a TCP RST, the kernel asserts POLLERR|POLLIN
 	 * but will not propagate the error via its ERRQUEUE.
 	 * Instead we get an EAGAIN here, and the recvmsg for the regular
 	 * POLLIN below will see ECONNREFUSED.
 	 */
-	if ((bits & POLLERR) && sock->process_error != NULL) {
+	if ((bits & POLLERR) && proto->ops->process_error != NULL) {
 		pkt = fm_socket_recv_packet(sock, MSG_ERRQUEUE);
 		if (pkt != NULL) {
-			sock->process_error(sock, pkt);
+			proto->ops->process_error(proto, pkt);
 			free(pkt);
 		} else if (errno != EAGAIN) {
 			fm_log_error("socket %d: POLLERR set but recvmsg failed: %m", sock->fd);
@@ -686,18 +711,18 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		bits &= ~POLLERR;
 	}
 
-	if ((bits & POLLIN) && sock->process_packet != NULL) {
+	if ((bits & POLLIN) && proto->ops->process_packet != NULL) {
 		pkt = fm_socket_recv_packet(sock, 0);
 
 		if (pkt == NULL && errno == ECONNREFUSED
 		 && fm_socket_is_connected(sock)
-		 && sock->process_error != NULL) {
+		 && proto->ops->process_error != NULL) {
 			pkt = fm_socket_build_error_packet(&sock->peer_address, errno);
-			sock->process_error(sock, pkt);
+			proto->ops->process_error(proto, pkt);
 			free(pkt);
 		} else
 		if (pkt != NULL) {
-			sock->process_packet(sock, pkt);
+			proto->ops->process_packet(proto, pkt);
 			free(pkt);
 		} else if (errno != EAGAIN) {
 			fm_log_error("socket %d: POLLIN set but recvmsg failed: %m", sock->fd);
@@ -706,13 +731,14 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		bits &= ~POLLIN;
 	}
 
-	if ((bits & POLLOUT) && sock->connection_established != NULL) {
-		sock->connection_established(sock);
+	if ((bits & POLLOUT) && proto->ops->connection_established != NULL) {
+		proto->ops->connection_established(proto, &sock->peer_address);
 		bits &= ~POLLOUT;
 	}
 
 	/* clear the bits we couldn't handle above */
 	if (sock->rpoll & bits) {
+bad_setup:
 		fm_log_error("socket %d (af=%d type=%d) invalid poll setup",
 				sock->fd, sock->family, sock->type);
 		if (bits & POLLIN)

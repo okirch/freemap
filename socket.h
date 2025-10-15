@@ -37,11 +37,8 @@ struct fm_socket {
 
 	fm_address_t		peer_address;
 
-	fm_protocol_t *		proto;	/* must be set when using the two process_* functions below */
-	bool			(*process_packet)(fm_socket_t *, fm_pkt_t *);
-	bool			(*process_error)(fm_socket_t *, fm_pkt_t *);
-	bool			(*connection_established)(fm_socket_t *);
-
+	/* must be set before we can poll */
+	fm_protocol_t *		proto;
 };
 
 enum {
@@ -59,6 +56,7 @@ extern bool		fm_socket_recverr(fm_socket_t *sock, fm_pkt_info_t *info);
 extern const char *	fm_socket_render_error(const fm_pkt_info_t *info);
 extern int		fm_socket_error_class(const fm_pkt_info_t *info);
 extern bool		fm_socket_error_dest_unreachable(const fm_pkt_info_t *);
+extern void		fm_socket_attach_protocol(fm_socket_t *, fm_protocol_t *);
 
 static inline bool
 fm_socket_is_connected(const fm_socket_t *sock)
