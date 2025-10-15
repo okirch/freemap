@@ -85,9 +85,19 @@ fm_socket_create(int family, int type, int protocol)
 
 	sock = fm_socket_allocate(fd, family, type, len);
 
-	/* we don't start polling on a socket until we either have
-	 * a callback set up or we have initiated a connection. */
-	sock->rpoll = 0;
+	if (type == SOCK_DGRAM) {
+		/* datagram sockets are ready to receive after
+		 *  (a) we have connected, or
+		 *  (b) we have sent a packet using sendto()
+		 * Don't bother with this fine print and just pretend we can receive
+		 * right from the start.
+		 */
+		sock->rpoll = POLLIN;
+	} else {
+		/* For stream sockets, we don't start polling until we have
+		 * initiated a connection. */
+		sock->rpoll = 0;
+	}
 
 	fm_socket_enable_timestamp(sock);
 
