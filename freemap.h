@@ -97,6 +97,7 @@ extern bool		fm_target_is_done(const fm_target_t *);
 extern unsigned int	fm_target_get_send_quota(fm_target_t *);
 extern void		fm_target_send_probe(fm_target_t *, fm_probe_t *);
 extern unsigned int	fm_target_process_timeouts(fm_target_t *, unsigned int quota);
+extern bool		fm_target_get_local_bind_address(fm_target_t *, fm_address_t *);
 
 extern fm_fact_t *	fm_probe_send(fm_probe_t *);
 extern void		fm_probe_free(fm_probe_t *);

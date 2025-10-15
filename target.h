@@ -113,6 +113,9 @@ struct fm_target {
 	fm_address_t		address;
 	char *			id;
 
+	/* Use this address when binding to a port */
+	fm_address_t		local_bind_address;
+
 	fm_socket_t *		raw_icmp4_sock;
 	fm_socket_t *		raw_icmp6_sock;
 

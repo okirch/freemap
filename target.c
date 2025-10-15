@@ -487,6 +487,39 @@ fm_target_get_id(const fm_target_t *target)
 	return target->id;
 }
 
+/*
+ * In order to determine the local ifaddr to bind to, create a connected UDP socket
+ * and query its sockname.
+ * We could do something way more complex by using netlink to discover the routing
+ * table, and then do the routing ourselves. We would same a few syscalls per target
+ * but that's not really that much of a saving.
+ */
+bool
+fm_target_get_local_bind_address(fm_target_t *target, fm_address_t *bind_address)
+{
+	if (target->local_bind_address.ss_family == AF_UNSPEC) {
+		const fm_address_t *daddr = &target->address;
+		fm_socket_t *sock;
+
+		sock = fm_socket_create(daddr->ss_family, SOCK_DGRAM, 0);
+		if (sock == NULL)
+			return false;
+
+		if (fm_socket_connect(sock, daddr)
+		 && fm_socket_get_local_address(sock, &target->local_bind_address))
+			fm_address_set_port(&target->local_bind_address, 0);
+
+		fm_socket_free(sock);
+	}
+
+	if (target->local_bind_address.ss_family == AF_UNSPEC)
+		return false;
+
+	*bind_address = target->local_bind_address;
+	return true;
+}
+
+
 /* FIXME: split update and query into separate functions
  */
 unsigned int
