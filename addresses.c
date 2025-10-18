@@ -407,6 +407,16 @@ fm_simple_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t
 }
 
 /*
+ * Enumeration of local IPv6 networks
+ */
+static fm_address_enumerator_t *
+fm_local_ipv6_address_enumerator(const char *device, const fm_address_t *addr, unsigned int pfxlen)
+{
+	fm_log_error("%s: not yet implemented", __func__);
+	return NULL;
+}
+
+/*
  * The "cidr" enumerator that iterates over a CIDR block.
  */
 struct fm_cidr_address_enumerator {
@@ -424,7 +434,7 @@ static bool		fm_cidr_address_enumerator_get_one(fm_address_enumerator_t *, fm_ad
 
 static const struct fm_address_enumerator_ops fm_cidr_address_enumerator_ops = {
 	.obj_size	= sizeof(struct fm_cidr_address_enumerator),
-	.name		= "cidr",
+	.name		= "ipv4-net",
 	.destroy	= NULL,
 	.get_one_address= fm_cidr_address_enumerator_get_one,
 };
@@ -432,11 +442,29 @@ static const struct fm_address_enumerator_ops fm_cidr_address_enumerator_ops = {
 #define NEW_ADDRESS_ENUMERATOR(_typename) \
 	((struct _typename *) fm_address_enumerator_alloc(&_typename ## _ops))
 
+static fm_address_enumerator_t *
+fm_ipv4_address_enumerator(const fm_address_t *addr, unsigned int pfxlen)
+{
+	struct fm_cidr_address_enumerator *sagen;
+
+	sagen = NEW_ADDRESS_ENUMERATOR(fm_cidr_address_enumerator);
+	sagen->cidr_net = *addr;
+	sagen->cidr_bits = pfxlen;
+	sagen->next_host = 1;
+	sagen->last_host = 0xFFFFFFFF >> pfxlen;
+
+	fm_address_clear_host_bits(&sagen->cidr_net, pfxlen);
+	return &sagen->base;
+}
+
+/*
+ * Note, when hostname resolution is supported, this function will return a list of
+ * generators rather than a single one.
+ */
 fm_address_enumerator_t *
 fm_create_cidr_address_enumerator(const char *addr_string, const fm_addr_gen_options_t *opts)
 {
 	struct sockaddr_storage ss;
-	struct fm_cidr_address_enumerator *sagen;
 	unsigned int cidr_bits, host_bits;
 
 	if (!fm_try_parse_cidr(addr_string, &ss, &cidr_bits)) {
@@ -457,20 +485,30 @@ fm_create_cidr_address_enumerator(const char *addr_string, const fm_addr_gen_opt
 	}
 	host_bits -= cidr_bits;
 
-	if (host_bits >= 8 * sizeof(sagen->last_host)) {
-		fm_log_error("%s: network size of %lu bits exceeds my capacity", addr_string, cidr_bits);
-		return NULL;
+	if (ss.ss_family == AF_INET6) {
+		const fm_address_prefix_t *local_prefix;
+
+		local_prefix = fm_address_find_local_prefix(&ss);
+		if (local_prefix == NULL || cidr_bits < local_prefix->pfxlen) {
+			fm_log_error("%s: remote network enumeration not supported for IPv6", addr_string);
+			return NULL;
+		}
+
+		return fm_local_ipv6_address_enumerator(local_prefix->device, &ss, cidr_bits);
 	}
 
-	fm_address_clear_host_bits(&ss, cidr_bits);
+	if (ss.ss_family == AF_INET) {
+		/* This limit is somewhat arbitrary and we need to increase it, at least for
+		 * local networks. */
+		if (host_bits > 8) {
+			fm_log_error("%s: IPv4 address enumeration limited to /24 networks", addr_string);
+			return NULL;
+		}
 
-	sagen = NEW_ADDRESS_ENUMERATOR(fm_cidr_address_enumerator);
-	sagen->cidr_net = ss;
-	sagen->cidr_bits = cidr_bits;
-	sagen->next_host = 1;
-	sagen->last_host = (1 << host_bits) - 1;
+		return fm_ipv4_address_enumerator(&ss, cidr_bits);
+	}
 
-	return &sagen->base;
+	return NULL;
 }
 
 bool
