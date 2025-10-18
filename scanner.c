@@ -31,69 +31,6 @@ static void			fm_scanner_map_heisenberg(fm_target_t *);
 static fm_scan_action_t *	fm_scan_action_port_range_scan(fm_protocol_t *proto, unsigned int low_port, unsigned int high_port);
 static fm_scan_action_t *	fm_scan_action_reachability_check(void);
 
-fm_protocol_t *
-fm_protocol_create(const struct fm_protocol_ops *ops)
-{
-	fm_protocol_t *prot;
-
-	prot = calloc(1, ops->obj_size);
-	prot->ops = ops;
-	return prot;
-}
-
-static fm_rtt_stats_t *
-fm_protocol_get_rtt(const fm_protocol_t *proto, unsigned int netid)
-{
-	int proto_id = proto->ops->id;
-	fm_rtt_stats_t *rtt;
-
-	if (proto->ops->create_rtt_estimator == NULL)
-		return NULL;
-
-	if ((rtt = fm_rtt_stats_get(proto_id, netid)) == NULL)
-		rtt = proto->ops->create_rtt_estimator(proto, netid);
-	return rtt;
-}
-
-static inline void
-fm_protocol_attach_rtt_estimator(fm_protocol_t *proto, fm_probe_t *probe)
-{
-	probe->rtt = fm_protocol_get_rtt(proto, probe->netid);
-}
-
-/*
- * Create host/port probes
- */
-fm_probe_t *
-fm_protocol_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port)
-{
-	fm_probe_t *probe;
-
-	if (proto->ops->create_port_probe == NULL) {
-		fprintf(stderr, "Error: protocol %s cannot create a port probe\n", proto->ops->name);
-		return NULL;
-	}
-
-	if ((probe = proto->ops->create_port_probe(proto, target, port)) != NULL)
-		fm_protocol_attach_rtt_estimator(proto, probe);
-	return probe;
-}
-
-fm_probe_t *
-fm_protocol_create_host_probe(fm_protocol_t *proto, fm_target_t *target, unsigned int retries)
-{
-	fm_probe_t *probe;
-
-	if (proto->ops->create_host_probe == NULL) {
-		fprintf(stderr, "Error: protocol %s cannot create a host probe\n", proto->ops->name);
-		return NULL;
-	}
-
-	if ((probe = proto->ops->create_host_probe(proto, target, retries)) != NULL)
-		fm_protocol_attach_rtt_estimator(proto, probe);
-	return probe;
-}
-
 static inline void
 fm_scan_action_array_append(struct fm_scan_action_array *array, fm_scan_action_t *action)
 {
