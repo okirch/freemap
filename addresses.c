@@ -127,11 +127,13 @@ fm_get_raw_addr(int af, struct sockaddr_storage *ss, unsigned int *nbits)
 {
 	switch (af) {
 	case AF_INET:
-		*nbits = 32;
+		if (nbits)
+			*nbits = 32;
 		return (unsigned char *) &((struct sockaddr_in *) ss)->sin_addr;
 
 	case AF_INET6:
-		*nbits = 128;
+		if (nbits)
+			*nbits = 128;
 		return (unsigned char *) &((struct sockaddr_in6 *) ss)->sin6_addr;
 	}
 
