@@ -668,51 +668,16 @@ fm_target_forget_pending(fm_target_t *target, const fm_probe_t *probe)
  * Deal with network stats
  * Maybe this code should live in scanner.c
  */
-struct fm_rtt_stats_array {
-	unsigned int		count;
-	fm_rtt_stats_t **	stats;
-};
-
-static struct fm_rtt_stats_array	fm_rtt_stats_registry;
-
-static void
-fm_rtt_stats_array_append(struct fm_rtt_stats_array *array, fm_rtt_stats_t *stats)
-{
-	static const unsigned int chunk = 16;
-
-	if ((array->count % chunk) == 0)
-		array->stats = realloc(array->stats, (array->count + chunk) * sizeof(array->stats[0]));
-	array->stats[array->count++] = stats;
-}
-
 fm_rtt_stats_t *
-fm_rtt_stats_get(int protid, unsigned int netid)
-{
-	unsigned int i;
-
-	for (i = 0; i < fm_rtt_stats_registry.count; ++i) {
-		fm_rtt_stats_t *rtt = fm_rtt_stats_registry.stats[i];
-
-		if (rtt->ipproto == protid && rtt->netid == netid)
-			return rtt;
-	}
-
-	return NULL;
-}
-
-fm_rtt_stats_t *
-fm_rtt_stats_create(int protid, unsigned int netid, unsigned long initial_rtt, unsigned int multiple)
+fm_rtt_stats_create(int protid, unsigned long initial_rtt, unsigned int multiple)
 {
 	fm_rtt_stats_t *stats;
 
 	stats = calloc(1, sizeof(*stats));
 	stats->ipproto = protid;
-	stats->netid = netid;
 	stats->multiple = multiple;
 
 	fm_rtt_stats_update(stats, 1e-3 * initial_rtt);
-
-	fm_rtt_stats_array_append(&fm_rtt_stats_registry, stats);
 
 	return stats;
 }
@@ -729,9 +694,8 @@ fm_rtt_stats_update(fm_rtt_stats_t *stats, double rtt)
 	if (stats->timeout == 0)
 		stats->timeout = 1000; /* as good as any value */
 
-	fm_log_debug("update rtt estimate %d/%u; sample rtt=%u ms; new estimate=%lu\n",
-				stats->ipproto, stats->netid,
+	fm_log_debug("update rtt estimate %d; sample rtt=%u ms; new estimate=%lu\n",
+				stats->ipproto,
                                 (unsigned int) (1000 * rtt),
 				stats->rtt);
-
 }

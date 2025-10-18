@@ -104,7 +104,7 @@ fm_protocol_attach_rtt_estimator(fm_protocol_t *proto, fm_target_t *target, fm_p
 
 	rtt = net->rtt_stats[proto_id];
 	if (rtt == NULL) {
-		rtt = proto->ops->create_rtt_estimator(proto, net->netid);
+		rtt = proto->ops->create_rtt_estimator(proto);
 		net->rtt_stats[proto_id] = rtt;
 	}
 

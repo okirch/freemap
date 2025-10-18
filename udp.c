@@ -33,7 +33,7 @@ static fm_socket_t *	fm_udp_create_bsd_socket(fm_protocol_t *proto, int af);
 static fm_socket_t *	fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 static bool		fm_udp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
-static fm_rtt_stats_t *	fm_udp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
+static fm_rtt_stats_t *	fm_udp_create_rtt_estimator(const fm_protocol_t *proto);
 static fm_probe_t *	fm_udp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port);
 
 static struct fm_protocol_ops	fm_udp_bsdsock_ops = {
@@ -57,9 +57,9 @@ fm_udp_bsdsock_create(void)
 }
 
 static fm_rtt_stats_t *
-fm_udp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid)
+fm_udp_create_rtt_estimator(const fm_protocol_t *proto)
 {
-	return fm_rtt_stats_create(proto->ops->id, netid, 250 / 2, 2);
+	return fm_rtt_stats_create(proto->ops->id, 250 / 2, 2);
 }
 
 static fm_socket_t *

@@ -52,7 +52,7 @@ static bool		fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 
 static fm_socket_t *	fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr);
 static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
-static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
+static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_t *proto);
 static int		fm_icmp_protocol_for_family(int af);
 static fm_extant_t *	fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response);
 
@@ -93,9 +93,9 @@ fm_icmp_rawsock_create(void)
 }
 
 static fm_rtt_stats_t *
-fm_icmp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid)
+fm_icmp_create_rtt_estimator(const fm_protocol_t *proto)
 {
-	return fm_rtt_stats_create(proto->ops->id, netid, FM_ICMP_PACKET_SPACING / 5, 5);
+	return fm_rtt_stats_create(proto->ops->id, FM_ICMP_PACKET_SPACING / 5, 5);
 }
 
 static fm_socket_t *

@@ -33,7 +33,7 @@ static fm_socket_t *	fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af);
 static bool		fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_connecton_established(fm_protocol_t *proto, const fm_address_t *);
-static fm_rtt_stats_t *	fm_tcp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid);
+static fm_rtt_stats_t *	fm_tcp_create_rtt_estimator(const fm_protocol_t *proto);
 static fm_probe_t *	fm_tcp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port);
 
 static struct fm_protocol_ops	fm_tcp_bsdsock_ops = {
@@ -57,9 +57,9 @@ fm_tcp_bsdsock_create(void)
 }
 
 static fm_rtt_stats_t *
-fm_tcp_create_rtt_estimator(const fm_protocol_t *proto, unsigned int netid)
+fm_tcp_create_rtt_estimator(const fm_protocol_t *proto)
 {
-	return fm_rtt_stats_create(proto->ops->id, netid, 250 / 2, 2);
+	return fm_rtt_stats_create(proto->ops->id, 250 / 2, 2);
 }
 
 static fm_socket_t *
