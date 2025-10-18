@@ -62,6 +62,8 @@ enum {
 	FM_PROTO_ICMP,
 	FM_PROTO_UDP,
 	FM_PROTO_TCP,
+
+	__FM_PROTO_MAX
 };
 
 /*

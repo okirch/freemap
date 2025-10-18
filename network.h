@@ -36,6 +36,8 @@ struct fm_network {
 	unsigned int		prefixlen;
 
 	fm_gateway_t *		last_hop;
+
+	fm_rtt_stats_t *	rtt_stats[__FM_PROTO_MAX];
 };
 
 struct fm_gateway {

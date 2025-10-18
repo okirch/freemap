@@ -120,6 +120,12 @@ fm_probe_render_verdict(fm_probe_t *probe, fm_probe_verdict_t verdict)
 	probe->status = fact;
 }
 
+void
+fm_probe_set_rtt_estimator(fm_probe_t *probe, fm_rtt_stats_t *rtt)
+{
+	probe->rtt = rtt;
+}
+
 static inline void
 fm_probe_update_rtt_estimate(fm_probe_t *probe, double *rtt)
 {
@@ -404,7 +410,7 @@ fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 		if (target_net->last_hop == NULL)
 			target_net->last_hop = agen->unknown_gateway;
 
-		target = fm_target_create(&target_addr, target_net->netid);
+		target = fm_target_create(&target_addr, target_net);
 
 		/* Set the packet send rate per host.
 		 * The maximum burst size defaults to 0.1 sec worth of packets. */
@@ -439,14 +445,15 @@ fm_target_manager_replenish_pool(fm_target_manager_t *mgr, fm_target_pool_t *poo
 }
 
 fm_target_t *
-fm_target_create(const fm_address_t *address, unsigned int netid)
+fm_target_create(const fm_address_t *address, fm_network_t *network)
 {
 	fm_target_t *tgt;
 
 	tgt = calloc(1, sizeof(*tgt));
 	tgt->address = *address;
 	tgt->id = strdup(fm_address_format(address));
-	tgt->netid = netid;
+	tgt->network = network;
+	tgt->netid = network->netid;
 
 	/* Initial sequence number for ICMP probes */
 	tgt->host_probe_seq = 1;

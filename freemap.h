@@ -92,7 +92,7 @@ extern bool		fm_scheduler_attach_target(fm_scheduler_t *, fm_target_t *);
 extern void		fm_scheduler_detach_target(fm_scheduler_t *, fm_target_t *);
 extern fm_scheduler_t *	fm_linear_scheduler_create(fm_scanner_t *);
 
-extern fm_target_t *	fm_target_create(const fm_address_t *, unsigned int netid);
+extern fm_target_t *	fm_target_create(const fm_address_t *, fm_network_t *);
 extern void		fm_target_free(fm_target_t *);
 extern const char *	fm_target_get_id(const fm_target_t *);
 extern bool		fm_target_is_done(const fm_target_t *);

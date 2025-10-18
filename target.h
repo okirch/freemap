@@ -133,6 +133,7 @@ struct fm_target {
 	unsigned int		host_probe_seq;
 
 	/* Unique ID identifying a network that we scan */
+	fm_network_t *		network;
 	unsigned int		netid;
 
 	/* When doing an initial ICMP probe, this will record the RTT in millisec. */
@@ -180,6 +181,7 @@ extern void		fm_target_forget_pending(fm_target_t *target, const fm_probe_t *pro
 extern void		fm_target_pool_make_active(fm_target_pool_t *);
 extern fm_target_t *	fm_target_pool_find(const fm_address_t *);
 
+extern void		fm_probe_set_rtt_estimator(fm_probe_t *, fm_rtt_stats_t *);
 extern void		fm_probe_received_reply(fm_probe_t *, double *rtt);
 extern void		fm_probe_received_error(fm_probe_t *, double *rtt);
 extern void		fm_probe_timed_out(fm_probe_t *);

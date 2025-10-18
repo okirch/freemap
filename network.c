@@ -150,11 +150,6 @@ fm_network_alloc(const fm_address_t *addr, unsigned int pfxlen)
 	return net;
 }
 
-void
-fm_network_get_rtt_estimator(fm_network_t *net, fm_protocol_t *proto)
-{
-}
-
 /*
  * The "gateway" behind which a target is located can't be determined
  * unless we perform TTL probing a la traceroute. Which, however,
