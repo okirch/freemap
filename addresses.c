@@ -98,7 +98,7 @@ fm_try_parse_ipv6_address(const char *addr_string, struct sockaddr_in6 *six)
 	memset(six, 0, sizeof(*six));
 	if (inet_pton(AF_INET6, addr_string, &six->sin6_addr) <= 0)
 		return false;
-	six->sin6_family = AF_INET;
+	six->sin6_family = AF_INET6;
 	return true;
 }
 
