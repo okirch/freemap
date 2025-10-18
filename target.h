@@ -60,7 +60,6 @@ struct fm_probe {
 
 	/* name of the probe, like udp/53 or icmp/echo */
 	char *			name;
-	unsigned int		netid;
 
 	const struct fm_probe_ops *ops;
 
@@ -134,7 +133,6 @@ struct fm_target {
 
 	/* Unique ID identifying a network that we scan */
 	fm_network_t *		network;
-	unsigned int		netid;
 
 	/* When doing an initial ICMP probe, this will record the RTT in millisec. */
 	unsigned int		rtt_estimate;

@@ -37,9 +37,6 @@ fm_probe_alloc(const char *id, const struct fm_probe_ops *ops, fm_protocol_t *pr
 	probe->name = strdup(id);
 	probe->ops = ops;
 	probe->proto = proto;
-	probe->netid = target->netid;
-
-	assert(probe->netid);
 
 	return probe;
 }
@@ -453,7 +450,6 @@ fm_target_create(const fm_address_t *address, fm_network_t *network)
 	tgt->address = *address;
 	tgt->id = strdup(fm_address_format(address));
 	tgt->network = network;
-	tgt->netid = network->netid;
 
 	/* Initial sequence number for ICMP probes */
 	tgt->host_probe_seq = 1;

@@ -139,12 +139,10 @@ fm_network_for_host(const fm_address_t *addr)
 static fm_network_t *
 fm_network_alloc(const fm_address_t *addr, unsigned int pfxlen)
 {
-	static unsigned int netid = 1;
 	fm_network_t *net;
 
 	net = calloc(1, sizeof(*net));
 
-	net->netid = netid++;
 	net->addr = *addr;
 	net->prefixlen = pfxlen;
 	return net;

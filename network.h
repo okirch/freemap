@@ -31,7 +31,6 @@
  * and RTT estimation
  */
 struct fm_network {
-	unsigned int		netid;
 	fm_address_t		addr;
 	unsigned int		prefixlen;
 
