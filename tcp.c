@@ -57,7 +57,7 @@ fm_tcp_bsdsock_create(void)
 static fm_socket_t *
 fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af)
 {
-	return fm_socket_create(af, SOCK_STREAM, 0);
+	return fm_socket_create(af, SOCK_STREAM, 0, proto);
 }
 
 /*

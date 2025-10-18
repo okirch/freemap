@@ -49,7 +49,7 @@ fm_protocol_engine_create_raw_socket(void)
 
 		initialized = true;
 
-		sock = fm_socket_create(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+		sock = fm_socket_create(AF_INET, SOCK_RAW, IPPROTO_ICMP, NULL);
 		if (sock == NULL)
 			return NULL;
 		fm_socket_free(sock);

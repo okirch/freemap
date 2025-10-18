@@ -515,7 +515,7 @@ fm_target_get_local_bind_address(fm_target_t *target, fm_address_t *bind_address
 		const fm_address_t *daddr = &target->address;
 		fm_socket_t *sock;
 
-		sock = fm_socket_create(daddr->ss_family, SOCK_DGRAM, 0);
+		sock = fm_socket_create(daddr->ss_family, SOCK_DGRAM, 0, NULL);
 		if (sock == NULL)
 			return false;
 

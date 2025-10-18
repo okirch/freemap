@@ -70,7 +70,7 @@ fm_socket_close(fm_socket_t *sock)
 }
 
 fm_socket_t *
-fm_socket_create(int family, int type, int protocol)
+fm_socket_create(int family, int type, int protocol, fm_protocol_t *driver)
 {
 	fm_socket_t *sock;
 	socklen_t len;
@@ -101,6 +101,7 @@ fm_socket_create(int family, int type, int protocol)
 	}
 
 	fm_socket_enable_timestamp(sock);
+	sock->proto = driver;
 
 	return sock;
 }

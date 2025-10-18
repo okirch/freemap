@@ -57,7 +57,7 @@ fm_udp_bsdsock_create(void)
 static fm_socket_t *
 fm_udp_create_bsd_socket(fm_protocol_t *proto, int af)
 {
-	return fm_socket_create(af, SOCK_DGRAM, 0);
+	return fm_socket_create(af, SOCK_DGRAM, 0, proto);
 }
 
 static fm_socket_t *

@@ -99,7 +99,7 @@ fm_icmp_create_bsd_socket(fm_protocol_t *proto, int af)
 	if (ipproto < 0)
 		return NULL;
 
-	return fm_socket_create(af, SOCK_DGRAM, ipproto);
+	return fm_socket_create(af, SOCK_DGRAM, ipproto, proto);
 }
 
 /*
@@ -115,7 +115,7 @@ fm_icmp_create_raw_socket(fm_protocol_t *proto, int af)
 	if (ipproto < 0)
 		return NULL;
 
-	return fm_socket_create(af, SOCK_RAW, ipproto);
+	return fm_socket_create(af, SOCK_RAW, ipproto, proto);
 }
 
 static fm_socket_t *
