@@ -31,6 +31,8 @@
 #include "addresses.h"
 #include "network.h"
 
+extern const fm_address_prefix_t *	fm_address_find_local_prefix(const fm_address_t *);
+
 /*
  * Common address handling functions
  */
@@ -617,3 +619,33 @@ fm_address_discover_local(void)
 	freeifaddrs(head);
 }
 
+const fm_address_prefix_t *
+fm_address_find_local_prefix(const fm_address_t *addr)
+{
+	const unsigned char *raw_addr1;
+	const unsigned char *raw_addr2;
+	unsigned int i, k, addr_bits, noctets;
+
+	raw_addr1 = fm_address_get_raw_addr(addr, &addr_bits);
+	if (raw_addr1 == NULL)
+		return NULL;
+
+	noctets = addr_bits / 8;
+
+	for (i = 0; i < fm_local_address_prefixes.count; ++i) {
+		fm_address_prefix_t *entry = &fm_local_address_prefixes.elements[i];
+		int xor = 0;
+
+		if (entry->address.ss_family != addr->ss_family)
+			continue;
+
+		raw_addr2 = fm_address_get_raw_addr(&entry->address, NULL);
+		for (k = 0; k < noctets && xor == 0; ++k)
+			xor = entry->raw_mask[k] & (raw_addr1[k] ^ raw_addr2[k]);
+
+		if (xor == 0)
+			return entry;
+	}
+
+	return NULL;
+}
