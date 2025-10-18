@@ -235,6 +235,7 @@ out:
 	return ok;
 }
 
+#if 0
 static bool
 fm_address_clear_host_bits(struct sockaddr_storage *ss, unsigned int cidr_bits)
 {
@@ -263,7 +264,9 @@ fm_address_clear_host_bits(struct sockaddr_storage *ss, unsigned int cidr_bits)
 
 	return true;
 }
+#endif
 
+#if 0
 static bool
 fm_address_combine_net_host(struct sockaddr_storage *ret,
 		const struct sockaddr_storage *cidr_net,
@@ -288,6 +291,7 @@ fm_address_combine_net_host(struct sockaddr_storage *ret,
 
 	return true;
 }
+#endif
 
 const char *
 fm_address_format(const fm_address_t *ap)
@@ -419,42 +423,66 @@ fm_local_ipv6_address_enumerator(const char *device, const fm_address_t *addr, u
 /*
  * The "cidr" enumerator that iterates over a CIDR block.
  */
-struct fm_cidr_address_enumerator {
+struct fm_ipv4_network_enumerator {
 	fm_address_enumerator_t base;
 
-	struct sockaddr_storage	cidr_net;
-	unsigned int	cidr_bits;
+	uint32_t	ipv4_net;
+	unsigned int	prefixlen;
 
 	/* these should not exceed the size of an IPv4 address */
 	uint32_t	next_host;
 	uint32_t	last_host;
 };
 
-static bool		fm_cidr_address_enumerator_get_one(fm_address_enumerator_t *, fm_address_t *);
+static bool		fm_ipv4_network_enumerator_get_one(fm_address_enumerator_t *, fm_address_t *);
 
-static const struct fm_address_enumerator_ops fm_cidr_address_enumerator_ops = {
-	.obj_size	= sizeof(struct fm_cidr_address_enumerator),
+static const struct fm_address_enumerator_ops fm_ipv4_network_enumerator_ops = {
+	.obj_size	= sizeof(struct fm_ipv4_network_enumerator),
 	.name		= "ipv4-net",
 	.destroy	= NULL,
-	.get_one_address= fm_cidr_address_enumerator_get_one,
+	.get_one_address= fm_ipv4_network_enumerator_get_one,
 };
 
 #define NEW_ADDRESS_ENUMERATOR(_typename) \
 	((struct _typename *) fm_address_enumerator_alloc(&_typename ## _ops))
 
 static fm_address_enumerator_t *
-fm_ipv4_address_enumerator(const fm_address_t *addr, unsigned int pfxlen)
+fm_ipv4_network_enumerator(const fm_address_t *addr, unsigned int pfxlen)
 {
-	struct fm_cidr_address_enumerator *sagen;
+	struct fm_ipv4_network_enumerator *sagen;
 
-	sagen = NEW_ADDRESS_ENUMERATOR(fm_cidr_address_enumerator);
-	sagen->cidr_net = *addr;
-	sagen->cidr_bits = pfxlen;
+	assert(addr->ss_family == AF_INET);
+
+	sagen = NEW_ADDRESS_ENUMERATOR(fm_ipv4_network_enumerator);
+	sagen->ipv4_net = ntohl(((struct sockaddr_in *) addr)->sin_addr.s_addr);
+	sagen->prefixlen = pfxlen;
 	sagen->next_host = 1;
 	sagen->last_host = 0xFFFFFFFF >> pfxlen;
 
-	fm_address_clear_host_bits(&sagen->cidr_net, pfxlen);
+	/* Clear the network's host part */
+	sagen->ipv4_net &= ~(sagen->last_host);
 	return &sagen->base;
+}
+
+bool
+fm_ipv4_network_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
+{
+	struct fm_ipv4_network_enumerator *sagen = (struct fm_ipv4_network_enumerator *) agen;
+	struct sockaddr_in *sin;
+	uint32_t addr;
+
+	if (sagen->next_host > sagen->last_host || sagen->next_host == 0)
+		return false;
+
+	addr = sagen->ipv4_net | sagen->next_host++;
+
+	memset(ret, 0, sizeof(*ret));
+
+	sin = (struct sockaddr_in *) ret;
+	sin->sin_family = AF_INET;
+	sin->sin_addr.s_addr = htonl(addr);
+
+	return true;
 }
 
 /*
@@ -505,24 +533,10 @@ fm_create_cidr_address_enumerator(const char *addr_string, const fm_addr_gen_opt
 			return NULL;
 		}
 
-		return fm_ipv4_address_enumerator(&ss, cidr_bits);
+		return fm_ipv4_network_enumerator(&ss, cidr_bits);
 	}
 
 	return NULL;
-}
-
-bool
-fm_cidr_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
-{
-	struct fm_cidr_address_enumerator *sagen = (struct fm_cidr_address_enumerator *) agen;
-
-	if (sagen->next_host > sagen->last_host || sagen->next_host == 0)
-		return false;
-
-	fm_address_combine_net_host(ret, &sagen->cidr_net, sagen->next_host);
-	sagen->next_host += 1;
-
-	return true;
 }
 
 /*
