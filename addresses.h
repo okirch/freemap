@@ -32,6 +32,10 @@ struct fm_address_prefix {
 	fm_address_t		address;
 	unsigned int		pfxlen;
 
+	fm_address_t		source_addr;
+
+	unsigned char		raw_mask[16];
+
 	/* for local addrs */
 	char *			device;
 };

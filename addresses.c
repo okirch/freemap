@@ -539,6 +539,37 @@ fm_mask_to_prefix(const struct sockaddr *mask)
 	return pfxlen;
 }
 
+static inline bool
+fm_prefix_to_mask(int af, unsigned int pfxlen, unsigned char *mask, unsigned int size)
+{
+	unsigned int addr_bits, noctets;
+
+	addr_bits = fm_addrfamily_max_addrbits(af);
+	if (addr_bits == 0)
+		return false;
+
+	if (pfxlen > addr_bits)
+		return false;
+
+	noctets = addr_bits / 8;
+	if (noctets > size)
+		return false;
+
+	memset(mask, 0, size);
+
+	while (pfxlen) {
+		if (pfxlen < 8) {
+			*mask++ = (0xFF00 >> pfxlen);
+			break;
+		}
+
+		*mask++ = 0xFF;
+		pfxlen -= 8;
+	}
+
+	return true;
+}
+
 void
 fm_address_discover_local(void)
 {
@@ -547,11 +578,16 @@ fm_address_discover_local(void)
 	if (getifaddrs(&head) < 0)
 		fm_log_fatal("getifaddrs: %m");
 
+	fm_log_debug("Discovering local interfaces and addresses");
+
 	for (ifa = head; ifa; ifa = ifa->ifa_next) {
 		fm_address_prefix_t *entry;
 		const char *state = "down";
 		unsigned int pfxlen = 0;
 
+		if (ifa->ifa_flags & IFF_LOOPBACK)
+			state = "loop";
+		else
 		if (ifa->ifa_flags & IFF_UP)
 			state = "up";
 
@@ -562,11 +598,20 @@ fm_address_discover_local(void)
 
 		pfxlen = fm_mask_to_prefix(ifa->ifa_netmask);
 
-		printf("  %-8s %4s %s/%u\n", ifa->ifa_name, state, fm_address_format((fm_address_t *) ifa->ifa_addr), pfxlen);
+		/* The loopback "network" is really just a single address */
+		if (ifa->ifa_flags & IFF_LOOPBACK)
+			pfxlen = fm_addrfamily_max_addrbits(ifa->ifa_addr->sa_family);
+
+		fm_log_debug("  %-8s %4s %s/%u\n", ifa->ifa_name, state,
+				fm_address_format((fm_address_t *) ifa->ifa_addr), pfxlen);
+
 		entry = fm_address_prefix_array_append(&fm_local_address_prefixes,
 					(fm_address_t *) ifa->ifa_addr, pfxlen);
 
 		entry->device = strdup(ifa->ifa_name);
+		entry->source_addr = *(fm_address_t *) ifa->ifa_addr;
+
+		fm_prefix_to_mask(ifa->ifa_addr->sa_family, pfxlen, entry->raw_mask, sizeof(entry->raw_mask));
 	}
 
 	freeifaddrs(head);
