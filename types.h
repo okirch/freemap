@@ -163,6 +163,14 @@ typedef struct fm_fact_log {
 	fm_fact_t **		entries;
 } fm_fact_log_t;
 
+/*
+ * Options to configure behavior of address generators
+ */
+typedef struct fm_addr_gen_options {
+	int			only_family;
+	bool			all_addrs;
+	bool			randomize;
+} fm_addr_gen_options_t;
 
 #endif /* FREEMAP_TYPES_H */
 

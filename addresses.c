@@ -369,13 +369,20 @@ static const struct fm_address_enumerator_ops fm_simple_address_enumerator_ops =
 #define NEW_ADDRESS_ENUMERATOR(_typename) \
 	((struct _typename *) fm_address_enumerator_alloc(&_typename ## _ops))
 
+/*
+ * Note, when hostname resolution is supported, this function will return a list of
+ * generators rather than a single one.
+ */
 fm_address_enumerator_t *
-fm_create_simple_address_enumerator(const char *addr_string)
+fm_create_simple_address_enumerator(const char *addr_string, const fm_addr_gen_options_t *opts)
 {
 	struct sockaddr_storage ss;
 	struct fm_simple_address_enumerator *sagen;
 
 	if (!fm_try_parse_address(addr_string, &ss))
+		return NULL;
+
+	if (opts != NULL && opts->only_family && opts->only_family != ss.ss_family)
 		return NULL;
 
 	sagen = NEW_ADDRESS_ENUMERATOR(fm_simple_address_enumerator);
@@ -424,13 +431,18 @@ static const struct fm_address_enumerator_ops fm_cidr_address_enumerator_ops = {
 	((struct _typename *) fm_address_enumerator_alloc(&_typename ## _ops))
 
 fm_address_enumerator_t *
-fm_create_cidr_address_enumerator(const char *addr_string)
+fm_create_cidr_address_enumerator(const char *addr_string, const fm_addr_gen_options_t *opts)
 {
 	struct sockaddr_storage ss;
 	struct fm_cidr_address_enumerator *sagen;
 	unsigned int cidr_bits, host_bits;
 
-	if (!fm_try_parse_cidr(addr_string, &ss, &cidr_bits))
+	if (!fm_try_parse_cidr(addr_string, &ss, &cidr_bits)) {
+		/* TBD: resolve hostname, apply opts to filter which addresses to use */
+		return NULL;
+	}
+
+	if (opts != NULL && opts->only_family && opts->only_family != ss.ss_family)
 		return NULL;
 
 	host_bits = fm_addrfamily_max_addrbits(ss.ss_family);

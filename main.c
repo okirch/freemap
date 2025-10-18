@@ -17,6 +17,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <getopt.h>
 #include <mcheck.h>
 
@@ -26,17 +27,24 @@
 enum {
 	OPT_PROGRAM,
 	OPT_DUMP,
+	OPT_IPV4_ONLY,
+	OPT_IPV6_ONLY,
+	OPT_ALL_ADDRS,
 };
 
 static struct option long_options[] = {
 	{ "program",		required_argument,	NULL,	OPT_PROGRAM,	},
 	{ "logfile",		required_argument,	NULL,	'L',	},
+	{ "ipv4",		no_argument,		NULL,	OPT_IPV4_ONLY,	},
+	{ "ipv6",		no_argument,		NULL,	OPT_IPV6_ONLY,	},
+	{ "all-addresses",	no_argument,		NULL,	OPT_ALL_ADDRS,	},
 	{ "debug",		no_argument,		NULL,	'd',	},
 	{ "help",		no_argument,		NULL,	'h',	},
 	{ "dump",		no_argument,		NULL,	OPT_DUMP },
 	{ NULL },
 };
 
+static void		bad_option(const char *fmt, ...);
 static void		usage(int);
 
 int
@@ -45,6 +53,7 @@ main(int argc, char **argv)
 	const char *opt_logfile = NULL;
 	const char *opt_program = NULL;
 	bool opt_dump = false;
+	fm_addr_gen_options_t addr_gen_opts;
 	const fm_scan_program_t *program = NULL;
 	fm_scanner_t *scanner;
 	int c;
@@ -54,6 +63,8 @@ main(int argc, char **argv)
 		printf("Tried but failed to enable pedantic memory checking\n");
 #endif
 
+	memset(&addr_gen_opts, 0, sizeof(addr_gen_opts));
+
 	while ((c = getopt_long(argc, argv, "dh", long_options, NULL)) != EOF) {
 		switch (c) {
 		case 'd':
@@ -62,6 +73,22 @@ main(int argc, char **argv)
 
 		case 'L':
 			opt_logfile = optarg;
+			break;
+
+		case OPT_IPV4_ONLY:
+			if (addr_gen_opts.only_family != AF_UNSPEC)
+				bad_option("Options --ipv4 and --ipv6 are mutually exclusive\n");
+			addr_gen_opts.only_family = AF_INET;
+			break;
+
+		case OPT_IPV6_ONLY:
+			if (addr_gen_opts.only_family != AF_UNSPEC)
+				bad_option("Options --ipv4 and --ipv6 are mutually exclusive\n");
+			addr_gen_opts.only_family = AF_INET6;
+			break;
+
+		case OPT_ALL_ADDRS:
+			addr_gen_opts.all_addrs = true;
 			break;
 
 		case OPT_DUMP:
@@ -83,7 +110,7 @@ main(int argc, char **argv)
 	}
 
 	if (optind >= argc) {
-		fprintf(stderr, "Missing scan target(s)\n");
+		fm_log_error("Missing scan target(s)\n");
 		usage(1);
 	}
 
@@ -95,9 +122,9 @@ main(int argc, char **argv)
 		const char *name = argv[optind++];
 
 		if (strchr(name, '/')) {
-			agen = fm_create_simple_address_enumerator(name);
+			agen = fm_create_cidr_address_enumerator(name, &addr_gen_opts);
 		} else {
-			agen = fm_create_simple_address_enumerator(name);
+			agen = fm_create_simple_address_enumerator(name, &addr_gen_opts);
 		}
 
 		if (agen == NULL)
@@ -159,4 +186,17 @@ usage(int exval)
 		"   -h, --help\n"
 		"      Print this message.\n");
 	exit(exval);
+}
+
+static void
+bad_option(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	fprintf(stderr, "Error: ");
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+
+	usage(1);
 }
