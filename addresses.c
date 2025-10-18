@@ -25,6 +25,9 @@
 #include <assert.h>
 #include <errno.h>
 
+#include <net/if.h>
+#include <ifaddrs.h>
+
 #include "addresses.h"
 #include "network.h"
 
@@ -467,3 +470,91 @@ fm_cidr_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *
 
 	return true;
 }
+
+/*
+ * addr prefix lists
+ */
+fm_address_prefix_t *
+fm_address_prefix_array_append(fm_address_prefix_array_t *array, const fm_address_t *addr, unsigned int pfxlen)
+{
+	fm_address_prefix_t *entry;
+
+	if ((array->count % 8) == 0) 
+		array->elements = realloc(array->elements, (array->count + 8) * sizeof(array->elements[0]));
+
+	entry = &array->elements[array->count++];
+	memset(entry, 0, sizeof(*entry));
+
+	entry->address = *addr;
+	entry->pfxlen = pfxlen;
+
+	return entry;
+}
+
+/*
+ * Discovery of local addresses
+ */
+static fm_address_prefix_array_t	fm_local_address_prefixes;
+
+static inline unsigned int
+fm_mask_to_prefix(const struct sockaddr *mask)
+{
+	const unsigned char *raw_mask;
+	unsigned int pfxlen = 0, addr_bits;
+
+	if (mask == NULL)
+		return 0;
+
+	raw_mask = fm_get_raw_addr(mask->sa_family, (struct sockaddr_storage *) mask, &addr_bits);
+	if (raw_mask == 0)
+		return 0;
+
+	for (pfxlen = 0; pfxlen < addr_bits; pfxlen += 8) {
+		unsigned char octet = *raw_mask++;
+
+		if (octet == 0xFF)
+			continue;
+
+		while (octet & 0x80) {
+			octet <<= 1;
+			pfxlen++;
+		}
+		break;
+	}
+
+	return pfxlen;
+}
+
+void
+fm_address_discover_local(void)
+{
+	struct ifaddrs *head, *ifa;
+
+	if (getifaddrs(&head) < 0)
+		fm_log_fatal("getifaddrs: %m");
+
+	for (ifa = head; ifa; ifa = ifa->ifa_next) {
+		fm_address_prefix_t *entry;
+		const char *state = "down";
+		unsigned int pfxlen = 0;
+
+		if (ifa->ifa_flags & IFF_UP)
+			state = "up";
+
+		if (ifa->ifa_flags & IFF_POINTOPOINT) {
+			/* skip for now */
+			continue;
+		}
+
+		pfxlen = fm_mask_to_prefix(ifa->ifa_netmask);
+
+		printf("  %-8s %4s %s/%u\n", ifa->ifa_name, state, fm_address_format((fm_address_t *) ifa->ifa_addr), pfxlen);
+		entry = fm_address_prefix_array_append(&fm_local_address_prefixes,
+					(fm_address_t *) ifa->ifa_addr, pfxlen);
+
+		entry->device = strdup(ifa->ifa_name);
+	}
+
+	freeifaddrs(head);
+}
+

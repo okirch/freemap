@@ -26,6 +26,22 @@
 #include "freemap.h"
 #include "lists.h"
 
+typedef struct fm_address_prefix fm_address_prefix_t;
+
+struct fm_address_prefix {
+	fm_address_t		address;
+	unsigned int		pfxlen;
+
+	/* for local addrs */
+	char *			device;
+};
+
+typedef struct fm_address_prefix_array fm_address_prefix_array_t;
+struct fm_address_prefix_array {
+	unsigned int		count;
+	fm_address_prefix_t *	elements;
+};
+
 struct fm_address_enumerator {
 	struct hlist		link;
 
