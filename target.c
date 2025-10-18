@@ -664,18 +664,13 @@ fm_target_forget_pending(fm_target_t *target, const fm_probe_t *probe)
  * Deal with network stats
  * Maybe this code should live in scanner.c
  */
-fm_rtt_stats_t *
-fm_rtt_stats_create(int protid, unsigned long initial_rtt, unsigned int multiple)
+void
+fm_rtt_stats_init(fm_rtt_stats_t *stats, unsigned long initial_rtt, unsigned int multiple)
 {
-	fm_rtt_stats_t *stats;
-
-	stats = calloc(1, sizeof(*stats));
-	stats->ipproto = protid;
+	memset(stats, 0, sizeof(*stats));
 	stats->multiple = multiple;
 
 	fm_rtt_stats_update(stats, 1e-3 * initial_rtt);
-
-	return stats;
 }
 
 void
@@ -685,13 +680,10 @@ fm_rtt_stats_update(fm_rtt_stats_t *stats, double rtt)
 	stats->nsamples += 1;
 
 	stats->rtt = (unsigned int) (stats->rtt_sum * (1000.0 / stats->nsamples));
+
+	/* Do not allow the rtt estimate to become 0 */
+	if (stats->rtt == 0)
+		stats->rtt = 1;
+
 	stats->timeout = stats->rtt * stats->multiple;
-
-	if (stats->timeout == 0)
-		stats->timeout = 1000; /* as good as any value */
-
-	fm_log_debug("update rtt estimate %d; sample rtt=%u ms; new estimate=%lu\n",
-				stats->ipproto,
-                                (unsigned int) (1000 * rtt),
-				stats->rtt);
 }

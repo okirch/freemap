@@ -70,9 +70,6 @@ enum {
  * Network stats. For now, we use it to build a reasonable RTT estimate
  */
 typedef struct fm_rtt_stats {
-	int			ipproto;
-	unsigned int		netid;
-
 	unsigned long		rtt;		/* millisec */
 	unsigned int		multiple;	/* rtt * multiple => timeout */
 	unsigned long		timeout;

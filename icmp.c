@@ -52,7 +52,6 @@ static bool		fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 
 static fm_socket_t *	fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr);
 static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
-static fm_rtt_stats_t *	fm_icmp_create_rtt_estimator(const fm_protocol_t *proto);
 static int		fm_icmp_protocol_for_family(int af);
 static fm_extant_t *	fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response);
 
@@ -62,7 +61,6 @@ static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.id		= FM_PROTO_ICMP,
 
 	.create_socket	= fm_icmp_create_bsd_socket,
-	.create_rtt_estimator = fm_icmp_create_rtt_estimator,
 	.create_host_probe_action = fm_icmp_create_host_probe_action,
 };
 
@@ -76,7 +74,6 @@ static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
 	.process_packet	= fm_icmp_process_raw_packet,
 	.process_error	= fm_icmp_process_raw_error,
 
-	.create_rtt_estimator = fm_icmp_create_rtt_estimator,
 	.create_host_probe_action = fm_icmp_create_host_probe_action,
 };
 
@@ -90,12 +87,6 @@ fm_protocol_t *
 fm_icmp_rawsock_create(void)
 {
 	return fm_protocol_create(&fm_icmp_rawsock_ops);
-}
-
-static fm_rtt_stats_t *
-fm_icmp_create_rtt_estimator(const fm_protocol_t *proto)
-{
-	return fm_rtt_stats_create(proto->ops->id, FM_ICMP_PACKET_SPACING / 5, 5);
 }
 
 static fm_socket_t *

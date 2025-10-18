@@ -93,6 +93,22 @@ fm_protocol_create(const struct fm_protocol_ops *ops)
 	return prot;
 }
 
+static void
+fm_protocol_init_rtt_estimator(fm_protocol_t *proto, fm_rtt_stats_t *rtt)
+{
+	switch (proto->ops->id) {
+	case FM_PROTO_ICMP:
+		fm_rtt_stats_init(rtt, FM_ICMP_PACKET_SPACING / 5, 5);
+		break;
+
+	case FM_PROTO_UDP:
+	case FM_PROTO_TCP:
+		fm_rtt_stats_init(rtt, 250 / 2, 2);
+		break;
+	}
+}
+
+
 static inline void
 fm_protocol_attach_rtt_estimator(fm_protocol_t *proto, fm_target_t *target, fm_probe_t *probe)
 {
@@ -102,11 +118,9 @@ fm_protocol_attach_rtt_estimator(fm_protocol_t *proto, fm_target_t *target, fm_p
 
 	assert(proto_id <= __FM_PROTO_MAX);
 
-	rtt = net->rtt_stats[proto_id];
-	if (rtt == NULL) {
-		rtt = proto->ops->create_rtt_estimator(proto);
-		net->rtt_stats[proto_id] = rtt;
-	}
+	rtt = &net->rtt_stats[proto_id];
+	if (rtt->nsamples == 0)
+		fm_protocol_init_rtt_estimator(proto, rtt);
 
 	fm_probe_set_rtt_estimator(probe, rtt);
 }
