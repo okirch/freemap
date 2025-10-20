@@ -134,6 +134,8 @@ extern bool		fm_socket_poll_all(void);
 extern void		fm_socket_timestamp_update(fm_socket_timestamp_t *);
 extern double		fm_pkt_rtt(const fm_pkt_t *pkt, const fm_socket_timestamp_t *send_ts);
 
+extern const char *	fm_arp_type_to_string(int hatype);
+
 extern void		fm_set_logfile(FILE *fp);
 extern void		fm_trace(const char *fmt, ...);
 extern void		fm_log_fatal(const char *fmt, ...);

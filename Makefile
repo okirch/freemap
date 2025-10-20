@@ -7,6 +7,7 @@ OBJS	= scanner.o \
 	  tcp.o \
 	  udp.o \
 	  icmp.o \
+	  arp.o \
 	  ratelimit.o \
 	  addresses.o \
 	  network.o \
