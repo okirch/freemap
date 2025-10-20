@@ -27,6 +27,7 @@
 
 #include <net/if.h>
 #include <ifaddrs.h>
+#include <linux/if_packet.h>
 
 #include "addresses.h"
 #include "network.h"
@@ -137,6 +138,11 @@ fm_get_raw_addr(int af, struct sockaddr_storage *ss, unsigned int *nbits)
 		if (nbits)
 			*nbits = 128;
 		return (unsigned char *) &((struct sockaddr_in6 *) ss)->sin6_addr;
+
+	case AF_PACKET:
+		if (nbits)
+			*nbits = 8 * ((struct sockaddr_ll *) ss)->sll_halen;
+		return (unsigned char *) ((struct sockaddr_ll *) ss)->sll_addr;
 	}
 
 	return NULL;
@@ -151,6 +157,9 @@ fm_address_get_port(const struct sockaddr_storage *ss)
 
 	case AF_INET6:
 		return ntohs(((struct sockaddr_in6 *) ss)->sin6_port);
+
+	case AF_PACKET:
+		return 0;
 	}
 
 	return 0;
@@ -248,6 +257,39 @@ fm_address_format(const fm_address_t *ap)
 
 	index = aindex;
 	aindex = (aindex + 1) % 4;
+
+	if (ap->ss_family == AF_PACKET) {
+		const struct sockaddr_ll *sll = (const struct sockaddr_ll *) ap;
+		const char *arp_type;
+		char *wbuf;
+		unsigned int wlen, wpos = 0;
+		unsigned int i;
+
+		wbuf = abuf[index];
+		wlen = sizeof(abuf[index]);
+
+		arp_type = fm_arp_type_to_string(sll->sll_hatype);
+		snprintf(wbuf + wpos, wlen - wpos, "%s", arp_type);
+		wpos += strlen(wbuf + wpos);
+
+		if (sll->sll_halen != 0 && sll->sll_halen <= 8) {
+			for (i = 0; i < sll->sll_halen; i++) {
+				if (wpos + 2 < wlen) {
+					wbuf[wpos++] = (i == 0)? '/' : ':';
+					wbuf[wpos] = '\0';
+				}
+				snprintf(wbuf + wpos, wlen - wpos, "%02x", sll->sll_addr[i]);
+				wpos += strlen(wbuf + wpos);
+			}
+		}
+
+		if (sll->sll_ifindex > 0) {
+			snprintf(wbuf + wpos, wlen - wpos, "%%if%d", sll->sll_ifindex);
+			wpos += strlen(wbuf + wpos);
+		}
+
+		return wbuf;
+	}
 
 	port = fm_address_get_port(ap);
 	if (port == 0) {
