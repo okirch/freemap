@@ -235,64 +235,6 @@ out:
 	return ok;
 }
 
-#if 0
-static bool
-fm_address_clear_host_bits(struct sockaddr_storage *ss, unsigned int cidr_bits)
-{
-	unsigned int host_bits, addr_bits, addr_octets, pos;
-	unsigned char *raw_addr;
-
-	if (!(raw_addr = fm_get_raw_addr(ss->ss_family, ss, &addr_bits)))
-		return false;
-
-	if (cidr_bits > addr_bits)
-		return false;
-
-	if (addr_bits & 7)
-		return false;
-	addr_octets = addr_bits / 8;
-
-	host_bits = addr_bits - cidr_bits;
-
-	for (pos = addr_octets; pos--; host_bits -= 8) {
-		if (host_bits < 8) {
-			raw_addr[pos] &= 0xff << host_bits;
-			break;
-		}
-		raw_addr[pos] = 0;
-	}
-
-	return true;
-}
-#endif
-
-#if 0
-static bool
-fm_address_combine_net_host(struct sockaddr_storage *ret,
-		const struct sockaddr_storage *cidr_net,
-		uint32_t host)
-{
-	unsigned char *raw_host_addr;
-	unsigned int addr_bits, i;
-
-	*ret = *cidr_net;
-
-	if (!(raw_host_addr = fm_get_raw_addr(ret->ss_family, ret, &addr_bits)))
-		return false;
-
-	if (addr_bits > 32) {
-		unsigned int skip = (addr_bits - 32) / 8;
-
-		raw_host_addr += skip;
-	}
-
-	for (i = 0; i < 4; ++i)
-		raw_host_addr[i] |= 0xFF & (host >> (24 - 8 * i));
-
-	return true;
-}
-#endif
-
 const char *
 fm_address_format(const fm_address_t *ap)
 {
