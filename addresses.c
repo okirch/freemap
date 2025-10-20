@@ -240,12 +240,10 @@ fm_address_format(const fm_address_t *ap)
 {
 	static char	abuf[4][128];
 	static unsigned int aindex;
-	unsigned int port;
-
+	unsigned int index, port;
 	const unsigned char *raw_addr;
-	unsigned int nbits, index;
 
-	if (!(raw_addr = fm_address_get_raw_addr(ap, &nbits)))
+	if (!(raw_addr = fm_address_get_raw_addr(ap, NULL)))
 		return "<unsupported address family>";
 
 	index = aindex;
