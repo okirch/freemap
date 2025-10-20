@@ -590,14 +590,19 @@ fm_address_discover_local(void)
 			continue;
 		}
 
-		pfxlen = fm_mask_to_prefix(ifa->ifa_netmask);
+		if (ifa->ifa_netmask) {
+			pfxlen = fm_mask_to_prefix(ifa->ifa_netmask);
 
-		/* The loopback "network" is really just a single address */
-		if (ifa->ifa_flags & IFF_LOOPBACK)
-			pfxlen = fm_addrfamily_max_addrbits(ifa->ifa_addr->sa_family);
+			/* The loopback "network" is really just a single address */
+			if (ifa->ifa_flags & IFF_LOOPBACK)
+				pfxlen = fm_addrfamily_max_addrbits(ifa->ifa_addr->sa_family);
 
-		fm_log_debug("  %-8s %4s %s/%u\n", ifa->ifa_name, state,
-				fm_address_format((fm_address_t *) ifa->ifa_addr), pfxlen);
+			fm_log_debug("  %-8s %4s %s/%u\n", ifa->ifa_name, state,
+					fm_address_format((fm_address_t *) ifa->ifa_addr), pfxlen);
+		} else {
+			fm_log_debug("  %-8s %4s %s\n", ifa->ifa_name, state,
+					fm_address_format((fm_address_t *) ifa->ifa_addr));
+		}
 
 		entry = fm_address_prefix_array_append(&fm_local_address_prefixes,
 					(fm_address_t *) ifa->ifa_addr, pfxlen);
