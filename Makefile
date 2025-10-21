@@ -12,6 +12,7 @@ OBJS	= scanner.o \
 	  addresses.o \
 	  network.o \
 	  socket.o \
+	  rawsock.o \
 	  facts.o \
 	  report.o \
 	  program.o \
