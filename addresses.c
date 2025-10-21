@@ -688,3 +688,35 @@ fm_address_find_local_prefix(const fm_address_t *addr)
 
 	return NULL;
 }
+
+const fm_address_t *
+fm_address_find_interface(const char *ifname)
+{
+	unsigned int i;
+
+	for (i = 0; i < fm_local_address_prefixes.count; ++i) {
+		fm_address_prefix_t *entry = &fm_local_address_prefixes.elements[i];
+
+		if (entry->address.ss_family == AF_PACKET
+		 && entry->device != NULL && !strcmp(entry->device, ifname))
+			return &entry->address;
+	}
+
+	return NULL;
+}
+
+const fm_address_t *
+fm_address_find_lladdr(const fm_address_t *addr)
+{
+	const fm_address_prefix_t *local_prefix;
+
+	/* Find the local address prefix and the device it lives on */
+	if (!(local_prefix = fm_address_find_local_prefix(addr)))
+		return NULL;
+
+	if (local_prefix->device == NULL)
+		return NULL;
+
+	/* Find the lladdr entry */
+	return fm_address_find_interface(local_prefix->device);
+}
