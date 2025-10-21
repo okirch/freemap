@@ -112,6 +112,9 @@ struct fm_target {
 	fm_address_t		address;
 	char *			id;
 
+	/* Use this address to bind the PF_PACKET socket for ARP et al */
+	fm_address_t		local_interface_address;
+
 	/* Use this address when binding to a port */
 	fm_address_t		local_bind_address;
 
