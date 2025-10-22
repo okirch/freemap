@@ -41,9 +41,11 @@ extern bool		fm_address_equal(const fm_address_t *, const fm_address_t *, bool w
 
 extern void		fm_address_discover_local(void);
 extern fm_network_t *	fm_network_for_host(const fm_address_t *);
-extern const fm_address_t *fm_address_find_interface(const char *ifname);
-extern const fm_address_t *fm_address_find_lladdr(const fm_address_t *addr);
+extern const fm_interface_t *fm_address_find_local_device(const fm_address_t *);
 
+extern const fm_interface_t *fm_interface_by_name(const char *ifname);
+extern const fm_interface_t *fm_interface_by_index(unsigned int ifindex);
+extern bool		fm_interface_get_lladdr(const fm_interface_t *nic, struct sockaddr_ll *sll);
 
 extern void		fm_timestamp_init(struct timeval *ts);
 extern double		fm_timestamp_update(struct timeval *ts);

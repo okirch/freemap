@@ -37,7 +37,8 @@ struct fm_address_prefix {
 	unsigned char		raw_mask[16];
 
 	/* for local addrs */
-	char *			device;
+	char *			ifname;
+	const fm_interface_t *	device;
 };
 
 typedef struct fm_address_prefix_array fm_address_prefix_array_t;
@@ -67,6 +68,8 @@ struct fm_address_enumerator_list {
 };
 
 extern fm_address_enumerator_t *fm_address_enumerator_alloc(const struct fm_address_enumerator_ops *);
+extern const unsigned char *	fm_address_get_raw_addr(const fm_address_t *, unsigned int *nbits);
+extern void			fm_interface_add(const char *name, const struct sockaddr_ll *);
 
 static inline void
 fm_address_enumerator_list_append(struct fm_address_enumerator_list *list, fm_address_enumerator_t *entry)
@@ -96,6 +99,5 @@ fm_address_enumerator_list_pop(struct fm_address_enumerator_list *list)
 	return entry;
 }
 
-extern const unsigned char *	fm_address_get_raw_addr(const fm_address_t *, unsigned int *nbits);
 
 #endif /* FREEMAP_ADDRESSES_H */

@@ -24,6 +24,7 @@
 
 typedef struct fm_address_enumerator fm_address_enumerator_t;
 typedef struct fm_target fm_target_t;
+typedef struct fm_interface fm_interface_t;
 typedef struct fm_network fm_network_t;
 typedef struct fm_gateway fm_gateway_t;
 typedef struct fm_target_manager fm_target_manager_t;
@@ -43,6 +44,9 @@ typedef const struct fm_wellknown_service fm_wellknown_service_t;
 typedef struct fm_string_array fm_string_array_t;
 
 typedef struct sockaddr_storage	fm_address_t;
+
+/* so that we don't have to include linux/if_packet.h all the time */
+struct sockaddr_ll;
 
 static const unsigned int	FM_INITIAL_TARGET_POOL_SIZE = 16;
 static const unsigned int	FM_DEFAULT_GLOBAL_PACKET_RATE = 1000;

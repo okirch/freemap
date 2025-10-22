@@ -25,6 +25,15 @@
 #include "addresses.h"
 #include "lists.h"
 
+struct fm_interface {
+	struct hlist		link;
+	char *			name;
+	int			ifindex;
+	struct sockaddr_ll	lladdr;
+};
+
+static struct hlist_head	fm_interface_list = { .first = NULL, };
+
 typedef struct fm_raw_socket_cache {
 	struct hlist		link;
 	struct sockaddr_ll	lladdr;
@@ -73,4 +82,68 @@ fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *driver)
 	hlist_append(&raw_sock_cache, &entry->link);
 
 	return sock;
+}
+
+/*
+ * Manage list of interfaces
+ */
+void
+fm_interface_add(const char *name, const struct sockaddr_ll *lladdr)
+{
+	fm_interface_t *nic;
+
+	if (lladdr->sll_family != AF_PACKET) {
+		fm_log_error("%s: bad address family %d", __func__, lladdr->sll_family);
+		return;
+	}
+
+	nic = calloc(1, sizeof(*nic));
+	nic->name = strdup(name);
+	nic->ifindex = lladdr->sll_ifindex;
+	nic->lladdr = *lladdr;
+
+	hlist_append(&fm_interface_list, &nic->link);
+}
+
+const fm_interface_t *
+fm_interface_by_name(const char *ifname)
+{
+	hlist_iterator_t it;
+	fm_interface_t *nic;
+
+	if (ifname == NULL)
+		return NULL;
+
+	hlist_iterator_init(&it, &fm_interface_list);
+	while ((nic = hlist_iterator_next(&it)) != NULL) {
+		if (!strcmp(nic->name, ifname))
+			break;
+	}
+
+	return nic;
+}
+
+const fm_interface_t *
+fm_interface_by_index(unsigned int ifindex)
+{
+	hlist_iterator_t it;
+	fm_interface_t *nic;
+
+	hlist_iterator_init(&it, &fm_interface_list);
+	while ((nic = hlist_iterator_next(&it)) != NULL) {
+		if (nic->ifindex == ifindex)
+			break;
+	}
+
+	return nic;
+}
+
+bool
+fm_interface_get_lladdr(const fm_interface_t *nic, struct sockaddr_ll *lladdr)
+{
+	if (nic == NULL || lladdr == NULL)
+		return false;
+
+	*lladdr = nic->lladdr;
+	return true;
 }

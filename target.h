@@ -113,7 +113,7 @@ struct fm_target {
 	char *			id;
 
 	/* Use this address to bind the PF_PACKET socket for ARP et al */
-	fm_address_t		local_interface_address;
+	const fm_interface_t *	local_device;
 
 	/* Use this address when binding to a port */
 	fm_address_t		local_bind_address;

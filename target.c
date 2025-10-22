@@ -445,7 +445,6 @@ fm_target_t *
 fm_target_create(const fm_address_t *address, fm_network_t *network)
 {
 	fm_target_t *tgt;
-	const fm_address_t *lladdr;
 
 	tgt = calloc(1, sizeof(*tgt));
 	tgt->address = *address;
@@ -458,8 +457,7 @@ fm_target_create(const fm_address_t *address, fm_network_t *network)
 	/* The initial packet rate is very restricted */
 	fm_ratelimit_init(&tgt->host_rate_limit, 1, 1);
 
-	if ((lladdr = fm_address_find_lladdr(address)) != NULL)
-		tgt->local_interface_address = *lladdr;
+	tgt->local_device = fm_address_find_local_device(address);
 
 	return tgt;
 }

@@ -504,7 +504,7 @@ fm_create_cidr_address_enumerator(const char *addr_string, const fm_addr_gen_opt
 			return NULL;
 		}
 
-		return fm_local_ipv6_address_enumerator(local_prefix->device, &ss, cidr_bits);
+		return fm_local_ipv6_address_enumerator(local_prefix->ifname, &ss, cidr_bits);
 	}
 
 	if (ss.ss_family == AF_INET) {
@@ -610,6 +610,7 @@ void
 fm_address_discover_local(void)
 {
 	struct ifaddrs *head, *ifa;
+	unsigned int i;
 
 	if (getifaddrs(&head) < 0)
 		fm_log_fatal("getifaddrs: %m");
@@ -646,16 +647,30 @@ fm_address_discover_local(void)
 					fm_address_format((fm_address_t *) ifa->ifa_addr));
 		}
 
-		entry = fm_address_prefix_array_append(&fm_local_address_prefixes,
-					(fm_address_t *) ifa->ifa_addr, pfxlen);
+		if (ifa->ifa_addr->sa_family == AF_PACKET) {
+			fm_interface_add(ifa->ifa_name,
+						(const struct sockaddr_ll *) ifa->ifa_addr);
+		} else {
+			entry = fm_address_prefix_array_append(&fm_local_address_prefixes,
+						(fm_address_t *) ifa->ifa_addr, pfxlen);
 
-		entry->device = strdup(ifa->ifa_name);
-		entry->source_addr = *(fm_address_t *) ifa->ifa_addr;
+			entry->ifname = strdup(ifa->ifa_name);
+			entry->source_addr = *(fm_address_t *) ifa->ifa_addr;
 
-		fm_prefix_to_mask(ifa->ifa_addr->sa_family, pfxlen, entry->raw_mask, sizeof(entry->raw_mask));
+			fm_prefix_to_mask(ifa->ifa_addr->sa_family, pfxlen, entry->raw_mask, sizeof(entry->raw_mask));
+		}
 	}
 
 	freeifaddrs(head);
+
+	for (i = 0; i < fm_local_address_prefixes.count; ++i) {
+		fm_address_prefix_t *entry = &fm_local_address_prefixes.elements[i];
+
+		if (entry->ifname == NULL)
+			continue;
+
+		entry->device = fm_interface_by_name(entry->ifname);
+	}
 }
 
 const fm_address_prefix_t *
@@ -689,24 +704,8 @@ fm_address_find_local_prefix(const fm_address_t *addr)
 	return NULL;
 }
 
-const fm_address_t *
-fm_address_find_interface(const char *ifname)
-{
-	unsigned int i;
-
-	for (i = 0; i < fm_local_address_prefixes.count; ++i) {
-		fm_address_prefix_t *entry = &fm_local_address_prefixes.elements[i];
-
-		if (entry->address.ss_family == AF_PACKET
-		 && entry->device != NULL && !strcmp(entry->device, ifname))
-			return &entry->address;
-	}
-
-	return NULL;
-}
-
-const fm_address_t *
-fm_address_find_lladdr(const fm_address_t *addr)
+const fm_interface_t *
+fm_address_find_local_device(const fm_address_t *addr)
 {
 	const fm_address_prefix_t *local_prefix;
 
@@ -714,9 +713,5 @@ fm_address_find_lladdr(const fm_address_t *addr)
 	if (!(local_prefix = fm_address_find_local_prefix(addr)))
 		return NULL;
 
-	if (local_prefix->device == NULL)
-		return NULL;
-
-	/* Find the lladdr entry */
-	return fm_address_find_interface(local_prefix->device);
+	return local_prefix->device;
 }
