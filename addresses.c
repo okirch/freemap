@@ -715,3 +715,20 @@ fm_address_find_local_device(const fm_address_t *addr)
 
 	return local_prefix->device;
 }
+
+bool
+fm_address_find_local_address(const fm_interface_t *nic, int af, fm_address_t *ret_addr)
+{
+	unsigned int i;
+
+	for (i = 0; i < fm_local_address_prefixes.count; ++i) {
+		fm_address_prefix_t *entry = &fm_local_address_prefixes.elements[i];
+
+		if (entry->device == nic && entry->address.ss_family == af) {
+			*ret_addr = entry->address;
+			return true;
+		}
+	}
+
+	return false;
+}

@@ -458,6 +458,8 @@ fm_target_create(const fm_address_t *address, fm_network_t *network)
 	fm_ratelimit_init(&tgt->host_rate_limit, 1, 1);
 
 	tgt->local_device = fm_address_find_local_device(address);
+	if (tgt->local_device != NULL)
+		fm_address_find_local_address(tgt->local_device, address->ss_family, &tgt->local_bind_address);
 
 	return tgt;
 }
