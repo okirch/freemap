@@ -204,6 +204,9 @@ unsigned int
 fm_addrfamily_sockaddr_size(int family)
 {
 	switch (family) {
+	case AF_PACKET:
+		return sizeof(struct sockaddr_ll);
+
 	case AF_INET:
 		return sizeof(struct sockaddr_in);
 
