@@ -52,6 +52,7 @@ struct fm_protocol_ops {
 };
 
 struct fm_protocol_engine {
+	fm_protocol_t *	arp;
 	fm_protocol_t *	icmp;
 	fm_protocol_t *	udp;
 	fm_protocol_t *	tcp;
@@ -64,6 +65,7 @@ extern fm_protocol_t *	fm_tcp_bsdsock_create(void);
 extern fm_protocol_t *	fm_udp_bsdsock_create(void);
 extern fm_protocol_t *	fm_icmp_bsdsock_create(void);
 extern fm_protocol_t *	fm_icmp_rawsock_create(void);
+extern fm_protocol_t *	fm_arp_create(void);
 
 extern fm_protocol_t *	fm_protocol_create(const struct fm_protocol_ops *ops);
 extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);

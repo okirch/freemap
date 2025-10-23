@@ -56,6 +56,7 @@ fm_protocol_engine_create_raw_socket(void)
 
 		engine = calloc(1, sizeof(*engine));
 
+		engine->arp = fm_arp_create();
 		engine->icmp = fm_icmp_rawsock_create();
 		engine->tcp = fm_tcp_bsdsock_create();
 		engine->udp = fm_udp_bsdsock_create();
@@ -73,6 +74,7 @@ fm_protocol_engine_create_default(void)
 	if (proto == NULL)
 		proto = fm_protocol_engine_create_bsd_socket();
 
+	assert(proto->arp == NULL || proto->arp->ops->id == FM_PROTO_ARP);
 	assert(proto->icmp == NULL || proto->icmp->ops->id == FM_PROTO_ICMP);
 	assert(proto->udp == NULL || proto->udp->ops->id == FM_PROTO_UDP);
 	assert(proto->tcp == NULL || proto->tcp->ops->id == FM_PROTO_TCP);

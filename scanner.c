@@ -265,6 +265,9 @@ fm_scanner_get_protocol_engine(fm_scanner_t *scanner, const char *protocol_name)
 {
 	struct protoent *pe;
 
+	if (!strcmp(protocol_name, "arp"))
+		return scanner->proto->arp;
+
 	pe = getprotobyname(protocol_name);
 	if (pe == NULL)
 		return NULL;

@@ -63,6 +63,7 @@ static const unsigned int	FM_ICMP_RESPONSE_TIMEOUT = 1000;
 /* Protocol IDs, used internally */
 enum {
 	FM_PROTO_NONE = 0,
+	FM_PROTO_ARP,
 	FM_PROTO_ICMP,
 	FM_PROTO_UDP,
 	FM_PROTO_TCP,
