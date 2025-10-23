@@ -60,6 +60,10 @@ static const unsigned int	FM_ICMP_PROBE_RETRIES = 3;
 static const unsigned int	FM_ICMP_PACKET_SPACING = 250;
 static const unsigned int	FM_ICMP_RESPONSE_TIMEOUT = 1000;
 
+static const unsigned int	FM_ARP_PROBE_RETRIES = 3;
+static const unsigned int	FM_ARP_PACKET_SPACING = 250;
+static const unsigned int	FM_ARP_RESPONSE_TIMEOUT = 1000;
+
 /* Protocol IDs, used internally */
 enum {
 	FM_PROTO_NONE = 0,
