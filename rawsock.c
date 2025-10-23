@@ -67,7 +67,7 @@ fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *driver)
 
 	sock = fm_socket_create(PF_PACKET, SOCK_DGRAM, lladdr->sll_protocol, driver);
 
-	if (!fm_socket_bind(sock, (const fm_address_t *) &lladdr)) {
+	if (!fm_socket_bind(sock, (const fm_address_t *) lladdr)) {
 		fm_log_error("Cannot bind raw socket to address %s: %m",
 				fm_address_format((fm_address_t *) &lladdr));
 		fm_socket_free(sock);
