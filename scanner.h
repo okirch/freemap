@@ -28,6 +28,7 @@
 typedef struct fm_scan_dummy	fm_scan_state_t;
 
 #define FM_SCAN_ACTION_FLAG_OPTIONAL	0x0001
+#define FM_SCAN_ACTION_FLAG_LOCAL_ONLY	0x0100
 
 struct fm_scan_action {
 	char *			id;

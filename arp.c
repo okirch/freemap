@@ -409,6 +409,7 @@ fm_arp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *a
 	hostscan->proto = proto;
 	hostscan->params = arp_args;
 
+	hostscan->base.flags = FM_SCAN_ACTION_FLAG_LOCAL_ONLY;
 	hostscan->base.nprobes = 1;
 
 	return &hostscan->base;

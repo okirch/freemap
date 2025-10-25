@@ -66,6 +66,15 @@ fm_scan_action_id(const fm_scan_action_t *action)
 bool
 fm_scan_action_validate(fm_scan_action_t *action, fm_target_t *target)
 {
+	if ((action->flags & FM_SCAN_ACTION_FLAG_LOCAL_ONLY) && target->local_device == NULL) {
+		if (!(action->flags & FM_SCAN_ACTION_FLAG_OPTIONAL))
+			fm_log_error("%s: action %s only supported with local targets",
+					fm_address_format(&target->address),
+					fm_scan_action_id(action));
+		return false;
+
+	}
+
 	if (action->ops->validate == NULL)
 		return true;
 
