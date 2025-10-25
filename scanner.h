@@ -27,8 +27,12 @@
 
 typedef struct fm_scan_dummy	fm_scan_state_t;
 
+#define FM_SCAN_ACTION_FLAG_OPTIONAL	0x0001
+
 struct fm_scan_action {
 	char *			id;
+
+	unsigned int		flags;
 
 	/* if barrier is true, wait for this and all previous scan actions
 	 * to complete before progressing to the next.

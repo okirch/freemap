@@ -355,7 +355,7 @@ fm_scanner_host_probe_callback(fm_target_t *target, fm_fact_t *status)
 }
 
 fm_scan_action_t *
-fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name, const fm_string_array_t *args)
+fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name, int flags, const fm_string_array_t *args)
 {
 	fm_protocol_t *proto;
 	fm_scan_action_t *action;
@@ -373,6 +373,7 @@ fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name, cons
 	if (!(action = proto->ops->create_host_probe_action(proto, args)))
 		return NULL;
 
+	action->flags |= flags;
 	action->result_callback = fm_scanner_host_probe_callback;
 
 	assert(action->nprobes >= 1);
@@ -397,7 +398,7 @@ fm_scanner_add_reachability_check(fm_scanner_t *scanner)
  * Port scan probes
  */
 fm_scan_action_t *
-fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, const fm_string_array_t *args)
+fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, int flags, const fm_string_array_t *args)
 {
 	static const unsigned int MAXRANGE=32;
 	fm_port_range_t ranges[MAXRANGE];
@@ -444,6 +445,7 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, cons
 		if (!(action = fm_scan_action_port_range_scan(proto, r->first, r->last)))
 			return NULL;
 
+		action->flags |= flags;
 		assert(action->nprobes >= 1);
 
 		fm_scan_action_array_append(&scanner->requests, action);

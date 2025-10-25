@@ -41,6 +41,7 @@ enum {
 typedef struct fm_scan_step {
 	char *			proto;
 	int			type;
+	int			action_flags;
 	fm_string_array_t	args;
 } fm_scan_step_t;
 

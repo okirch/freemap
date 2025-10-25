@@ -199,6 +199,8 @@ parse_step_definition(struct file_scanner *fs, int type)
 
 		if (step == NULL) {
 			step = fm_scan_step_alloc(type, arg);
+		} else if (!strcmp(arg, "optional")) {
+			step->action_flags |= FM_SCAN_ACTION_FLAG_OPTIONAL;
 		} else {
 			fm_string_array_append(&step->args, arg);
 		}
@@ -448,10 +450,10 @@ fm_scan_step_compile(const fm_scan_exec_t *exec, fm_scanner_t *scanner)
 
 	switch (step->type) {
 	case FM_SCAN_STEP_HOST_PROBE:
-		return fm_scanner_add_host_probe(scanner, step->proto, &step->args);
+		return fm_scanner_add_host_probe(scanner, step->proto, step->action_flags, &step->args);
 
 	case FM_SCAN_STEP_PORT_PROBE:
-		return fm_scanner_add_port_probe(scanner, step->proto, &step->args);
+		return fm_scanner_add_port_probe(scanner, step->proto, step->action_flags, &step->args);
 	}
 	return false;
 }
