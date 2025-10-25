@@ -1,4 +1,5 @@
 routine default-reachability serialize=strict:
+	host-probe arp optional;
 	host-probe icmp;
 
 routine default-scan:
