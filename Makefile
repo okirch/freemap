@@ -17,6 +17,7 @@ OBJS	= scanner.o \
 	  report.o \
 	  program.o \
 	  filefmt.o \
+	  config.o \
 	  defaults.o \
 	  wellknown.o \
 	  wellknown/rpc.o \

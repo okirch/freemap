@@ -111,6 +111,13 @@ main(int argc, char **argv)
 
 	fm_config_init_defaults(&fm_global);
 
+	if (!fm_config_load(&fm_global, "/etc/freemap.conf"))
+		fm_log_fatal("Unable to parse global config file\n");
+
+	/* This location will change once we move to project subdirs */
+	if (!fm_config_load(&fm_global, "./freemap.conf"))
+		fm_log_fatal("Unable to parse local config file\n");
+
 	if (optind >= argc) {
 		fm_log_error("Missing scan target(s)\n");
 		usage(1);
