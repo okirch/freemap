@@ -22,6 +22,10 @@ fm_config_t		fm_global;
 void
 fm_config_init_defaults(fm_config_t *conf)
 {
+	conf->address_generation.only_family = AF_UNSPEC;
+	conf->address_generation.try_all = true;
+	conf->address_generation.randomize = false;
+
 	/* the target pool starts out with 16 slots, and we increase its
 	 * size every 4 seconds until it has reached its maximum size of 1023 slots.
 	 */

@@ -87,7 +87,9 @@ typedef struct fm_config_proc	fm_config_proc_t;
 
 enum {
 	FM_CONFIG_ATTR_TYPE_BAD = 0,
-	FM_CONFIG_ATTR_TYPE_INT = 1,
+	FM_CONFIG_ATTR_TYPE_INT,
+	FM_CONFIG_ATTR_TYPE_BOOL,
+	FM_CONFIG_ATTR_TYPE_SPECIAL,
 };
 
 struct fm_config_child {
@@ -100,6 +102,8 @@ struct fm_config_attr {
 	const char *		name;
 	unsigned int		offset;
 	int			type;
+
+	bool			(*setfn)(curly_node_t *node, void *attr_data, const char *value);
 };
 
 #define MAX_CHILDREN		16
@@ -114,6 +118,10 @@ struct fm_config_proc {
 	((unsigned long) &(((type *) 0)->member))
 #define ATTRIB_INT(container, member) \
 		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_INT }
+#define ATTRIB_BOOL(container, member) \
+		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_BOOL }
+#define ATTRIB_SPECIAL(container, member, __setfn) \
+		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = __setfn }
 
 static bool			fm_config_process_node(curly_node_t *node, fm_config_proc_t *proc, void *data);
 
@@ -123,6 +131,31 @@ fm_config_addr_apply_offset(void *data, unsigned int offset)
 	caddr_t child_data_addr = (caddr_t) data + offset;
 	return (void *) child_data_addr;
 }
+
+static bool
+set_address_family(curly_node_t *node, void *attr_data, const char *value)
+{
+	if (!strcasecmp(value, "ipv4"))
+		*(int *) attr_data = AF_INET;
+	else if (!strcasecmp(value, "ipv6"))
+		*(int *) attr_data = AF_INET6;
+	else if (!strcasecmp(value, "any"))
+		*(int *) attr_data = AF_UNSPEC;
+	else
+		return false;
+	return true;
+}
+
+/*
+ * address_generation
+ */
+static fm_config_proc_t		fm_config_address_generation = {
+	.attributes = {
+		ATTRIB_SPECIAL(struct fm_config_address_generation, only_family, set_address_family),
+		ATTRIB_BOOL(struct fm_config_address_generation, try_all),
+		ATTRIB_INT(struct fm_config_address_generation, randomize),
+	},
+};
 
 /*
  * target-pool
@@ -210,6 +243,8 @@ static fm_config_proc_t		fm_config_arp = {
  */
 static fm_config_proc_t		fm_config_root = {
 	.children = {
+		{ "address-generation",
+				offsetof(fm_config_t, address_generation), &fm_config_address_generation },
 		{ "target-pool",offsetof(fm_config_t, target_pool),	&fm_config_target_pool },
 		{ "scanner",	offsetof(fm_config_t, scanner),		&fm_config_scanner },
 		{ "ipv4",	offsetof(fm_config_t, ipv4),		&fm_config_ipv4 },
@@ -261,6 +296,24 @@ fm_config_attr_set_int(curly_node_t *node, void *attr_data, const char *value)
 }
 
 static bool
+fm_config_attr_set_bool(curly_node_t *node, void *attr_data, const char *value)
+{
+	if (!strcasecmp(value, "true")
+	 || !strcasecmp(value, "yes")
+	 || !strcasecmp(value, "1"))
+		*(bool *) attr_data = true;
+	else
+	if (!strcasecmp(value, "false")
+	 || !strcasecmp(value, "no")
+	 || !strcasecmp(value, "0"))
+		*(bool *) attr_data = false;
+	else
+		return false;
+
+	return true;
+}
+
+static bool
 fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *data, curly_attr_t *attr)
 {
 	const char *attr_name = curly_attr_get_name(attr);
@@ -301,6 +354,18 @@ fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *dat
 			switch (adef->type) {
 			case FM_CONFIG_ATTR_TYPE_INT:
 				okay = fm_config_attr_set_int(node, attr_data, value);
+				break;
+
+			case FM_CONFIG_ATTR_TYPE_BOOL:
+				okay = fm_config_attr_set_bool(node, attr_data, value);
+				break;
+
+			case FM_CONFIG_ATTR_TYPE_SPECIAL:
+				if (adef->setfn == NULL) {
+					fm_config_complain(node, "attribute %s has not set() function", attr_name);
+					return false;
+				}
+				okay = adef->setfn(node, attr_data, value);
 				break;
 
 			default:
