@@ -243,19 +243,7 @@ struct fm_arp_host_probe {
 	fm_probe_t	base;
 
 	struct arp_host_probe_params params;
-	fm_socket_t *	sock;
 };
-
-static void
-fm_arp_host_probe_destroy(fm_probe_t *probe)
-{
-	struct fm_arp_host_probe *arp = (struct fm_arp_host_probe *) probe;
-
-	if (arp->sock != NULL) {
-		fm_socket_free(arp->sock);
-		arp->sock = NULL;
-	}
-}
 
 static fm_fact_t *
 fm_arp_host_probe_send(fm_probe_t *probe)
@@ -335,7 +323,6 @@ static struct fm_probe_ops fm_arp_host_probe_ops = {
 
 	.default_timeout= 1000,	/* FM_ARP_RESPONSE_TIMEOUT */
 
-	.destroy	= fm_arp_host_probe_destroy,
 	.send		= fm_arp_host_probe_send,
 	.should_resend	= fm_arp_host_probe_should_resend,
 	.render_verdict	= fm_arp_host_probe_render_verdict,
@@ -358,7 +345,6 @@ fm_arp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const struct
 
 	probe = (struct fm_arp_host_probe *) fm_probe_alloc("arp", &fm_arp_host_probe_ops, proto, target);
 
-	probe->sock = NULL;
 	probe->params = *arp_args;
 
 	probe->params.dst_ipaddr = dst_ipaddr;
