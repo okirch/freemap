@@ -39,6 +39,11 @@ drop_string(char **var)
 	} \
 } while (0)
 
+#define maybe_realloc_array(elements, count, increment) do { \
+	if (((count) % (increment)) == 0) \
+		elements = realloc(elements, ((count) + (increment)) * sizeof((elements)[0])); \
+} while (0)
+
 struct fm_string_array {
 	unsigned int	count;
 	char **		entries;
