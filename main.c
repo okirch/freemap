@@ -185,22 +185,22 @@ main(int argc, char **argv)
 }
 
 int
-perform_cmd_scan(int argc, char **argv)
+perform_cmd_scan(int nvalues, char **values)
 {
 	const fm_scan_program_t *program = NULL;
 	fm_scanner_t *scanner;
 
-	if (optind >= argc) {
+	if (nvalues == 0) {
 		fm_log_error("Missing scan target(s)\n");
 		usage(1);
 	}
 
 	scanner = fm_scanner_create();
 
-	while (optind < argc) {
+	while (nvalues--) {
 		fm_target_manager_t *mgr = scanner->target_manager;
 		fm_address_enumerator_t *agen;
-		const char *name = argv[optind++];
+		const char *name = *values++;
 
 		if (strchr(name, '/')) {
 			agen = fm_create_cidr_address_enumerator(name);
