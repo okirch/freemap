@@ -245,9 +245,8 @@ fm_tcp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t por
 	probe->host_address = tmp_address;
 	probe->sock = NULL;
 
-	/* For the time being, assume that any TCP service may take up to .5 sec for the
-	 * queued TCP connection to be accepted. */
-	probe->base.rtt_application_bias = 500;
+	/* TCP services may take up to .5 sec for the queued TCP connection to be accepted. */
+	probe->base.rtt_application_bias = fm_global.tcp.application_delay;
 
 	fm_log_debug("Created TCP socket probe for %s\n", fm_address_format(&probe->host_address));
 	return &probe->base;

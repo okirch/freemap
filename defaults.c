@@ -32,6 +32,14 @@ fm_config_init_defaults(fm_config_t *conf)
 	conf->scanner.global_packet_rate = 1000;
 	conf->scanner.target_packet_rate = 10;
 
+	/* For the time being, assume that any TCP service may take up to .5 sec for the
+         * queued TCP connection to be accepted. */
+	conf->tcp.application_delay = 500;
+
+	/* For the time being, assume that any UDP service may take up to .5 sec for the
+         * queued UDP connection to be accepted. */
+	conf->udp.application_delay = 500;
+
 	/* ICMP reachability probe. We transmit 3 echo requests,
 	 * 250 msec apart, then wait for up to 1 second for a response. */
 	conf->icmp.retries = 3;
