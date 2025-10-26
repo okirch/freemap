@@ -23,6 +23,12 @@
 
 #include "freemap.h"
 #include "scanner.h"
+#include "subcommand.h"
+
+enum {
+	FM_CMDID_MAIN = 1,
+	FM_CMDID_SCAN,
+};
 
 enum {
 	OPT_PROGRAM,
@@ -32,7 +38,7 @@ enum {
 	OPT_ALL_ADDRS,
 };
 
-static struct option long_options[] = {
+static struct option main_long_options[] = {
 	{ "program",		required_argument,	NULL,	OPT_PROGRAM,	},
 	{ "logfile",		required_argument,	NULL,	'L',	},
 	{ "ipv4",		no_argument,		NULL,	OPT_IPV4_ONLY,	},
@@ -44,66 +50,107 @@ static struct option long_options[] = {
 	{ NULL },
 };
 
-struct late_options {
-	unsigned int	count;
-	int		options[16];
+struct fm_cmd_main_options {
+	int		ipv4_only;
+	int		ipv6_only;
+	int		all_addrs;
+
+	const char *	logfile;
+	const char *	program;
+	bool		dump;
 };
 
-static void		postpone_option(struct late_options *, int);
 static void		bad_option(const char *fmt, ...);
 static void		usage(int);
+
+static struct fm_cmd_main_options main_options;
+
+static bool
+handle_main_options(int c, const char *arg_value)
+{
+	/* printf("%s(%d, %s)\n", __func__, c, arg_value); */
+
+	switch (c) {
+	case 'd':
+		fm_debug_level += 1;
+		break;
+
+	case 'L':
+		main_options.logfile = optarg;
+		break;
+
+	case OPT_IPV4_ONLY:
+		main_options.ipv4_only = true;
+		break;
+
+	case OPT_IPV6_ONLY:
+		main_options.ipv6_only = true;
+		break;
+
+	case OPT_ALL_ADDRS:
+		main_options.all_addrs = true;
+		break;
+
+	case OPT_DUMP:
+		main_options.dump = true;
+		break;
+
+	case OPT_PROGRAM:
+		if (main_options.program)
+			fm_log_fatal("duplicate program option given");
+		main_options.program = optarg;
+		break;
+
+	default:
+		return false;
+	}
+
+	return true;
+}
+
+static void
+apply_main_options(void)
+{
+	if (main_options.ipv4_only + main_options.ipv6_only > 1)
+		bad_option("Options --ipv4 and --ipv6 are mutually exclusive\n");
+
+	if (main_options.ipv4_only)
+		fm_global.address_generation.only_family = AF_INET;
+
+	if (main_options.ipv6_only)
+		fm_global.address_generation.only_family = AF_INET6;
+
+	if (main_options.all_addrs)
+		fm_global.address_generation.try_all = true;
+}
+
+static bool
+handle_scan_options(int c, const char *arg_value)
+{
+	/* No options so far */
+	return false;
+}
 
 int
 main(int argc, char **argv)
 {
-	const char *opt_logfile = NULL;
-	const char *opt_program = NULL;
-	bool opt_dump = false;
 	const fm_scan_program_t *program = NULL;
 	fm_scanner_t *scanner;
-	struct late_options delayed_opts;
-	int c;
+	fm_cmdparser_t *parser;
+	unsigned int cmdid;
 
 #if 1
 	if (mcheck_pedantic(NULL) < 0)
 		printf("Tried but failed to enable pedantic memory checking\n");
 #endif
 
-	memset(&delayed_opts, 0, sizeof(delayed_opts));
+	parser = fm_cmdparser_main("freemap", FM_CMDID_MAIN, "d", main_long_options, handle_main_options);
 
-	while ((c = getopt_long(argc, argv, "dh", long_options, NULL)) != EOF) {
-		switch (c) {
-		case 'd':
-			fm_debug_level += 1;
-			break;
+	fm_cmdparser_subcommand(parser, "scan", FM_CMDID_SCAN, NULL, NULL, handle_scan_options);
 
-		case 'L':
-			opt_logfile = optarg;
-			break;
-
-		case OPT_IPV4_ONLY:
-		case OPT_IPV6_ONLY:
-		case OPT_ALL_ADDRS:
-			postpone_option(&delayed_opts, c);
-			break;
-
-		case OPT_DUMP:
-			opt_dump = true;
-			break;
-
-		case OPT_PROGRAM:
-			if (opt_program)
-				fm_log_fatal("duplicate program option given");
-			opt_program = optarg;
-			break;
-
-		case 'h':
-			usage(0);
-
-		case '?':
-			usage(1);
-		}
-	}
+	cmdid = fm_cmdparser_process_args(parser, argc, argv);
+	if (cmdid == 0)
+		return 1;
 
 	fm_config_init_defaults(&fm_global);
 
@@ -114,28 +161,11 @@ main(int argc, char **argv)
 	if (!fm_config_load(&fm_global, "./freemap.conf"))
 		fm_log_fatal("Unable to parse local config file\n");
 
-	/* Now process any delayed options */
-	while (delayed_opts.count > 0) {
-		c = delayed_opts.options[--delayed_opts.count];
+	/* Now apply any options for the main command */
+	apply_main_options();
 
-		switch (c) {
-		case OPT_IPV4_ONLY:
-			if (fm_global.address_generation.only_family != AF_UNSPEC)
-				bad_option("Options --ipv4 and --ipv6 are mutually exclusive\n");
-			fm_global.address_generation.only_family = AF_INET;
-			break;
-
-		case OPT_IPV6_ONLY:
-			if (fm_global.address_generation.only_family != AF_UNSPEC)
-				bad_option("Options --ipv4 and --ipv6 are mutually exclusive\n");
-			fm_global.address_generation.only_family = AF_INET6;
-			break;
-
-		case OPT_ALL_ADDRS:
-			fm_global.address_generation.try_all = true;
-			break;
-		}
-	}
+	if (cmdid != FM_CMDID_SCAN)
+		fm_log_fatal("Cannot execute command %u", cmdid);
 
 	if (optind >= argc) {
 		fm_log_error("Missing scan target(s)\n");
@@ -161,26 +191,26 @@ main(int argc, char **argv)
 		fm_target_manager_add_address_generator(mgr, agen);
 	}
 
-	if (opt_logfile != NULL) {
+	if (main_options.logfile != NULL) {
 		fm_report_t *report;
 
 		report = fm_scanner_get_report(scanner);
-		fm_report_add_logfile(report, opt_logfile);
+		fm_report_add_logfile(report, main_options.logfile);
 	}
 
-	if (opt_program == NULL)
-		opt_program = "default";
+	if (main_options.program == NULL)
+		main_options.program = "default";
 
-	program = fm_scan_library_load_program(opt_program);
+	program = fm_scan_library_load_program(main_options.program);
 	if (program == NULL)
-		fm_log_fatal("Could not find scan program \"%s\"\n", opt_program);
-	if (opt_dump)
+		fm_log_fatal("Could not find scan program \"%s\"\n", main_options.program);
+	if (main_options.dump)
 		fm_scan_program_dump(program);
 
 	if (!fm_scan_program_compile(program, scanner))
 		fm_log_fatal("Failed to compile scan program");
 
-	if (opt_dump)
+	if (main_options.dump)
 		fm_scanner_dump_program(scanner);
 
 	if (!fm_scanner_ready(scanner)) {
@@ -228,15 +258,3 @@ bad_option(const char *fmt, ...)
 
 	usage(1);
 }
-
-static void
-postpone_option(struct late_options *delay, int opt)
-{
-	if (delay->count >= 16) {
-		fprintf(stderr, "Too many options for my tiny brain\n");
-		usage(1);
-	}
-
-	delay->options[delay->count++] = opt;
-}
-

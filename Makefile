@@ -22,6 +22,7 @@ OBJS	= scanner.o \
 	  wellknown.o \
 	  wellknown/rpc.o \
 	  wellknown/dns.o \
+	  subcommand.o \
 	  logging.o \
 	  utils.o
 LIB	= libfreemap.a
