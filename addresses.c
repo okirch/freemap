@@ -357,6 +357,8 @@ static const struct fm_address_enumerator_ops fm_simple_address_enumerator_ops =
 	.get_one_address= fm_simple_address_enumerator_get_one,
 };
 
+static fm_address_enumerator_t *fm_create_simple_address_enumerator_work(const char *addr_string, const fm_address_t *addr);
+
 #define NEW_ADDRESS_ENUMERATOR(_typename) \
 	((struct _typename *) fm_address_enumerator_alloc(&_typename ## _ops))
 
@@ -368,16 +370,24 @@ fm_address_enumerator_t *
 fm_create_simple_address_enumerator(const char *addr_string)
 {
 	struct sockaddr_storage ss;
+
+	if (fm_try_parse_address(addr_string, &ss)) {
+		if (!fm_address_generator_address_eligible(&ss))
+			return NULL;
+
+		return fm_create_simple_address_enumerator_work(addr_string, &ss);
+	}
+
+	return NULL;
+}
+
+static fm_address_enumerator_t *
+fm_create_simple_address_enumerator_work(const char *addr_string, const fm_address_t *addr)
+{
 	struct fm_simple_address_enumerator *sagen;
 
-	if (!fm_try_parse_address(addr_string, &ss))
-		return NULL;
-
-	if (!fm_address_generator_address_eligible(&ss))
-		return NULL;
-
 	sagen = NEW_ADDRESS_ENUMERATOR(fm_simple_address_enumerator);
-	sagen->addr = ss;
+	sagen->addr = *addr;
 
 	return &sagen->base;
 }
@@ -427,9 +437,6 @@ static const struct fm_address_enumerator_ops fm_ipv4_network_enumerator_ops = {
 	.destroy	= NULL,
 	.get_one_address= fm_ipv4_network_enumerator_get_one,
 };
-
-#define NEW_ADDRESS_ENUMERATOR(_typename) \
-	((struct _typename *) fm_address_enumerator_alloc(&_typename ## _ops))
 
 static fm_address_enumerator_t *
 fm_ipv4_network_enumerator(const fm_address_t *addr, unsigned int pfxlen)
