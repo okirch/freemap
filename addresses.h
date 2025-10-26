@@ -47,6 +47,12 @@ struct fm_address_prefix_array {
 	fm_address_prefix_t *	elements;
 };
 
+typedef struct fm_address_array fm_address_array_t;
+struct fm_address_array {
+	unsigned int		count;
+	fm_address_t *		elements;
+};
+
 struct fm_address_enumerator {
 	struct hlist		link;
 
@@ -111,5 +117,20 @@ fm_address_enumerator_list_pop(struct fm_address_enumerator_list *list)
 	return entry;
 }
 
+static inline void
+fm_address_array_append(fm_address_array_t *array, const fm_address_t *addr)
+{
+	if ((array->count % 8) == 0)
+		array->elements = realloc(array->elements, (array->count + 8) * sizeof(array->elements[0]));
+	array->elements[array->count++] = *addr;
+}
+
+static inline void
+fm_address_array_destroy(fm_address_array_t *array)
+{
+	if (array->elements)
+		free(array->elements);
+	memset(array, 0, sizeof(*array));
+}
 
 #endif /* FREEMAP_ADDRESSES_H */
