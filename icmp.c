@@ -299,7 +299,7 @@ fm_icmp_protocol_for_family(int af)
 }
 
 /*
- * ICMP port probes using standard BSD sockets
+ * ICMP probes using standard BSD sockets
  */
 struct fm_icmp_host_probe {
 	fm_probe_t	base;
