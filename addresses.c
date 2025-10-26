@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <errno.h>
+#include <netdb.h>
 
 #include <net/if.h>
 #include <ifaddrs.h>
@@ -340,6 +341,51 @@ fm_address_equal(const fm_address_t *a, const fm_address_t *b, bool with_port)
 }
 
 /*
+ * Helper functions for hostname resolution
+ */
+static bool
+fm_address_resolve(const char *hostname, fm_address_array_t *array)
+{
+	struct addrinfo hints, *result = NULL, *pos;
+	fm_address_t address;
+	int err;
+
+	if (fm_try_parse_address(hostname, &address)) {
+		if (!fm_address_generator_address_eligible(&address)) {
+			fm_log_warning("Ignoring address %s because it's from the wrong family", hostname);
+			return true;
+		}
+
+		fm_address_array_append(array, &address);
+		return true;
+	}
+
+	memset(&hints, 0, sizeof(hints));
+
+	/* only resolve addresses of a given family */
+	hints.ai_family = fm_global.address_generation.only_family;
+
+	err = getaddrinfo(hostname, NULL, &hints, &result);
+
+	if (err < 0) {
+		fm_log_error("Unable to resolve \"%s\": %s", hostname, gai_strerror(err));
+		return false;
+	}
+
+	for (pos = result; pos; pos = pos->ai_next) {
+		if (pos->ai_addrlen > sizeof(address))
+			continue;
+		memset(&address, 0, sizeof(address));
+		memcpy(&address, pos->ai_addr, pos->ai_addrlen);
+
+		fm_address_array_append(array, &address);
+	}
+
+	freeaddrinfo(result);
+	return true;
+}
+
+/*
  * The "simple" enumerator that is initialized with a single address
  */
 struct fm_simple_address_enumerator {
@@ -369,16 +415,29 @@ static fm_address_enumerator_t *fm_create_simple_address_enumerator_work(const c
 fm_address_enumerator_t *
 fm_create_simple_address_enumerator(const char *addr_string)
 {
-	struct sockaddr_storage ss;
+	fm_address_array_t addrs = { 0 };
+	fm_address_enumerator_t *result = NULL;
+	unsigned int i;
 
-	if (fm_try_parse_address(addr_string, &ss)) {
-		if (!fm_address_generator_address_eligible(&ss))
-			return NULL;
+	if (!fm_address_resolve(addr_string, &addrs))
+		return NULL;
 
-		return fm_create_simple_address_enumerator_work(addr_string, &ss);
+	for (i = 0; i < addrs.count; ++i) {
+		fm_address_t *addr = &addrs.elements[i];
+		fm_address_enumerator_t *agen;
+
+		agen = fm_create_simple_address_enumerator_work(fm_address_format(addr), addr);
+		if (agen != NULL) {
+			result = agen;
+
+			if (!fm_global.address_generation.try_all)
+				break;
+		}
 	}
 
-	return NULL;
+	fm_address_array_destroy(&addrs);
+
+	return result;
 }
 
 static fm_address_enumerator_t *
