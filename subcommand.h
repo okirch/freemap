@@ -25,6 +25,7 @@ struct fm_cmdparser_option_handler {
 
 	int			value;
 	int			has_arg;
+	/* FIXME: the fn() could live in cmdparser, too - no need to duplicate it all over the place */
 	bool			(*fn)(int opt, const char *arg_value);
 };
 
@@ -35,11 +36,6 @@ struct fm_cmdparser {
 	unsigned int		cmdid;
 
 	fm_cmdparser_t *	parent;
-
-	char *			short_options;
-
-	unsigned int		num_long_options;
-	struct option *		long_options;
 
 	unsigned int		num_handlers;
 	struct fm_cmdparser_option_handler *handlers;
