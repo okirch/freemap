@@ -2,6 +2,7 @@ CFLAGS	= -Wall -I.. -g
 
 ALL	= \
 	  addrs \
+	  argparse \
 	  ratelimit
 
 all:	$(ALL)

@@ -5,3 +5,4 @@
 freemap
 tests/addrs
 tests/ratelimit
+tests/argparse
