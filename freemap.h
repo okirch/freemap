@@ -26,8 +26,8 @@
 extern void		fm_config_init_defaults(fm_config_t *);
 extern bool		fm_config_load(fm_config_t *, const char *path);
 
-extern fm_address_enumerator_t *fm_create_simple_address_enumerator(const char *addr_string, const fm_addr_gen_options_t *);
-extern fm_address_enumerator_t *fm_create_cidr_address_enumerator(const char *addr_string, const fm_addr_gen_options_t *);
+extern fm_address_enumerator_t *fm_create_simple_address_enumerator(const char *addr_string);
+extern fm_address_enumerator_t *fm_create_cidr_address_enumerator(const char *addr_string);
 
 extern fm_report_t *	fm_report_create(void);
 extern void		fm_report_write(const fm_report_t *, const fm_target_t *);

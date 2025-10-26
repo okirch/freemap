@@ -44,6 +44,12 @@ static struct option long_options[] = {
 	{ NULL },
 };
 
+struct late_options {
+	unsigned int	count;
+	int		options[16];
+};
+
+static void		postpone_option(struct late_options *, int);
 static void		bad_option(const char *fmt, ...);
 static void		usage(int);
 
@@ -53,9 +59,9 @@ main(int argc, char **argv)
 	const char *opt_logfile = NULL;
 	const char *opt_program = NULL;
 	bool opt_dump = false;
-	fm_addr_gen_options_t addr_gen_opts;
 	const fm_scan_program_t *program = NULL;
 	fm_scanner_t *scanner;
+	struct late_options delayed_opts;
 	int c;
 
 #if 1
@@ -63,7 +69,7 @@ main(int argc, char **argv)
 		printf("Tried but failed to enable pedantic memory checking\n");
 #endif
 
-	memset(&addr_gen_opts, 0, sizeof(addr_gen_opts));
+	memset(&delayed_opts, 0, sizeof(delayed_opts));
 
 	while ((c = getopt_long(argc, argv, "dh", long_options, NULL)) != EOF) {
 		switch (c) {
@@ -76,19 +82,9 @@ main(int argc, char **argv)
 			break;
 
 		case OPT_IPV4_ONLY:
-			if (addr_gen_opts.only_family != AF_UNSPEC)
-				bad_option("Options --ipv4 and --ipv6 are mutually exclusive\n");
-			addr_gen_opts.only_family = AF_INET;
-			break;
-
 		case OPT_IPV6_ONLY:
-			if (addr_gen_opts.only_family != AF_UNSPEC)
-				bad_option("Options --ipv4 and --ipv6 are mutually exclusive\n");
-			addr_gen_opts.only_family = AF_INET6;
-			break;
-
 		case OPT_ALL_ADDRS:
-			addr_gen_opts.all_addrs = true;
+			postpone_option(&delayed_opts, c);
 			break;
 
 		case OPT_DUMP:
@@ -118,6 +114,29 @@ main(int argc, char **argv)
 	if (!fm_config_load(&fm_global, "./freemap.conf"))
 		fm_log_fatal("Unable to parse local config file\n");
 
+	/* Now process any delayed options */
+	while (delayed_opts.count > 0) {
+		c = delayed_opts.options[--delayed_opts.count];
+
+		switch (c) {
+		case OPT_IPV4_ONLY:
+			if (fm_global.address_generation.only_family != AF_UNSPEC)
+				bad_option("Options --ipv4 and --ipv6 are mutually exclusive\n");
+			fm_global.address_generation.only_family = AF_INET;
+			break;
+
+		case OPT_IPV6_ONLY:
+			if (fm_global.address_generation.only_family != AF_UNSPEC)
+				bad_option("Options --ipv4 and --ipv6 are mutually exclusive\n");
+			fm_global.address_generation.only_family = AF_INET6;
+			break;
+
+		case OPT_ALL_ADDRS:
+			fm_global.address_generation.try_all = true;
+			break;
+		}
+	}
+
 	if (optind >= argc) {
 		fm_log_error("Missing scan target(s)\n");
 		usage(1);
@@ -131,9 +150,9 @@ main(int argc, char **argv)
 		const char *name = argv[optind++];
 
 		if (strchr(name, '/')) {
-			agen = fm_create_cidr_address_enumerator(name, &addr_gen_opts);
+			agen = fm_create_cidr_address_enumerator(name);
 		} else {
-			agen = fm_create_simple_address_enumerator(name, &addr_gen_opts);
+			agen = fm_create_simple_address_enumerator(name);
 		}
 
 		if (agen == NULL)
@@ -209,3 +228,15 @@ bad_option(const char *fmt, ...)
 
 	usage(1);
 }
+
+static void
+postpone_option(struct late_options *delay, int opt)
+{
+	if (delay->count >= 16) {
+		fprintf(stderr, "Too many options for my tiny brain\n");
+		usage(1);
+	}
+
+	delay->options[delay->count++] = opt;
+}
+

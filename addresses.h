@@ -71,6 +71,18 @@ extern fm_address_enumerator_t *fm_address_enumerator_alloc(const struct fm_addr
 extern const unsigned char *	fm_address_get_raw_addr(const fm_address_t *, unsigned int *nbits);
 extern void			fm_interface_add(const char *name, const struct sockaddr_ll *);
 
+static inline bool
+fm_address_generator_address_eligible(const fm_address_t *address)
+{
+	if (fm_global.address_generation.only_family == AF_UNSPEC)
+		return true;	/* no restrictions */
+
+	if (fm_global.address_generation.only_family == address->ss_family)
+		return true;	/* it's a match */
+
+	return false;
+}
+
 static inline void
 fm_address_enumerator_list_append(struct fm_address_enumerator_list *list, fm_address_enumerator_t *entry)
 {

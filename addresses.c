@@ -365,7 +365,7 @@ static const struct fm_address_enumerator_ops fm_simple_address_enumerator_ops =
  * generators rather than a single one.
  */
 fm_address_enumerator_t *
-fm_create_simple_address_enumerator(const char *addr_string, const fm_addr_gen_options_t *opts)
+fm_create_simple_address_enumerator(const char *addr_string)
 {
 	struct sockaddr_storage ss;
 	struct fm_simple_address_enumerator *sagen;
@@ -373,7 +373,7 @@ fm_create_simple_address_enumerator(const char *addr_string, const fm_addr_gen_o
 	if (!fm_try_parse_address(addr_string, &ss))
 		return NULL;
 
-	if (opts != NULL && opts->only_family && opts->only_family != ss.ss_family)
+	if (!fm_address_generator_address_eligible(&ss))
 		return NULL;
 
 	sagen = NEW_ADDRESS_ENUMERATOR(fm_simple_address_enumerator);
@@ -475,7 +475,7 @@ fm_ipv4_network_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *
  * generators rather than a single one.
  */
 fm_address_enumerator_t *
-fm_create_cidr_address_enumerator(const char *addr_string, const fm_addr_gen_options_t *opts)
+fm_create_cidr_address_enumerator(const char *addr_string)
 {
 	struct sockaddr_storage ss;
 	unsigned int cidr_bits, host_bits;
@@ -485,7 +485,7 @@ fm_create_cidr_address_enumerator(const char *addr_string, const fm_addr_gen_opt
 		return NULL;
 	}
 
-	if (opts != NULL && opts->only_family && opts->only_family != ss.ss_family)
+	if (!fm_address_generator_address_eligible(&ss))
 		return NULL;
 
 	host_bits = fm_addrfamily_max_addrbits(ss.ss_family);

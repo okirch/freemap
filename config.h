@@ -22,6 +22,12 @@
 #include "types.h"
 
 struct fm_config {
+	struct fm_config_address_generation {
+		int		only_family;
+		bool		try_all;
+		bool		randomize;
+	} address_generation;
+
 	struct fm_config_target_pool {
 		unsigned int	initial_size;
 		unsigned int	max_size;
