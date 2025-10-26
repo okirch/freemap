@@ -316,6 +316,7 @@ fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *dat
 		}
 	}
 
+	fm_config_complain(node, "unknown attribute \"%s\"", attr_name);
 	return false;
 }
 
