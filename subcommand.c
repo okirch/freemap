@@ -18,9 +18,35 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include "freemap.h"
 #include "subcommand.h"
 #include "utils.h"
+
+/*
+ * Our own simple argv parser.
+ */
+typedef struct fm_arg_parser {
+	int		argc;
+	char **		argv;
+
+	bool		eof;
+	int		optind;
+
+	struct {
+		const char *	option;
+		int		value;
+		int		has_arg;
+		const char *	argument;
+		bool		(*setfn)(int, const char *);
+	} found;
+} fm_arg_parser_t;
+
+#define FM_ARG_OK		0
+#define FM_ARG_EOF		-1
+#define FM_ARG_POSITIONALS	-2
+#define FM_ARG_UNKNOWN_OPTION	-3
+#define FM_ARG_MISSING_ARGUMENT	-4
 
 static int
 fm_short_options_iter(const char **pos, int *has_arg_p)
@@ -66,7 +92,7 @@ fm_options_contain(const struct option *list, unsigned int list_count, const str
 }
 
 static void
-fm_cmdparser_add_handler(fm_cmdparser_t *parser, int val, int has_arg, bool (*fn)(int, const char *))
+fm_cmdparser_add_handler(fm_cmdparser_t *parser, const char *name, int val, int has_arg, bool (*fn)(int, const char *))
 {
 	struct fm_cmdparser_option_handler *h;
 
@@ -74,9 +100,47 @@ fm_cmdparser_add_handler(fm_cmdparser_t *parser, int val, int has_arg, bool (*fn
 		parser->handlers = realloc(parser->handlers, (parser->num_handlers + 16) * sizeof(parser->handlers[0]));
 
 	h = &parser->handlers[parser->num_handlers++];
+	h->name = strdup(name);
 	h->value = val;
 	h->has_arg = has_arg;
 	h->fn = fn;
+}
+
+static bool
+fm_cmdparser_find_long_option_handler(const fm_cmdparser_t *parser, const char *name, fm_arg_parser_t *state)
+{
+	static char errname[64];
+	unsigned int i;
+
+	while (parser != NULL) {
+		for (i = 0; i < parser->num_handlers; ++i) {
+			const struct fm_cmdparser_option_handler *h = &parser->handlers[i];
+
+			if (!strcmp(h->name, name)) {
+				state->found.option = h->name;
+				state->found.value = h->value;
+				state->found.has_arg = h->has_arg;
+				state->found.setfn = h->fn;
+				return true;
+			}
+		}
+
+		parser = parser->parent;
+	}
+
+	strncpy(errname, name, sizeof(errname) - 1);
+	state->found.option = errname;
+
+	return false;
+}
+
+static bool
+fm_cmdparser_find_short_option_handler(const fm_cmdparser_t *parser, char cc, fm_arg_parser_t *state)
+{
+	char namebuf[8];
+
+	snprintf(namebuf, sizeof(namebuf), "-%c", cc);
+	return fm_cmdparser_find_long_option_handler(parser, namebuf, state);
 }
 
 static inline const struct fm_cmdparser_option_handler *
@@ -100,7 +164,7 @@ fm_cmdparser_copy_handler(fm_cmdparser_t *parser, const fm_cmdparser_t *parent, 
 
 	h = fm_cmdparser_find_handler(parent, optchar);
 	if (h != NULL) {
-		fm_cmdparser_add_handler(parser, h->value, h->has_arg, h->fn);
+		fm_cmdparser_add_handler(parser, h->name, h->value, h->has_arg, h->fn);
 		return true;
 	}
 	return false;
@@ -174,13 +238,22 @@ fm_cmdparser_main(const char *name, unsigned int cmdid,
 	}
 
 	for (o = long_options; o->name; ++o) {
+		char *long_name = NULL;
+
 		fm_cmdparser_add_long_option(parser, o);
-		fm_cmdparser_add_handler(parser, o->val, o->has_arg, opt_fn);
+
+		asprintf(&long_name, "--%s", o->name);
+		fm_cmdparser_add_handler(parser, long_name, o->val, o->has_arg, opt_fn);
+		free(long_name);
 	}
 
 	pos = short_options;
-	while ((c = fm_short_options_iter(&pos, &has_arg)) >= 0)
-		fm_cmdparser_add_handler(parser, c, has_arg, opt_fn);
+	while ((c = fm_short_options_iter(&pos, &has_arg)) >= 0) {
+		char namebuf[8];
+
+		snprintf(namebuf, sizeof(namebuf), "-%c" ,c);
+		fm_cmdparser_add_handler(parser, namebuf, c, has_arg, opt_fn);
+	}
 
 	return parser;
 }
@@ -190,6 +263,8 @@ fm_cmdparser_install_subcommand(fm_cmdparser_t *parent, fm_cmdparser_t *parser)
 {
 	unsigned int count = 0;
 
+	assert(parser->parent == NULL);
+
 	if (parent->subcommands != NULL) {
 		while (parent->subcommands[count])
 			++count;
@@ -198,6 +273,7 @@ fm_cmdparser_install_subcommand(fm_cmdparser_t *parent, fm_cmdparser_t *parser)
 	parent->subcommands = realloc(parent->subcommands, (count + 2) * sizeof(parent->subcommands[0]));
 
 	parent->subcommands[count++] = parser;
+	parser->parent = parent;
 }
 
 static fm_cmdparser_t *
@@ -264,39 +340,157 @@ fm_cmdparser_usage(const fm_cmdparser_t *parser, int exval)
 	exit(1);
 }
 
-unsigned int
+/*
+ * Our own simple argv parser.
+ */
+static void
+fm_arg_parser_init(fm_arg_parser_t *ap, int argc, char **argv)
+{
+	memset(ap, 0, sizeof(*ap));
+
+	ap->argc = argc;
+	ap->argv = argv;
+	ap->optind = 1;
+}
+
+static int
+fm_arg_parser_next_option(fm_arg_parser_t *state, const fm_cmdparser_t *parser)
+{
+	char *next;
+
+	memset(&state->found, 0, sizeof(state->found));
+
+	if (state->eof)
+		return FM_ARG_EOF;
+
+	if (state->optind >= state->argc) {
+		state->eof = true;
+		return FM_ARG_EOF;
+	}
+
+	next = state->argv[state->optind];
+
+	if (!strcmp(next, "--")) {
+		state->eof = true;
+		state->optind++;
+		return FM_ARG_EOF;
+	}
+
+	if (next[0] != '-')
+		return FM_ARG_POSITIONALS;
+
+	if (next[1] == '\0')
+		return FM_ARG_POSITIONALS;
+
+	if (next[1] != '-') {
+		char short_value = next[1];
+
+		if (!fm_cmdparser_find_short_option_handler(parser, short_value, state))
+			return FM_ARG_UNKNOWN_OPTION;
+
+		if (state->found.has_arg == no_argument) {
+			if (next[2] != '\0') {
+				/* -abc, and -a is an option that doesn't want an arg */
+				next[1] = '-';
+				state->argv[state->optind] = next + 1;
+			} else {
+				state->optind += 1;
+			}
+			return 0;
+		} else
+		if (next[2] != '\0') {
+			/* -abc, and -a wants an argument: optarg="bc" */
+			state->found.argument = next + 2;
+			state->optind++;
+			return 0;
+		}
+	} else {
+		/* --foobar */
+
+		state->optind++;
+
+		if (!fm_cmdparser_find_long_option_handler(parser, next, state))
+			return FM_ARG_UNKNOWN_OPTION;
+
+		if (state->found.has_arg == no_argument)
+			return 0;
+	}
+
+	/* Regular argument parsing:
+	 *  -c blah
+	 *  --foobar blah
+	 */
+	if (state->optind >= state->argc) {
+		if (state->found.has_arg == optional_argument)
+			return 0;
+
+		return FM_ARG_MISSING_ARGUMENT;
+	}
+
+	next = state->argv[state->optind];
+	if (!strncmp(next, "--", 2)) {
+		if (state->found.has_arg == optional_argument)
+			return 0;
+
+		fm_log_error("%s: option %s requires an argument but is followed by \"%s\"",
+				parser->name, state->found.option, next);
+		return FM_ARG_MISSING_ARGUMENT;
+	}
+
+	state->found.argument = next;
+	state->optind++;
+
+	return 0;
+}
+
+static const char *
+fm_arg_parser_next_positional(fm_arg_parser_t *state)
+{
+	if (state->eof)
+		return NULL;
+
+	if (state->optind >= state->argc)
+		return NULL;
+
+	return state->argv[state->optind++];
+}
+
+int
 fm_cmdparser_process_args(const fm_cmdparser_t *parser, int argc, char **argv)
 {
-	int c;
+	fm_arg_parser_t state;
+
+	fm_arg_parser_init(&state, argc, argv);
 
 	while (true) {
-		while ((c = getopt_long(argc, argv, parser->short_options, parser->long_options, NULL)) >= 0) {
-			const struct fm_cmdparser_option_handler *h;
+		const char *cmdname;
+		int c;
 
-			if (c == '?')
-				return false;
+		while (true) {
+			c = fm_arg_parser_next_option(&state, parser);
 
-			h = fm_cmdparser_find_handler(parser, c);
-			if (h == NULL) {
-				fm_log_error("%s: no handler for option %d", parser->name, c);
-				return false;
+			if (c == FM_ARG_EOF || c == FM_ARG_POSITIONALS)
+				break;
+
+			if (c < 0) {
+				fm_log_error("error: %s", state.found.option);
+				fm_cmdparser_usage(parser, 1);
 			}
 
-			if (!h->fn(c, optarg))
+			if (!state.found.setfn(state.found.value, state.found.argument))
 				fm_cmdparser_usage(parser, 1);
 		}
 
 		if (parser->subcommands == NULL)
 			break;
 
-		if (optind >= argc) {
+		cmdname = fm_arg_parser_next_positional(&state);
+		if (cmdname == NULL) {
 			fm_log_error("%s: missing subcommand", parser->name);
 			fm_cmdparser_usage(parser, 1);
 		} else {
 			fm_cmdparser_t *subparser;
-			const char *cmdname;
 
-			cmdname = argv[optind++];
 			subparser = fm_cmdparser_find_subcommand(parser, cmdname);
 			if (subparser == NULL) {
 				fm_log_error("%s: unknown subcommand \"%s\"", parser->name, cmdname);
@@ -306,6 +500,8 @@ fm_cmdparser_process_args(const fm_cmdparser_t *parser, int argc, char **argv)
 			parser = subparser;
 		}
 	}
+
+	optind = state.optind;
 
 	return parser->cmdid;
 }
