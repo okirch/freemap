@@ -39,13 +39,17 @@ enum {
 };
 
 static struct option main_long_options[] = {
-	{ "program",		required_argument,	NULL,	OPT_PROGRAM,	},
-	{ "logfile",		required_argument,	NULL,	'L',	},
 	{ "ipv4",		no_argument,		NULL,	OPT_IPV4_ONLY,	},
 	{ "ipv6",		no_argument,		NULL,	OPT_IPV6_ONLY,	},
 	{ "all-addresses",	no_argument,		NULL,	OPT_ALL_ADDRS,	},
 	{ "debug",		no_argument,		NULL,	'd',	},
 	{ "help",		no_argument,		NULL,	'h',	},
+	{ NULL },
+};
+
+static struct option scan_long_options[] = {
+	{ "logfile",		required_argument,	NULL,	'L',	},
+	{ "program",		required_argument,	NULL,	OPT_PROGRAM,	},
 	{ "dump",		no_argument,		NULL,	OPT_DUMP },
 	{ NULL },
 };
@@ -54,7 +58,9 @@ struct fm_cmd_main_options {
 	int		ipv4_only;
 	int		ipv6_only;
 	int		all_addrs;
+};
 
+struct fm_cmd_scan_options {
 	const char *	logfile;
 	const char *	program;
 	bool		dump;
@@ -64,6 +70,7 @@ static void		bad_option(const char *fmt, ...);
 static void		usage(int);
 
 static struct fm_cmd_main_options main_options;
+static struct fm_cmd_scan_options scan_options;
 
 static bool
 handle_main_options(int c, const char *arg_value)
@@ -73,10 +80,6 @@ handle_main_options(int c, const char *arg_value)
 	switch (c) {
 	case 'd':
 		fm_debug_level += 1;
-		break;
-
-	case 'L':
-		main_options.logfile = optarg;
 		break;
 
 	case OPT_IPV4_ONLY:
@@ -89,16 +92,6 @@ handle_main_options(int c, const char *arg_value)
 
 	case OPT_ALL_ADDRS:
 		main_options.all_addrs = true;
-		break;
-
-	case OPT_DUMP:
-		main_options.dump = true;
-		break;
-
-	case OPT_PROGRAM:
-		if (main_options.program)
-			fm_log_fatal("duplicate program option given");
-		main_options.program = optarg;
 		break;
 
 	default:
@@ -127,15 +120,33 @@ apply_main_options(void)
 static bool
 handle_scan_options(int c, const char *arg_value)
 {
-	/* No options so far */
-	return false;
+	switch (c) {
+	case 'L':
+		scan_options.logfile = optarg;
+		break;
+
+	case OPT_DUMP:
+		scan_options.dump = true;
+		break;
+
+	case OPT_PROGRAM:
+		if (scan_options.program)
+			fm_log_fatal("duplicate program option given");
+		scan_options.program = optarg;
+		break;
+
+	default:
+		return false;
+	}
+
+	return true;
 }
+
+static int	perform_cmd_scan(int argc, char **argv);
 
 int
 main(int argc, char **argv)
 {
-	const fm_scan_program_t *program = NULL;
-	fm_scanner_t *scanner;
 	fm_cmdparser_t *parser;
 	unsigned int cmdid;
 
@@ -146,7 +157,7 @@ main(int argc, char **argv)
 
 	parser = fm_cmdparser_main("freemap", FM_CMDID_MAIN, "d", main_long_options, handle_main_options);
 
-	fm_cmdparser_subcommand(parser, "scan", FM_CMDID_SCAN, NULL, NULL, handle_scan_options);
+	fm_cmdparser_add_subcommand(parser, "scan", FM_CMDID_SCAN, NULL, scan_long_options, handle_scan_options);
 
 	cmdid = fm_cmdparser_process_args(parser, argc, argv);
 	if (cmdid == 0)
@@ -164,8 +175,20 @@ main(int argc, char **argv)
 	/* Now apply any options for the main command */
 	apply_main_options();
 
-	if (cmdid != FM_CMDID_SCAN)
+	switch (cmdid) {
+	case FM_CMDID_SCAN:
+		return perform_cmd_scan(argc - optind, argv + optind);
+	default:
 		fm_log_fatal("Cannot execute command %u", cmdid);
+	}
+
+}
+
+int
+perform_cmd_scan(int argc, char **argv)
+{
+	const fm_scan_program_t *program = NULL;
+	fm_scanner_t *scanner;
 
 	if (optind >= argc) {
 		fm_log_error("Missing scan target(s)\n");
@@ -191,26 +214,26 @@ main(int argc, char **argv)
 		fm_target_manager_add_address_generator(mgr, agen);
 	}
 
-	if (main_options.logfile != NULL) {
+	if (scan_options.logfile != NULL) {
 		fm_report_t *report;
 
 		report = fm_scanner_get_report(scanner);
-		fm_report_add_logfile(report, main_options.logfile);
+		fm_report_add_logfile(report, scan_options.logfile);
 	}
 
-	if (main_options.program == NULL)
-		main_options.program = "default";
+	if (scan_options.program == NULL)
+		scan_options.program = "default";
 
-	program = fm_scan_library_load_program(main_options.program);
+	program = fm_scan_library_load_program(scan_options.program);
 	if (program == NULL)
-		fm_log_fatal("Could not find scan program \"%s\"\n", main_options.program);
-	if (main_options.dump)
+		fm_log_fatal("Could not find scan program \"%s\"\n", scan_options.program);
+	if (scan_options.dump)
 		fm_scan_program_dump(program);
 
 	if (!fm_scan_program_compile(program, scanner))
 		fm_log_fatal("Failed to compile scan program");
 
-	if (main_options.dump)
+	if (scan_options.dump)
 		fm_scanner_dump_program(scanner);
 
 	if (!fm_scanner_ready(scanner)) {
@@ -230,6 +253,7 @@ main(int argc, char **argv)
 
 	return 0;
 }
+
 
 static void
 usage(int exval)
