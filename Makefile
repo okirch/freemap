@@ -1,4 +1,4 @@
-CFLAGS	= -Wall -g -D_GNU_SOURCE -I.
+CFLAGS	= -Wall -g -D_GNU_SOURCE -I. -lcurlies
 
 OBJS	= scanner.o \
 	  scheduler.o \
@@ -17,6 +17,7 @@ OBJS	= scanner.o \
 	  report.o \
 	  program.o \
 	  filefmt.o \
+	  defaults.o \
 	  wellknown.o \
 	  wellknown/rpc.o \
 	  wellknown/dns.o \

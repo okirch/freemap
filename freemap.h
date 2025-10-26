@@ -21,6 +21,9 @@
 #include <time.h>
 #include <stdio.h>
 #include "types.h"
+#include "config.h"
+
+extern void		fm_config_init_defaults(fm_config_t *);
 
 extern fm_address_enumerator_t *fm_create_simple_address_enumerator(const char *addr_string, const fm_addr_gen_options_t *);
 extern fm_address_enumerator_t *fm_create_cidr_address_enumerator(const char *addr_string, const fm_addr_gen_options_t *);

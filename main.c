@@ -109,6 +109,8 @@ main(int argc, char **argv)
 		}
 	}
 
+	fm_config_init_defaults(&fm_global);
+
 	if (optind >= argc) {
 		fm_log_error("Missing scan target(s)\n");
 		usage(1);

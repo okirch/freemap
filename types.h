@@ -22,6 +22,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+typedef struct fm_config  fm_config_t;
 typedef struct fm_address_enumerator fm_address_enumerator_t;
 typedef struct fm_target fm_target_t;
 typedef struct fm_interface fm_interface_t;
@@ -47,22 +48,6 @@ typedef struct sockaddr_storage	fm_address_t;
 
 /* so that we don't have to include linux/if_packet.h all the time */
 struct sockaddr_ll;
-
-static const unsigned int	FM_INITIAL_TARGET_POOL_SIZE = 16;
-static const unsigned int	FM_DEFAULT_GLOBAL_PACKET_RATE = 1000;
-static const unsigned int	FM_DEFAULT_HOST_PACKET_RATE = 10;
-static const unsigned int	FM_TARGET_POOL_RESIZE_TIME = 4; /* grow the pool every 4 seconds */
-static const unsigned int	FM_TARGET_POOL_MAX_SIZE = 1023;
-
-/* ICMP reachability probe. We transmit 3 echo requests, 250 msec apart, then wait
- * for up to 1 second for a response. */
-static const unsigned int	FM_ICMP_PROBE_RETRIES = 3;
-static const unsigned int	FM_ICMP_PACKET_SPACING = 250;
-static const unsigned int	FM_ICMP_RESPONSE_TIMEOUT = 1000;
-
-static const unsigned int	FM_ARP_PROBE_RETRIES = 3;
-static const unsigned int	FM_ARP_PACKET_SPACING = 250;
-static const unsigned int	FM_ARP_RESPONSE_TIMEOUT = 1000;
 
 /* Protocol IDs, used internally */
 enum {
