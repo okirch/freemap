@@ -46,6 +46,15 @@ struct global_opts {
 	char *		values[16];
 } global_opts;
 
+struct testcase {
+	char *		argv[16];
+	struct global_opts expect;
+	unsigned int	expect_cmdid;
+	const char *	expect_cmdname;
+};
+
+static unsigned int	test_index = 1;
+
 static bool
 global_set_fn(int val, const char *argument)
 {
@@ -96,8 +105,12 @@ strings_equal(const char *s1, const char *s2)
 static char **
 clone_argv(int argc, char **argv)
 {
+	char testname[32];
 	char **ret;
 	int i;
+
+	snprintf(testname, sizeof(testname), "test%u", test_index++);
+	argv[0] = testname;
 
 	ret = calloc(argc + 1, sizeof(ret[0]));
 	for (i = 0; i < argc; ++i)
@@ -106,7 +119,7 @@ clone_argv(int argc, char **argv)
 }
 
 bool
-parse_with_subcommand(fm_cmdparser_t *parser, char **argv, const struct global_opts *expect, int expected_subcommand, const char *expected_name)
+perform_test(fm_cmdparser_t *parser, char **argv, const struct global_opts *expect, int expected_subcommand, const char *expected_name)
 {
 	int argc = 0;
 	fm_command_t *cmd;
@@ -115,6 +128,35 @@ parse_with_subcommand(fm_cmdparser_t *parser, char **argv, const struct global_o
 		++argc;
 
 	argv = clone_argv(argc, argv);
+
+	if (true) {
+		int k;
+
+		printf("%s:\n", argv[0]);
+		printf("   cmd:");
+		for (k = 0; k < argc; ++k)
+			printf(" %s", argv[k]);
+		printf("\n");
+
+		printf("   expect result:\n    cmdid=%d", expected_subcommand);
+		if (expected_name)
+			printf(" cmdname=\"%s\"", expected_name);
+		printf("\n");
+
+		printf("    option foobar: %s\n", expect->foobar);
+		printf("    option brain:  %s\n", expect->brain);
+		printf("    option debug:  %d\n", expect->debug);
+
+		if (expected_subcommand == 2)
+			printf("    option output: %s\n", expect->output);
+
+		if (expect->values[0]) {
+			printf("    arguments:    ");
+			for (k = 0; expect->values[k]; ++k)
+				printf(" %s", expect->values[k]);
+			printf("\n");
+		}
+	}
 
 	memset(&global_opts, 0, sizeof(global_opts));
 
@@ -181,148 +223,90 @@ parse_with_subcommand(fm_cmdparser_t *parser, char **argv, const struct global_o
 	return true;
 }
 
-bool
-parse_one(fm_cmdparser_t *parser, char **argv, const struct global_opts *expect)
-{
-	return parse_with_subcommand(parser, argv, expect, 1, NULL);
-}
-
 void
-test1(fm_cmdparser_t *parser)
+run_test_set_simple(fm_cmdparser_t *parser, struct testcase *tc)
 {
-	struct global_opts expect = { 0 };
-	char *argv[] = {
-		(char *) __func__,
-		NULL
-	};
+	while (tc->argv[0] != NULL) {
+		if (tc->expect_cmdid == 0)
+			tc->expect_cmdid = 1;
+		if (tc->expect_cmdname == NULL)
+			tc->expect_cmdname = "test";
 
-	parse_one(parser, argv, &expect);
+		perform_test(parser, (char **) tc->argv, &tc->expect, tc->expect_cmdid, tc->expect_cmdname);
+		tc++;
+	}
 }
 
-void
-test2(fm_cmdparser_t *parser)
-{
-	struct global_opts expect = { .debug = 3 };
-	char *argv[] = {
-		(char *) __func__,
-		"-ddd",
-		NULL
-	};
+static struct testcase	test_set0[] = {
+	{
+		.argv = {
+			"test",
+		},
+	},
+	{
+		.argv = {
+			"test", "-ddd"
+		},
+		.expect = { .debug = 3, }
+	},
+	{
+		.argv = {
+			"test", "--foobar", "strange"
+		},
+		.expect = { .foobar = "strange" }
+	},
+	{
+		.argv = {
+			"test", "--brain",
+		},
+		.expect = { .brain = NULL, },
+	},
+	{
+		.argv = {
+			"test", "--brain", "dead",
+		},
+		.expect = { .brain = "dead", },
+	},
+	{
+		.argv = {
+			"test", "-dfred",
+		},
+		.expect = { .foobar = "red", .debug = 1, },
+	},
+	{
+		.argv = {
+			"test", "--debug", "positional",
+		},
+		.expect = { .debug = 1, .values = { "positional", } },
+	},
+	{
+		.argv = {
+			"test", "--debug", "--", "-d",
+		},
+		.expect = { .debug = 1, .values = { "-d", } },
+	},
+	{
+		.argv = {
+			"test", "--", "-d",
+		},
+		.expect = { .values = { "-d", } },
+	},
 
-	parse_one(parser, argv, &expect);
-}
+	{ .argv = { NULL }, }
+};
 
-void
-test3(fm_cmdparser_t *parser)
-{
-	struct global_opts expect = { .foobar = "strange" };
-	char *argv[] = {
-		(char *) __func__,
-		"--foobar",
-		"strange",
-		NULL
-	};
+static struct testcase	test_set1[] = {
+	{
+		.argv = {
+			"test", "frobnicate", "-d", "bork",
+		},
+		.expect = { .debug = 1, .values = { "bork" } },
+		.expect_cmdid = 2,
+		.expect_cmdname = "test frobnicate",
+	},
 
-	parse_one(parser, argv, &expect);
-}
-
-void
-test4(fm_cmdparser_t *parser)
-{
-	struct global_opts expect = { .brain = NULL };
-	char *argv[] = {
-		(char *) __func__,
-		"--brain",
-		NULL
-	};
-
-	parse_one(parser, argv, &expect);
-}
-
-void
-test5(fm_cmdparser_t *parser)
-{
-	struct global_opts expect = { .brain = "dead" };
-	char *argv[] = {
-		(char *) __func__,
-		"--brain",
-		"dead",
-		NULL
-	};
-
-	parse_one(parser, argv, &expect);
-}
-
-void
-test6(fm_cmdparser_t *parser)
-{
-	struct global_opts expect = { .foobar = "red", .debug = 1 };
-	char *argv[] = {
-		(char *) __func__,
-		"-dfred",
-		NULL
-	};
-
-	parse_one(parser, argv, &expect);
-}
-
-void
-test7(fm_cmdparser_t *parser)
-{
-	struct global_opts expect = { .debug = 1, .values = { "positional", } };
-	char *argv[] = {
-		(char *) __func__,
-		"--debug",
-		"positional",
-		NULL
-	};
-
-	parse_one(parser, argv, &expect);
-}
-
-void
-test8(fm_cmdparser_t *parser)
-{
-	struct global_opts expect = { .debug = 1, .values = { "-d", } };
-	char *argv[] = {
-		(char *) __func__,
-		"--debug",
-		"--",
-		"-d",
-		NULL
-	};
-
-	parse_one(parser, argv, &expect);
-}
-
-void
-test9(fm_cmdparser_t *parser)
-{
-	struct global_opts expect = { .values = { "-d", } };
-	char *argv[] = {
-		(char *) __func__,
-		"--",
-		"-d",
-		NULL
-	};
-
-	parse_one(parser, argv, &expect);
-}
-
-void
-test100(fm_cmdparser_t *parser)
-{
-	struct global_opts expect = { .debug = 1, .values = { "bork", } };
-	char *argv[] = {
-		(char *) __func__,
-		"frobnicate",
-		"-d",
-		"bork",
-		NULL
-	};
-
-	parse_with_subcommand(parser, argv, &expect, 2, "test frobnicate");
-}
+	{ .argv = { NULL }, }
+};
 
 int
 main(int argc, char **argv)
@@ -331,17 +315,11 @@ main(int argc, char **argv)
 
 	parser = fm_cmdparser_main("test", 1, "df:b::", global_long_options, global_set_fn);
 
-	test1(parser);
-	test2(parser);
-	test3(parser);
-	test4(parser);
-	test5(parser);
-	test6(parser);
-	test7(parser);
-	test8(parser);
-	test9(parser);
+	run_test_set_simple(parser, test_set0);
 
 	fm_cmdparser_add_subcommand(parser, "frobnicate", 2, NULL, frob_long_options, frob_set_fn);
-	test100(parser);
+
+	test_index = 100;
+	run_test_set_simple(parser, test_set1);
 }
 
