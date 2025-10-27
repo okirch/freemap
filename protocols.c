@@ -83,6 +83,36 @@ fm_protocol_engine_create_default(void)
 }
 
 /*
+ * mapping between FM_PROTO_* constants and protocol names
+ */
+static const char *	fm_protocol_names[__FM_PROTO_MAX] = {
+	[FM_PROTO_ARP]	= "arp",
+	[FM_PROTO_ICMP]	= "icmp",
+	[FM_PROTO_TCP]	= "tcp",
+	[FM_PROTO_UDP]	= "udp",
+};
+
+const char *
+fm_protocol_id_to_string(unsigned int id)
+{
+	if (id < __FM_PROTO_MAX)
+		return fm_protocol_names[id];
+	return NULL;
+}
+
+unsigned int
+fm_protocol_string_to_id(const char *name)
+{
+	unsigned int id;
+
+	for (id = 0; id < __FM_PROTO_MAX; ++id) {
+		if (fm_protocol_names[id] && !strcmp(fm_protocol_names[id], name))
+			return id;
+	}
+	return FM_PROTO_NONE;
+}
+
+/*
  * fm_protocol API
  */
 fm_protocol_t *

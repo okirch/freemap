@@ -67,6 +67,9 @@ extern fm_protocol_t *	fm_icmp_bsdsock_create(void);
 extern fm_protocol_t *	fm_icmp_rawsock_create(void);
 extern fm_protocol_t *	fm_arp_create(void);
 
+extern const char *	fm_protocol_id_to_string(unsigned int id);
+extern unsigned int	fm_protocol_string_to_id(const char *name);
+
 extern fm_protocol_t *	fm_protocol_create(const struct fm_protocol_ops *ops);
 extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);
 extern fm_probe_t *	fm_protocol_create_host_probe(fm_protocol_t *, fm_target_t *, unsigned int);
