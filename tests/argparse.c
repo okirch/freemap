@@ -31,10 +31,17 @@ fm_long_option_t	global_long_options[] = {
 	{ NULL }
 };
 
+fm_long_option_t	frob_long_options[] = {
+	{ "output",	FM_ARG_REQUIRED,	'o'	},
+	{ NULL }
+};
+
 struct global_opts {
 	const char *	foobar;
 	unsigned int	debug;
 	const char *	brain;
+
+	const char *	output;
 
 	char *		values[16];
 } global_opts;
@@ -53,6 +60,21 @@ global_set_fn(int val, const char *argument)
 
 	case 'b':
 		global_opts.brain = argument;
+		break;
+
+	default:
+		return false;
+	}
+
+	return true;
+}
+
+static bool
+frob_set_fn(int val, const char *argument)
+{
+	switch (val) {
+	case 'o':
+		global_opts.output = argument;
 		break;
 
 	default:
@@ -84,7 +106,7 @@ clone_argv(int argc, char **argv)
 }
 
 bool
-parse_one(fm_cmdparser_t *parser, char **argv, const struct global_opts *expect)
+parse_with_subcommand(fm_cmdparser_t *parser, char **argv, const struct global_opts *expect, int expected_subcommand, const char *expected_name)
 {
 	int argc = 0;
 	fm_command_t *cmd;
@@ -102,8 +124,14 @@ parse_one(fm_cmdparser_t *parser, char **argv, const struct global_opts *expect)
 		return false;
 	}
 
-	if (cmd->cmdid != 1) {
-		fprintf(stderr, "%s: fm_cmdparser_process_args() returns commmand id %d", argv[0], cmd->cmdid);
+	if (cmd->cmdid != expected_subcommand) {
+		fprintf(stderr, "%s: fm_cmdparser_process_args() returns commmand id %d, expected %d", argv[0], cmd->cmdid, expected_subcommand);
+		return false;
+	}
+
+	if (expected_name && !strings_equal(cmd->fullname, expected_name)) {
+		fprintf(stderr, "%s: unexpected difference: expected command name \"%s\", found \"%s\"\n",
+				argv[0], expected_name, cmd->fullname);
 		return false;
 	}
 
@@ -123,6 +151,11 @@ parse_one(fm_cmdparser_t *parser, char **argv, const struct global_opts *expect)
 		if (!strings_equal(global_opts.brain, expect->brain)) {
 			fprintf(stderr, "%s: unexpected difference: expected brain=\"%s\", found \"%s\"\n",
 					argv[0], expect->brain, global_opts.brain);
+			return false;
+		}
+		if (!strings_equal(global_opts.output, expect->output)) {
+			fprintf(stderr, "%s: unexpected difference: expected output=\"%s\", found \"%s\"\n",
+					argv[0], expect->output, global_opts.output);
 			return false;
 		}
 
@@ -146,6 +179,12 @@ parse_one(fm_cmdparser_t *parser, char **argv, const struct global_opts *expect)
 
 	printf("%s: OK\n", argv[0]);
 	return true;
+}
+
+bool
+parse_one(fm_cmdparser_t *parser, char **argv, const struct global_opts *expect)
+{
+	return parse_with_subcommand(parser, argv, expect, 1, NULL);
 }
 
 void
@@ -270,6 +309,21 @@ test9(fm_cmdparser_t *parser)
 	parse_one(parser, argv, &expect);
 }
 
+void
+test100(fm_cmdparser_t *parser)
+{
+	struct global_opts expect = { .debug = 1, .values = { "bork", } };
+	char *argv[] = {
+		(char *) __func__,
+		"frobnicate",
+		"-d",
+		"bork",
+		NULL
+	};
+
+	parse_with_subcommand(parser, argv, &expect, 2, "test frobnicate");
+}
+
 int
 main(int argc, char **argv)
 {
@@ -286,5 +340,8 @@ main(int argc, char **argv)
 	test7(parser);
 	test8(parser);
 	test9(parser);
+
+	fm_cmdparser_add_subcommand(parser, "frobnicate", 2, NULL, frob_long_options, frob_set_fn);
+	test100(parser);
 }
 
