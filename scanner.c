@@ -124,9 +124,38 @@ fm_scanner_create(void)
 	return scanner;
 }
 
+/*
+ * Convenience function for adding scan targets from
+ * a string, such as 1.2.3.4/24, or "some.host.com"
+ */
+bool
+fm_scanner_add_target_from_spec(fm_scanner_t *scanner, const char *spec)
+{
+	fm_address_enumerator_t *agen;
+
+	if (strchr(spec, '/')) {
+		agen = fm_create_cidr_address_enumerator(spec);
+	} else {
+		agen = fm_create_simple_address_enumerator(spec);
+	}
+
+	if (agen == NULL)
+		return false;
+
+	fm_target_manager_add_address_generator(scanner->target_manager, agen);
+	return true;
+}
+
 bool
 fm_scanner_ready(fm_scanner_t *scanner)
 {
+	fm_target_manager_t *target_manager = scanner->target_manager;
+
+	if (target_manager->address_generators.head.first == NULL) {
+		fm_log_error("No scan targets configured; nothing to scan");
+		return false;
+	}
+
 	fm_timestamp_update(&scanner->scan_started);
 	fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
 

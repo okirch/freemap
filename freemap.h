@@ -76,6 +76,7 @@ extern bool		fm_target_pool_reap_completed(fm_target_pool_t *pool);
 extern void		fm_target_pool_auto_resize(fm_target_pool_t *pool, unsigned int max_size);
 
 extern fm_scanner_t *	fm_scanner_create(void);
+extern bool		fm_scanner_add_target_from_spec(fm_scanner_t *, const char *);
 extern bool		fm_scanner_ready(fm_scanner_t *);
 extern fm_report_t *	fm_scanner_get_report(fm_scanner_t *);
 extern fm_target_pool_t *fm_scanner_get_target_pool(fm_scanner_t *);
