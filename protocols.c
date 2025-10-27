@@ -206,6 +206,8 @@ fm_protocol_engine_get_protocol(fm_protocol_engine_t *engine, const char *name)
  * mapping between FM_PROTO_* constants and protocol names
  */
 static const char *	fm_protocol_names[__FM_PROTO_MAX] = {
+	[FM_PROTO_IP]	= "ip",
+	[FM_PROTO_IPV6]	= "ipv6",
 	[FM_PROTO_ARP]	= "arp",
 	[FM_PROTO_ICMP]	= "icmp",
 	[FM_PROTO_TCP]	= "tcp",

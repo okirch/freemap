@@ -53,6 +53,8 @@ struct sockaddr_ll;
 /* Protocol IDs, used internally */
 enum {
 	FM_PROTO_NONE = 0,
+	FM_PROTO_IP,
+	FM_PROTO_IPV6,
 	FM_PROTO_ARP,
 	FM_PROTO_ICMP,
 	FM_PROTO_UDP,
