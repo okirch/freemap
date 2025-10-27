@@ -65,9 +65,6 @@ struct fm_cmd_scan_options {
 	bool		dump;
 };
 
-static void		bad_option(const char *fmt, ...);
-static void		usage(int);
-
 static struct fm_cmd_main_options main_options;
 static struct fm_cmd_scan_options scan_options;
 
@@ -104,7 +101,7 @@ static void
 apply_main_options(void)
 {
 	if (main_options.ipv4_only + main_options.ipv6_only > 1)
-		bad_option("Options --ipv4 and --ipv6 are mutually exclusive\n");
+		fm_cmdparser_fatal("Options --ipv4 and --ipv6 are mutually exclusive\n");
 
 	if (main_options.ipv4_only)
 		fm_global.address_generation.only_family = AF_INET;
@@ -180,7 +177,7 @@ main(int argc, char **argv)
 	case FM_CMDID_SCAN:
 		return perform_cmd_scan(cmd->nvalues, cmd->values);
 	default:
-		fm_log_fatal("Cannot execute command %d", cmd->cmdid);
+		fm_log_fatal("Cannot execute command %s", cmd->fullname);
 	}
 
 	return 1;
@@ -192,10 +189,8 @@ perform_cmd_scan(int nvalues, char **values)
 	const fm_scan_program_t *program = NULL;
 	fm_scanner_t *scanner;
 
-	if (nvalues == 0) {
-		fm_log_error("Missing scan target(s)\n");
-		usage(1);
-	}
+	if (nvalues == 0)
+		fm_cmdparser_fatal("Missing scan target(s)\n");
 
 	scanner = fm_scanner_create();
 
@@ -254,33 +249,4 @@ perform_cmd_scan(int nvalues, char **values)
 	}
 
 	return 0;
-}
-
-
-static void
-usage(int exval)
-{
-	fprintf(exval? stderr : stdout,
-		"Usage: freemap [options] target ...\n"
-		"Options:\n"
-		"   -L PATH, --logfile PATH\n"
-		"      Log scan results to file at PATH\n"
-		"   -d, --debug\n"
-		"      Increase debug verbosity.\n"
-		"   -h, --help\n"
-		"      Print this message.\n");
-	exit(exval);
-}
-
-static void
-bad_option(const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	fprintf(stderr, "Error: ");
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-
-	usage(1);
 }

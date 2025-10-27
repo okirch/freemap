@@ -64,6 +64,7 @@ extern fm_cmdparser_t *	fm_cmdparser_add_subcommand(fm_cmdparser_t *parent, cons
 				fm_cmdparser_option_handler_fn_t *process_option);
 extern fm_command_t *		fm_cmdparser_process_args(const fm_cmdparser_t *, int argc, char **argv);
 extern void			fm_cmdparser_usage(FILE *);
+extern void			fm_cmdparser_fatal(const char *fmt, ...);
 
 #endif /* FREEMAP_SUBCOMMAND_H */
 

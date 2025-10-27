@@ -421,7 +421,7 @@ fm_cmdparser_process_args(const fm_cmdparser_t *parser, int argc, char **argv)
 
 		cmdname = fm_arg_parser_next_positional(&state);
 		if (cmdname == NULL) {
-			fm_log_error("%s: missing subcommand", parser->name);
+			fprintf(stderr, "Command line error: missing subcommand\n\n");
 			return NULL;
 		} else {
 			fm_cmdparser_t *subparser;
@@ -507,4 +507,20 @@ fm_cmdparser_usage(FILE *fp)
 	}
 
 	fm_cmdparser_usage_work(fp, last_parser_used, true);
+}
+
+void
+fm_cmdparser_fatal(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	fprintf(stderr, "Command line error: ");
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+
+	fprintf(stderr, "\n");
+
+	fm_cmdparser_usage(NULL);
+	exit(1);
 }
