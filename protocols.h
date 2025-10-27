@@ -54,8 +54,12 @@ struct fm_protocol_ops {
 	fm_probe_t *	(*create_port_probe)(fm_protocol_t *, fm_target_t *, uint16_t);
 };
 
+#define FM_PROTOCOL_ENGINE_MAX	256
 struct fm_protocol_engine {
 	fm_protocol_t *	driver[__FM_PROTO_MAX];
+
+	unsigned int	num_other;
+	fm_protocol_t *	other[FM_PROTOCOL_ENGINE_MAX];
 };
 
 extern fm_protocol_engine_t *fm_protocol_engine_create_default(void);

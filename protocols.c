@@ -132,6 +132,29 @@ fm_protocol_engine_create_standard(struct fm_protocol_engine *engine)
 	}
 }
 
+static void
+fm_protocol_engine_create_other(struct fm_protocol_engine *engine)
+{
+	unsigned int i;
+	bool have_raw;
+
+	have_raw = fm_socket_have_raw();
+
+	for (i = 0; i < fm_protocol_directory_count; ++i) {
+		struct fm_protocol_ops *ops = fm_protocol_directory[i];
+
+		if (ops->id != FM_PROTO_NONE)
+			continue;
+		if (ops->require_raw && !have_raw)
+			continue;
+
+		if (engine->num_other >= FM_PROTOCOL_ENGINE_MAX)
+			fm_log_fatal("%s: too many protocol drivers", __func__);
+
+		engine->other[engine->num_other++] = fm_protocol_create(ops);
+	}
+}
+
 fm_protocol_engine_t *
 fm_protocol_engine_create_default(void)
 {
@@ -142,6 +165,7 @@ fm_protocol_engine_create_default(void)
 
 		engine = calloc(1, sizeof(*engine));
 		fm_protocol_engine_create_standard(engine);
+		fm_protocol_engine_create_other(engine);
 
 		for (id = 0; id < __FM_PROTO_MAX; ++id) {
 			fm_protocol_t *driver = engine->driver[id];
