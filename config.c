@@ -31,7 +31,8 @@ typedef struct fm_config_proc	fm_config_proc_t;
 
 static fm_config_proc_t		fm_config_root;
 
-static bool		fm_config_process_node(curly_node_t *node, fm_config_proc_t *proc, void *data);;
+static bool		fm_config_process_node(curly_node_t *node, fm_config_proc_t *proc, void *data);
+static bool		fm_config_render_node(curly_node_t *node, fm_config_proc_t *proc, void *data);
 static bool		fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *attr_def, const char *value);
 static void		fm_config_dump(curly_node_t *np, unsigned int indent);
 
@@ -67,6 +68,47 @@ fm_config_load_work(const char *path, fm_config_proc_t *root_proc, void *data)
 	rv = fm_config_process_node(top, root_proc, data);
 
 	curly_node_free(top);
+	return rv;
+}
+
+static bool
+fm_config_save_work(const char *path, fm_config_proc_t *root_proc, const char *type, const char *name, void *data)
+{
+	curly_node_t *root, *top;
+	bool rv;
+
+	root = curly_node_new();
+
+	top = curly_node_add_child(root, type, name);
+	rv = fm_config_render_node(top, root_proc, data);
+
+	if (rv) {
+		char *temp_path = NULL;
+		FILE *fp;
+
+		fm_config_dump(top, 0);
+
+		asprintf(&temp_path, "%s.tmp", path);
+		if (!(fp = fopen(temp_path, "w"))) {
+			fm_log_error("Unable to open %s for writing: %m", temp_path);
+			rv = false;
+		} else if (curly_node_write_fp(top, fp) < 0) {
+			fm_log_error("failed to write configuration data to %s", temp_path);
+			rv = false;
+		}
+
+		if (fp != NULL)
+			fclose(fp);
+
+		if (rv && rename(temp_path, path) < 0) {
+			fm_log_error("failed to rename %s to %s: %m", temp_path, path);
+			rv = false;
+		}
+
+		free(temp_path);
+	}
+
+	curly_node_free(root);
 	return rv;
 }
 
@@ -114,6 +156,7 @@ struct fm_config_attr {
 	int			type;
 
 	bool			(*setfn)(curly_node_t *node, void *attr_data, const char *value);
+	bool			(*getfn)(curly_node_t *node, void *attr_data);
 };
 
 #define MAX_CHILDREN		16
@@ -306,6 +349,22 @@ fm_config_apply_child(curly_node_t *parent, fm_config_proc_t *proc, void *data, 
 }
 
 static bool
+fm_config_render_child(curly_node_t *parent, fm_config_child_t *child_proc, void *data)
+{
+	curly_node_t *child;
+
+	if (child_proc->proc->name.type) {
+		fm_config_complain(parent, "support for %s child node with name not implemented", child_proc->name);
+		return false;
+	}
+
+	child = curly_node_add_child(parent, child_proc->name, NULL);
+
+	return fm_config_render_node(child, child_proc->proc,
+			fm_config_addr_apply_offset(data, child_proc->offset));
+}
+
+static bool
 fm_config_attr_set_int(curly_node_t *node, void *attr_data, const char *value)
 {
 	char *end;
@@ -313,6 +372,16 @@ fm_config_attr_set_int(curly_node_t *node, void *attr_data, const char *value)
 	*(int *) attr_data = strtol(value, &end, 0);
 	return *end == '\0';
 
+}
+
+static bool
+fm_config_attr_render_int(curly_node_t *node, void *attr_data, const char *name)
+{
+	char value[32];
+
+	snprintf(value, sizeof(value), "%d", *(int *) attr_data);
+	curly_node_set_attr(node, name, value);
+	return true;
 }
 
 static bool
@@ -334,6 +403,15 @@ fm_config_attr_set_bool(curly_node_t *node, void *attr_data, const char *value)
 }
 
 static bool
+fm_config_attr_render_bool(curly_node_t *node, void *attr_data, const char *name)
+{
+	bool value = *(bool *) attr_data;
+
+	curly_node_set_attr(node, name, value? "true" : "false");
+	return true;
+}
+
+static bool
 fm_config_attr_set_string(curly_node_t *node, void *attr_data, const char *value)
 {
 	char **var = (char **) attr_data;
@@ -343,6 +421,16 @@ fm_config_attr_set_string(curly_node_t *node, void *attr_data, const char *value
 		*var = strdup(value);
 	return true;
 
+}
+
+static bool
+fm_config_attr_render_string(curly_node_t *node, void *attr_data, const char *name)
+{
+	char *value = *(char **) attr_data;
+
+	if (value != NULL)
+		curly_node_set_attr(node, name, value);
+	return true;
 }
 
 static bool
@@ -380,6 +468,44 @@ fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *at
 	if (!okay)
 		fm_config_complain(node, "unable to parse attribute %s=\"%s\"",
 				attr_def->name, value);
+
+	return okay;
+}
+
+static bool
+fm_config_render_value(curly_node_t *node, void *data, const fm_config_attr_t *attr_def)
+{
+	void *attr_data = fm_config_addr_apply_offset(data, attr_def->offset);
+	bool okay;
+
+	switch (attr_def->type) {
+	case FM_CONFIG_ATTR_TYPE_INT:
+		okay = fm_config_attr_render_int(node, attr_data, attr_def->name);
+		break;
+
+	case FM_CONFIG_ATTR_TYPE_BOOL:
+		okay = fm_config_attr_render_bool(node, attr_data, attr_def->name);
+		break;
+
+	case FM_CONFIG_ATTR_TYPE_STRING:
+		okay = fm_config_attr_render_string(node, attr_data, attr_def->name);
+		break;
+
+	case FM_CONFIG_ATTR_TYPE_SPECIAL:
+		if (attr_def->getfn == NULL) {
+			fm_config_complain(node, "attribute %s has not get() function", attr_def->name);
+			return false;
+		}
+		okay = attr_def->getfn(node, attr_data);
+		break;
+
+	default:
+		fm_config_complain(node, "attribute %s has unsupported type", attr_def->name);
+		return false;
+	}
+
+	if (!okay)
+		fm_config_complain(node, "unable to render attribute %s", attr_def->name);
 
 	return okay;
 }
@@ -457,6 +583,37 @@ fm_config_process_node(curly_node_t *node, fm_config_proc_t *proc, void *data)
 	}
 
 	return rv;
+}
+
+static bool
+fm_config_render_node(curly_node_t *node, fm_config_proc_t *proc, void *data)
+{
+	unsigned int i;
+
+	if (proc->name.type) {
+		if (!fm_config_render_value(node, data, &proc->name))
+			return false;
+	}
+
+	for (i = 0; i < MAX_ATTRIBUTES; ++i) {
+		fm_config_attr_t *attr_def = &proc->attributes[i];
+
+		if (attr_def->name == NULL)
+			break;
+		if (!fm_config_render_value(node, data, attr_def))
+			return false;
+	}
+
+	for (i = 0; i < MAX_CHILDREN; ++i) {
+		fm_config_child_t *child_proc = &proc->children[i];
+
+		if (child_proc->name == NULL)
+			break;
+		if (!fm_config_render_child(node, child_proc, data))
+			return false;
+	}
+
+	return true;
 }
 
 static void
