@@ -19,7 +19,6 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <arpa/inet.h>
-#include <netdb.h>
 #include <ctype.h>
 #include "scanner.h"
 #include "target.h"
@@ -301,23 +300,23 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 fm_protocol_t *
 fm_scanner_get_protocol_engine(fm_scanner_t *scanner, const char *protocol_name)
 {
-	struct protoent *pe;
+	unsigned int id;
 
-	if (!strcmp(protocol_name, "arp"))
-		return scanner->proto->arp;
-
-	pe = getprotobyname(protocol_name);
-	if (pe == NULL)
+	id = fm_protocol_string_to_id(protocol_name);
+	if (id == FM_PROTO_NONE)
 		return NULL;
 
-	switch (pe->p_proto) {
-	case IPPROTO_TCP:
+	switch (id) {
+	case FM_PROTO_ARP:
+		return scanner->proto->arp;
+
+	case FM_PROTO_TCP:
 		return scanner->proto->tcp;
 
-	case IPPROTO_UDP:
+	case FM_PROTO_UDP:
 		return scanner->proto->udp;
 
-	case IPPROTO_ICMP:
+	case FM_PROTO_ICMP:
 		return scanner->proto->icmp;
 	}
 
