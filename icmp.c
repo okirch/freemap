@@ -70,6 +70,7 @@ static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "icmp-raw",
 	.id		= FM_PROTO_ICMP,
+	.require_raw	= true,
 
 	.create_socket	= fm_icmp_create_raw_socket,
 	.create_host_shared_socket = fm_icmp_create_raw_shared_socket,

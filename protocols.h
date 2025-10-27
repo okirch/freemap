@@ -36,6 +36,9 @@ struct fm_protocol_ops {
 
 	int		id; /* FM_PROTO_* */
 
+	/* true if it uses features like PF_PACKET sockets that require CAP_NET_RAW */
+	bool		require_raw;
+
 	void		(*destroy)(fm_protocol_t *);
 
 	fm_scan_action_t *(*create_host_probe_action)(fm_protocol_t *, const fm_string_array_t *args);

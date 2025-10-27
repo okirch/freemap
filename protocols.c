@@ -55,6 +55,84 @@ fm_protocol_directory_display(void)
 	}
 }
 
+static const struct fm_protocol_ops *
+fm_protocol_directory_select(unsigned int proto_id, bool have_raw)
+{
+	unsigned int i, best_rating = 0;
+	const struct fm_protocol_ops *best = NULL;
+
+	for (i = 0; i < fm_protocol_directory_count; ++i) {
+		struct fm_protocol_ops *ops = fm_protocol_directory[i];
+		unsigned int rating;
+
+		if (ops->id != proto_id)
+			continue;
+		if (ops->require_raw && !have_raw)
+			continue;
+
+		rating = 1;
+		if (ops->require_raw)
+			rating |= 2;
+
+		if (rating > best_rating)
+			best = ops;
+	}
+
+	return best;
+}
+
+/* This should probably go to socket.c */
+static bool
+fm_socket_have_raw(void)
+{
+	static int have_raw = -1;
+
+	if (have_raw < 0) {
+		fm_socket_t *sock;
+
+		sock = fm_socket_create(AF_INET, SOCK_RAW, IPPROTO_ICMP, NULL);
+
+		if (sock == NULL) {
+			have_raw = 0;
+		} else {
+			fm_socket_free(sock);
+			have_raw = 1;
+		}
+	}
+
+	return (bool) have_raw;
+}
+
+static fm_protocol_engine_t *
+fm_protocol_engine_create_standard(void)
+{
+	struct fm_protocol_engine *engine = NULL;
+	unsigned int id;
+	bool have_raw;
+
+	have_raw = fm_socket_have_raw();
+
+	engine = calloc(1, sizeof(*engine));
+	for (id = 0; id < __FM_PROTO_MAX; ++id) {
+		const struct fm_protocol_ops *ops;
+		const char *proto_name;
+
+		proto_name = fm_protocol_id_to_string(id);
+
+		ops = fm_protocol_directory_select(id, have_raw);
+		if (ops == NULL) {
+			fm_log_debug("%02u %-10s no driver", id, proto_name);
+			continue;
+		}
+
+		fm_log_debug("%02u %-10s use driver %s", id, proto_name, ops->name);
+		engine->driver[id] = fm_protocol_create(ops);
+		assert(engine->driver[id]);
+	}
+
+	return engine;
+}
+
 /*
  * Engine setup
  */
@@ -104,26 +182,27 @@ fm_protocol_engine_create_raw_socket(void)
 fm_protocol_engine_t *
 fm_protocol_engine_create_default(void)
 {
-	fm_protocol_engine_t *proto;
-	unsigned int id;
+	static fm_protocol_engine_t *engine = NULL;;
 
-	proto = fm_protocol_engine_create_raw_socket();
-	if (proto == NULL)
-		proto = fm_protocol_engine_create_bsd_socket();
+	if (engine == NULL) {
+		unsigned int id;
 
-	for (id = 0; id < __FM_PROTO_MAX; ++id) {
-		fm_protocol_t *driver = proto->driver[id];
+		engine = fm_protocol_engine_create_standard();
 
-		if (driver != NULL && driver->ops->id != id) {
-			fm_log_error("created %s protocol driver \"%s\", but it provides protocol id %u",
-					fm_protocol_id_to_string(id),
-					driver->ops->name,
-					driver->ops->id);
-			abort();
+		for (id = 0; id < __FM_PROTO_MAX; ++id) {
+			fm_protocol_t *driver = engine->driver[id];
+
+			if (driver != NULL && driver->ops->id != id) {
+				fm_log_error("created %s protocol driver \"%s\", but it provides protocol id %u",
+						fm_protocol_id_to_string(id),
+						driver->ops->name,
+						driver->ops->id);
+				abort();
+			}
 		}
 	}
 
-	return proto;
+	return engine;
 }
 
 /*

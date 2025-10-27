@@ -23,6 +23,7 @@
 #include "freemap.h"
 #include "scanner.h"
 #include "commands.h"
+#include "protocols.h"
 
 static fm_long_option_t main_long_options[] = {
 	{ "ipv4",		FM_ARG_NONE,		OPT_IPV4_ONLY,	},

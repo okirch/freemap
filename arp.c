@@ -47,6 +47,7 @@ static struct fm_protocol_ops	fm_arp_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "arp",
 	.id		= FM_PROTO_ARP,
+	.require_raw	= true,
 
 	.create_socket	= fm_arp_create_socket,
 	.create_host_probe_action = fm_arp_create_host_probe_action,
