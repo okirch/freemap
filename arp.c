@@ -53,6 +53,8 @@ static struct fm_protocol_ops	fm_arp_ops = {
 	.process_packet	= fm_arp_process_packet,
 };
 
+FM_PROTOCOL_REGISTER(fm_arp_ops);
+
 fm_protocol_t *
 fm_arp_create(void)
 {

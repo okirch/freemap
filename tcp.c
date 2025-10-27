@@ -48,6 +48,8 @@ static struct fm_protocol_ops	fm_tcp_bsdsock_ops = {
 	.create_port_probe = fm_tcp_create_port_probe,
 };
 
+FM_PROTOCOL_REGISTER(fm_tcp_bsdsock_ops);
+
 fm_protocol_t *
 fm_tcp_bsdsock_create(void)
 {

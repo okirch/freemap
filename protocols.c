@@ -22,6 +22,42 @@
 #include "socket.h"
 #include "network.h"
 
+static unsigned int	fm_protocol_directory_count;
+static struct fm_protocol_ops *fm_protocol_directory[256];
+
+/*
+ * Using gcc constructors, all our protocol drivers come here when the
+ * application starts.
+ * We inspect and vet them later.
+ */
+void
+fm_protocol_directory_add(struct fm_protocol_ops *ops)
+{
+	if (fm_protocol_directory_count < 256)
+		fm_protocol_directory[fm_protocol_directory_count++] = ops;
+}
+
+void
+fm_protocol_directory_display(void)
+{
+	unsigned int i;
+
+	printf("Found %d protocol drivers:\n", fm_protocol_directory_count);
+	for (i = 0; i < fm_protocol_directory_count; ++i) {
+		struct fm_protocol_ops *ops = fm_protocol_directory[i];
+
+		printf("%-12s", ops->name);
+
+		if (ops->id != FM_PROTO_NONE)
+			printf("; implements %s", fm_protocol_id_to_string(ops->id));
+
+		printf("\n");
+	}
+}
+
+/*
+ * Engine setup
+ */
 static fm_protocol_engine_t *
 fm_protocol_engine_create_bsd_socket(void)
 {

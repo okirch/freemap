@@ -79,6 +79,9 @@ static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
 	.create_host_probe_action = fm_icmp_create_host_probe_action,
 };
 
+FM_PROTOCOL_REGISTER(fm_icmp_bsdsock_ops);
+FM_PROTOCOL_REGISTER(fm_icmp_rawsock_ops);
+
 fm_protocol_t *
 fm_icmp_bsdsock_create(void)
 {

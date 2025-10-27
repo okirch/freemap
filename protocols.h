@@ -70,11 +70,22 @@ extern fm_protocol_t *	fm_arp_create(void);
 extern const char *	fm_protocol_id_to_string(unsigned int id);
 extern unsigned int	fm_protocol_string_to_id(const char *name);
 
+extern void		fm_protocol_directory_add(struct fm_protocol_ops *ops);
+extern void		fm_protocol_directory_display(void);
+
 extern fm_protocol_t *	fm_protocol_create(const struct fm_protocol_ops *ops);
 extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);
 extern fm_probe_t *	fm_protocol_create_host_probe(fm_protocol_t *, fm_target_t *, unsigned int);
 extern fm_probe_t *	fm_protocol_create_port_probe(fm_protocol_t *, fm_target_t *, uint16_t);
 extern fm_socket_t *	fm_protocol_create_host_shared_socket(fm_protocol_t *proto, fm_target_t *target);
+
+#define FM_PROTOCOL_REGISTER(ops) \
+__attribute__((constructor)) \
+static void \
+fm_protocol_register_ ## ops(void) \
+{ \
+	fm_protocol_directory_add(&ops); \
+}
 
 static inline uint16_t
 in_csum(const void *data, size_t noctets)
