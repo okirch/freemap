@@ -45,6 +45,7 @@ struct icmp_host_probe_params {
 };
 
 static fm_socket_t *	fm_icmp_create_bsd_socket(fm_protocol_t *proto, int ipproto);
+static bool		fm_icmp_process_bsd_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static fm_socket_t *	fm_icmp_create_raw_socket(fm_protocol_t *proto, int ipproto);
 static fm_socket_t *	fm_icmp_create_raw_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 static bool		fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
@@ -53,7 +54,7 @@ static bool		fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static fm_socket_t *	fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr);
 static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
 static int		fm_icmp_protocol_for_family(int af);
-static fm_extant_t *	fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response);
+static fm_extant_t *	fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response, bool ignore_id);
 
 static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -62,6 +63,7 @@ static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 
 	.create_socket	= fm_icmp_create_bsd_socket,
 	.create_host_probe_action = fm_icmp_create_host_probe_action,
+	.process_packet	= fm_icmp_process_bsd_packet,
 };
 
 static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
@@ -100,6 +102,26 @@ fm_icmp_create_bsd_socket(fm_protocol_t *proto, int af)
 		return NULL;
 
 	return fm_socket_create(af, SOCK_DGRAM, ipproto, proto);
+}
+
+static bool
+fm_icmp_process_bsd_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
+{
+	fm_extant_t *extant = NULL;
+
+	fm_log_debug("received ICMP reply from %s", fm_address_format(&pkt->recv_addr));
+	fm_print_hexdump(pkt->data, pkt->len);
+
+	/* When using PF_RAW sockets, the kernel stack seems to insert an ICMP id of its own choosing,
+	 * so we need to ignore the ID when looking for a matching request. */
+	extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, true, true);
+	if (extant != NULL) {
+		/* Mark the probe as successful, and update the RTT estimate */
+		fm_extant_received_reply(extant, pkt);
+		fm_extant_free(extant);
+	}
+
+	return true;
 }
 
 /*
@@ -150,10 +172,8 @@ fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 		return false;
 	}
 
-	if ((pkt->family == AF_INET && ip.ipproto == IPPROTO_ICMP) 
-	 || (pkt->family == AF_INET6 && ip.ipproto == IPPROTO_ICMPV6)) {
-		extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, true);
-	} else {
+	if (!(pkt->family == AF_INET && ip.ipproto == IPPROTO_ICMP) 
+	 && !(pkt->family == AF_INET6 && ip.ipproto == IPPROTO_ICMPV6)) {
 		fm_log_debug("%s: %s -> %s: unexpected protocol %d", __func__,
 				fm_address_format(&ip.src_addr),
 				fm_address_format(&ip.dst_addr),
@@ -161,6 +181,7 @@ fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 		return false;
 	}
 
+	extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, true, false);
 	if (extant != NULL) {
 		/* Mark the probe as successful, and update the RTT estimate */
 		fm_extant_received_reply(extant, pkt);
@@ -196,7 +217,7 @@ fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 		 * ICMP packet, the "from" address is the IP we originally sent the packet
 		 * to, and the offender is the address of the host that generated the
 		 * ICMP packet. */
-		extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, false);
+		extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, false, false);
 
 		/* TODO: record the gateway that generated this error code;
 		 * we could build a rough sketch of the network topo and avoid swamping
@@ -446,7 +467,7 @@ fm_icmp_expect_response(int af, const void *sent_data, unsigned int sent_len, fm
 }
 
 fm_extant_t *
-fm_icmp4_locate_probe(fm_target_t *target, fm_pkt_t *pkt, bool is_response)
+fm_icmp4_locate_probe(fm_target_t *target, fm_pkt_t *pkt, bool is_response, bool ignore_id)
 {
 	const struct icmp *icmph;
 	hlist_iterator_t iter;
@@ -460,8 +481,10 @@ fm_icmp4_locate_probe(fm_target_t *target, fm_pkt_t *pkt, bool is_response)
 		const struct icmp_extant_info *ei = (struct icmp_extant_info *) (extant + 1);
 		const struct icmp *match = is_response? &ei->expect_hdr : &ei->sent_hdr;
 
+		if (!ignore_id && match->icmp_id != icmph->icmp_id)
+			continue;
+
 		if (match->icmp_type == icmph->icmp_type
-		 && match->icmp_id == icmph->icmp_id
 		 && match->icmp_seq == icmph->icmp_seq)
 			return extant;
         }
@@ -470,7 +493,7 @@ fm_icmp4_locate_probe(fm_target_t *target, fm_pkt_t *pkt, bool is_response)
 }
 
 static fm_extant_t *
-fm_icmp6_locate_probe(fm_target_t *target, fm_pkt_t *pkt, bool is_response)
+fm_icmp6_locate_probe(fm_target_t *target, fm_pkt_t *pkt, bool is_response, bool ignore_id)
 {
 	const struct icmp6_hdr *icmph;
 	hlist_iterator_t iter;
@@ -484,8 +507,10 @@ fm_icmp6_locate_probe(fm_target_t *target, fm_pkt_t *pkt, bool is_response)
 		const struct icmp6_extant_info *ei = (struct icmp6_extant_info *) (extant + 1);
 		const struct icmp6_hdr *match = is_response? &ei->expect_hdr : &ei->sent_hdr;
 
+		if (!ignore_id && match->icmp6_id != icmph->icmp6_id)
+			continue;
+
 		if (match->icmp6_type == icmph->icmp6_type
-		 && match->icmp6_id == icmph->icmp6_id
 		 && match->icmp6_seq == icmph->icmp6_seq)
 			return extant;
         }
@@ -494,7 +519,7 @@ fm_icmp6_locate_probe(fm_target_t *target, fm_pkt_t *pkt, bool is_response)
 }
 
 fm_extant_t *
-fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response)
+fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response, bool ignore_id)
 {
 	fm_target_t *target;
 
@@ -506,9 +531,9 @@ fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, 
 		return NULL;
 
 	if (pkt->family == AF_INET)
-		return fm_icmp4_locate_probe(target, pkt, is_response);
+		return fm_icmp4_locate_probe(target, pkt, is_response, ignore_id);
 	if (pkt->family == AF_INET6)
-		return fm_icmp6_locate_probe(target, pkt, is_response);
+		return fm_icmp6_locate_probe(target, pkt, is_response, ignore_id);
 
 	return NULL;
 }
