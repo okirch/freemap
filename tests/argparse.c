@@ -35,6 +35,8 @@ struct global_opts {
 	const char *	foobar;
 	unsigned int	debug;
 	const char *	brain;
+
+	char *		values[16];
 } global_opts;
 
 static bool
@@ -106,6 +108,8 @@ parse_one(fm_cmdparser_t *parser, char **argv, const struct global_opts *expect)
 	}
 
 	if (expect) {
+		unsigned int k, nexpected;
+
 		if (!strings_equal(global_opts.foobar, expect->foobar)) {
 			fprintf(stderr, "%s: unexpected difference: expected foobar=\"%s\", found \"%s\"\n",
 					argv[0], expect->foobar, global_opts.foobar);
@@ -120,6 +124,23 @@ parse_one(fm_cmdparser_t *parser, char **argv, const struct global_opts *expect)
 			fprintf(stderr, "%s: unexpected difference: expected brain=\"%s\", found \"%s\"\n",
 					argv[0], expect->brain, global_opts.brain);
 			return false;
+		}
+
+		for (nexpected = 0; expect->values[nexpected] != NULL; nexpected++)
+			;
+
+		if (cmd->nvalues != nexpected) {
+			fprintf(stderr, "%s: unexpected difference: expected %u positional arguments, found %u\n",
+					argv[0], nexpected, cmd->nvalues);
+			return false;
+		}
+
+		for (k = 0; k < cmd->nvalues; ++k) {
+			if (strcmp(expect->values[k], cmd->values[k])) {
+				fprintf(stderr, "%s: unexpected difference: wrong positional arguments in value[%d]; expected \"%s\", got \"%s\"\n",
+						argv[0], k, expect->values[k], cmd->values[k]);
+				return false;
+			}
 		}
 	}
 
@@ -206,6 +227,49 @@ test6(fm_cmdparser_t *parser)
 	parse_one(parser, argv, &expect);
 }
 
+void
+test7(fm_cmdparser_t *parser)
+{
+	struct global_opts expect = { .debug = 1, .values = { "positional", } };
+	char *argv[] = {
+		(char *) __func__,
+		"--debug",
+		"positional",
+		NULL
+	};
+
+	parse_one(parser, argv, &expect);
+}
+
+void
+test8(fm_cmdparser_t *parser)
+{
+	struct global_opts expect = { .debug = 1, .values = { "-d", } };
+	char *argv[] = {
+		(char *) __func__,
+		"--debug",
+		"--",
+		"-d",
+		NULL
+	};
+
+	parse_one(parser, argv, &expect);
+}
+
+void
+test9(fm_cmdparser_t *parser)
+{
+	struct global_opts expect = { .values = { "-d", } };
+	char *argv[] = {
+		(char *) __func__,
+		"--",
+		"-d",
+		NULL
+	};
+
+	parse_one(parser, argv, &expect);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -219,5 +283,8 @@ main(int argc, char **argv)
 	test4(parser);
 	test5(parser);
 	test6(parser);
+	test7(parser);
+	test8(parser);
+	test9(parser);
 }
 
