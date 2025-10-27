@@ -340,6 +340,7 @@ static fm_config_proc_t		fm_project_main = {
 	.name = ATTRIB_STRING(fm_project_t, name),
 	.attributes = {
 		ATTRIB_STRING_ARRAY(fm_project_t, targets),
+		ATTRIB_STRING(fm_project_t, reachability_probe),
 	},
 };
 static fm_config_proc_t		fm_project_root = {
