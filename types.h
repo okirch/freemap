@@ -23,6 +23,7 @@
 #include <sys/socket.h>
 
 typedef struct fm_config  fm_config_t;
+typedef struct fm_project fm_project_t;
 typedef struct fm_address_enumerator fm_address_enumerator_t;
 typedef struct fm_target fm_target_t;
 typedef struct fm_interface fm_interface_t;

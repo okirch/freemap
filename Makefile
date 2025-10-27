@@ -1,6 +1,7 @@
 CFLAGS	= -Wall -g -D_GNU_SOURCE -I. -lcurlies
 
-OBJS	= scanner.o \
+OBJS	= projects.o \
+	  scanner.o \
 	  scheduler.o \
 	  target.o \
 	  protocols.o \

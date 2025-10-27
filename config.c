@@ -25,12 +25,14 @@
 
 #include "freemap.h"
 #include "config.h"
+#include "projects.h"
 
 typedef struct fm_config_child	fm_config_child_t;
 typedef struct fm_config_attr	fm_config_attr_t;
 typedef struct fm_config_proc	fm_config_proc_t;
 
 static fm_config_proc_t		fm_config_root;
+static fm_config_proc_t		fm_project_root;
 
 static bool		fm_config_process_node(curly_node_t *node, fm_config_proc_t *proc, void *data);
 static bool		fm_config_render_node(curly_node_t *node, fm_config_proc_t *proc, void *data);
@@ -119,6 +121,18 @@ bool
 fm_config_load(fm_config_t *conf, const char *path)
 {
 	return fm_config_load_work(path, &fm_config_root, conf);
+}
+
+bool
+fm_config_load_project(fm_project_t *project, const char *path)
+{
+	return fm_config_load_work(path, &fm_project_root, project);
+}
+
+bool
+fm_config_save_project(fm_project_t *project, const char *path)
+{
+	return fm_config_save_work(path, &fm_project_root, "project", project->name, project);
 }
 
 /*
