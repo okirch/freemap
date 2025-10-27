@@ -383,6 +383,30 @@ fm_scanner_map_heisenberg(fm_target_t *target)
 }
 
 /*
+ * Dummy probe that does nothing
+ */
+static bool
+fm_dummy_probe_validate(fm_scan_action_t *action, fm_target_t *target)
+{
+	return false;
+}
+
+static const struct fm_scan_action_ops	fm_arp_host_scan_ops = {
+	.obj_size	= sizeof(fm_scan_action_t),
+	.validate	= fm_dummy_probe_validate,
+};
+
+fm_scan_action_t *
+fm_scanner_add_dummy_probe(void)
+{
+	fm_scan_action_t *action;
+
+	action = fm_scan_action_create(&fm_arp_host_scan_ops, "dummy");
+	action->nprobes = 0;
+	return action;
+}
+
+/*
  * Reachability probe
  */
 static void
@@ -399,22 +423,27 @@ fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name, int 
 	fm_scan_action_t *action;
 
 	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
-		fm_log_error("Cannot create host probe: no protocol engine for protocol id %s\n", protocol_name);
-		return NULL;
-	}
+		if (!(flags & FM_SCAN_ACTION_FLAG_OPTIONAL)) {
+			fm_log_error("Cannot create host probe: no protocol engine for protocol id %s\n", protocol_name);
+			return NULL;
+		}
 
-	if (proto->ops->create_host_probe_action == NULL) {
-		fm_log_error("Cannot create host probe: no protocol engine %s does not support host probes\n", protocol_name);
-		return NULL;
-	}
+		fm_log_debug("Ignoring optional %s host probe - creating dummy action", protocol_name);
+		action = fm_scanner_add_dummy_probe();
+	} else {
+		if (proto->ops->create_host_probe_action == NULL) {
+			fm_log_error("Cannot create host probe: no protocol engine %s does not support host probes\n", protocol_name);
+			return NULL;
+		}
 
-	if (!(action = proto->ops->create_host_probe_action(proto, args)))
-		return NULL;
+		if (!(action = proto->ops->create_host_probe_action(proto, args)))
+			return NULL;
+
+		assert(action->nprobes >= 1);
+	}
 
 	action->flags |= flags;
 	action->result_callback = fm_scanner_host_probe_callback;
-
-	assert(action->nprobes >= 1);
 
 	fm_scan_action_array_append(&scanner->requests, action);
 	return action;
