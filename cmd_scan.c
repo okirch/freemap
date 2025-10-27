@@ -24,6 +24,7 @@
 #include "scanner.h"
 #include "subcommand.h"
 #include "commands.h"
+#include "projects.h"
 
 static fm_long_option_t scan_long_options[] = {
 	{ "logfile",		FM_ARG_REQUIRED,	'L',	},
@@ -74,30 +75,36 @@ fm_command_register_scan(fm_cmdparser_t *parser)
 int
 fm_command_perform_scan(fm_command_t *cmd)
 {
+	fm_project_t *project;
 	const fm_scan_program_t *program = NULL;
 	fm_scanner_t *scanner;
 	unsigned int k;
 
-	if (cmd->nvalues == 0)
-		fm_cmdparser_fatal("Missing scan target(s)\n");
+	project = fm_project_load();
+	if (project == NULL) {
+		fm_log_error("could not detect scan project, please initialize first\n");
+		return 1;
+	}
 
 	scanner = fm_scanner_create();
 
-	for (k = 0; k < cmd->nvalues; ++k) {
-		fm_target_manager_t *mgr = scanner->target_manager;
-		fm_address_enumerator_t *agen;
-		const char *name = cmd->values[k];
+	if (cmd->nvalues != 0) {
+		if (project->targets.count > 0)
+			printf("Command line overrides scan targets from the project config\n");
+		for (k = 0; k < cmd->nvalues; ++k) {
+			const char *spec = cmd->values[k];
 
-		if (strchr(name, '/')) {
-			agen = fm_create_cidr_address_enumerator(name);
-		} else {
-			agen = fm_create_simple_address_enumerator(name);
+			if (!fm_scanner_add_target_from_spec(scanner, spec))
+				fm_log_fatal("Cannot parse address or network \"%s\"\n", spec);
 		}
+	} else
+	if (project->targets.count > 0) {
+		for (k = 0; k < project->targets.count; ++k) {
+			const char *spec = project->targets.entries[k];
 
-		if (agen == NULL)
-			fm_log_fatal("Cannot parse address or network \"%s\"\n", name);
-
-		fm_target_manager_add_address_generator(mgr, agen);
+			if (!fm_scanner_add_target_from_spec(scanner, spec))
+				fm_log_fatal("Cannot parse address or network \"%s\"\n", spec);
+		}
 	}
 
 	if (scan_options.logfile != NULL) {
