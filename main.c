@@ -122,7 +122,7 @@ handle_scan_options(int c, const char *arg_value)
 {
 	switch (c) {
 	case 'L':
-		scan_options.logfile = optarg;
+		scan_options.logfile = arg_value;
 		break;
 
 	case OPT_DUMP:
@@ -132,7 +132,7 @@ handle_scan_options(int c, const char *arg_value)
 	case OPT_PROGRAM:
 		if (scan_options.program)
 			fm_log_fatal("duplicate program option given");
-		scan_options.program = optarg;
+		scan_options.program = arg_value;
 		break;
 
 	default:
