@@ -32,6 +32,7 @@ typedef struct fm_config_proc	fm_config_proc_t;
 static fm_config_proc_t		fm_config_root;
 
 static bool		fm_config_process_node(curly_node_t *node, fm_config_proc_t *proc, void *data);;
+static bool		fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *attr_def, const char *value);
 static void		fm_config_dump(curly_node_t *np, unsigned int indent);
 
 fm_config_t *
@@ -320,6 +321,41 @@ fm_config_attr_set_bool(curly_node_t *node, void *attr_data, const char *value)
 }
 
 static bool
+fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *attr_def, const char *value)
+{
+	void *attr_data = fm_config_addr_apply_offset(data, attr_def->offset);
+	bool okay;
+
+	switch (attr_def->type) {
+	case FM_CONFIG_ATTR_TYPE_INT:
+		okay = fm_config_attr_set_int(node, attr_data, value);
+		break;
+
+	case FM_CONFIG_ATTR_TYPE_BOOL:
+		okay = fm_config_attr_set_bool(node, attr_data, value);
+		break;
+
+	case FM_CONFIG_ATTR_TYPE_SPECIAL:
+		if (attr_def->setfn == NULL) {
+			fm_config_complain(node, "attribute %s has not set() function", attr_def->name);
+			return false;
+		}
+		okay = attr_def->setfn(node, attr_data, value);
+		break;
+
+	default:
+		fm_config_complain(node, "attribute %s has unsupported type", attr_def->name);
+		return false;
+	}
+
+	if (!okay)
+		fm_config_complain(node, "unable to parse attribute %s=\"%s\"",
+				attr_def->name, value);
+
+	return okay;
+}
+
+static bool
 fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *data, curly_attr_t *attr)
 {
 	const char *attr_name = curly_attr_get_name(attr);
@@ -345,10 +381,9 @@ fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *dat
 
 		if (adef->name == NULL)
 			break;
+
 		if (!strcmp(adef->name, attr_name)) {
-			void *attr_data = fm_config_addr_apply_offset(data, adef->offset);
 			const char *value;
-			bool okay;
 
 			if (count != 1) {
 				fm_config_complain(node, "attribute %s expects exactly one value", attr_name);
@@ -356,34 +391,13 @@ fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *dat
 			}
 
 			value = curly_attr_get_value(attr, 0);
-
-			switch (adef->type) {
-			case FM_CONFIG_ATTR_TYPE_INT:
-				okay = fm_config_attr_set_int(node, attr_data, value);
-				break;
-
-			case FM_CONFIG_ATTR_TYPE_BOOL:
-				okay = fm_config_attr_set_bool(node, attr_data, value);
-				break;
-
-			case FM_CONFIG_ATTR_TYPE_SPECIAL:
-				if (adef->setfn == NULL) {
-					fm_config_complain(node, "attribute %s has not set() function", attr_name);
-					return false;
-				}
-				okay = adef->setfn(node, attr_data, value);
-				break;
-
-			default:
-				fm_config_complain(node, "attribute %s has unsupported type", attr_name);
+			if (!fm_config_apply_value(node, data, adef, value)) {
+				fm_config_complain(node, "unable to parse attribute %s=\"%s\"",
+						attr_name, value);
 				return false;
 			}
 
-			if (!okay)
-				fm_config_complain(node, "unable to parse attribute %s=\"%s\"",
-						attr_name, value);
-
-			return okay;
+			return true;
 		}
 	}
 
