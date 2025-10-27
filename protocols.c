@@ -183,6 +183,25 @@ fm_protocol_engine_create_default(void)
 	return engine;
 }
 
+fm_protocol_t *
+fm_protocol_engine_get_protocol(fm_protocol_engine_t *engine, const char *name)
+{
+	unsigned int id, k;
+
+	id = fm_protocol_string_to_id(name);
+	if (id != FM_PROTO_NONE)
+		return engine->driver[id];
+
+	for (k = 0; k < engine->num_other; ++k) {
+		fm_protocol_t *proto = engine->other[k];
+
+		if (!strcmp(proto->ops->name, name))
+			return proto;
+	}
+
+	return NULL;
+}
+
 /*
  * mapping between FM_PROTO_* constants and protocol names
  */

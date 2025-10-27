@@ -300,13 +300,7 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 fm_protocol_t *
 fm_scanner_get_protocol_engine(fm_scanner_t *scanner, const char *protocol_name)
 {
-	unsigned int id;
-
-	id = fm_protocol_string_to_id(protocol_name);
-	if (id == FM_PROTO_NONE)
-		return NULL;
-
-	return scanner->proto->driver[id];
+	return fm_protocol_engine_get_protocol(scanner->proto, protocol_name);
 }
 
 void

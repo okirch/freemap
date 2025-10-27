@@ -70,6 +70,8 @@ extern unsigned int	fm_protocol_string_to_id(const char *name);
 extern void		fm_protocol_directory_add(struct fm_protocol_ops *ops);
 extern void		fm_protocol_directory_display(void);
 
+extern fm_protocol_t *	fm_protocol_engine_get_protocol(fm_protocol_engine_t *, const char *);
+
 extern fm_protocol_t *	fm_protocol_create(const struct fm_protocol_ops *ops);
 extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);
 extern fm_probe_t *	fm_protocol_create_host_probe(fm_protocol_t *, fm_target_t *, unsigned int);
