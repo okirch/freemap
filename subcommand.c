@@ -271,6 +271,16 @@ fm_arg_parser_error(fm_arg_parser_t *state, const char *fmt, ...)
 	va_end(ap);
 }
 
+/*
+ * The entire handling of positional arguments is not yet optimal.
+ * We have two cases:
+ *  - the current parser has subcommands; in this case, we should not
+ *    look past the first posititonal argument.
+ *  - the current parser is the (last) subcommand; in this case, it
+ *    may be useful to scan for further options; this would allow
+ *    things like
+ *	./blah --option1 --option2 scan target -d
+ */
 static int
 fm_arg_parser_next_option(fm_arg_parser_t *state, const fm_cmdparser_t *parser)
 {
@@ -294,10 +304,11 @@ fm_arg_parser_next_option(fm_arg_parser_t *state, const fm_cmdparser_t *parser)
 		return FM_ARG_EOF;
 	}
 
-	if (next[0] != '-')
+	/* A single "-" counts as positional argument */
+	if (!strcmp(next, "-"))
 		return FM_ARG_POSITIONALS;
 
-	if (next[1] == '\0')
+	if (next[0] != '-')
 		return FM_ARG_POSITIONALS;
 
 	if (next[1] != '-') {
