@@ -164,6 +164,11 @@ fm_command_perform_configure(fm_command_t *cmd)
 		if (!sanity_check_probe_name(key, value))
 			return 1;
 		assign_string(&project->reachability_probe, value);
+	} else
+	if (!strcmp(key, "service-probe")) {
+		if (!sanity_check_probe_name(key, value))
+			return 1;
+		assign_string(&project->service_probe, value);
 	} else {
 		fm_log_error("Unknown project setting %s=\"%s\"", key, value);
 		return 1;

@@ -341,6 +341,7 @@ static fm_config_proc_t		fm_project_main = {
 	.attributes = {
 		ATTRIB_STRING_ARRAY(fm_project_t, targets),
 		ATTRIB_STRING(fm_project_t, reachability_probe),
+		ATTRIB_STRING(fm_project_t, service_probe),
 	},
 };
 static fm_config_proc_t		fm_project_root = {

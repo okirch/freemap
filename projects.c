@@ -36,6 +36,7 @@ fm_project_free(fm_project_t *proj)
 {
 	drop_string(&proj->name);
 	drop_string(&proj->reachability_probe);
+	drop_string(&proj->service_probe);
 	fm_string_array_destroy(&proj->targets);
 	free(proj);
 }
