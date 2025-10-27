@@ -78,6 +78,19 @@ extern fm_address_enumerator_t *fm_address_enumerator_alloc(const struct fm_addr
 extern const unsigned char *	fm_address_get_raw_addr(const fm_address_t *, unsigned int *nbits);
 extern void			fm_interface_add(const char *name, const struct sockaddr_ll *);
 
+static inline unsigned int
+fm_addrfamily_max_addrbits(int af)
+{
+	switch (af) {
+	case AF_INET:
+		return 32;
+	case AF_INET6:
+		return 128;
+	}
+
+	return 0;
+}
+
 static inline bool
 fm_address_generator_address_eligible(const fm_address_t *address)
 {
