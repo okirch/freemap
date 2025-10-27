@@ -133,12 +133,12 @@ fm_cmdparser_find_short_option_handler(const fm_cmdparser_t *parser, char cc, fm
 
 fm_cmdparser_t *
 fm_cmdparser_main(const char *name, unsigned int cmdid,
-			const char *short_options, const struct option *long_options,
+			const char *short_options, const fm_long_option_t *long_options,
 			bool (*opt_fn)(int, const char *))
 {
-	static const struct option empty_options[] = { { NULL, } };
+	static const fm_long_option_t empty_options[] = { { NULL, } };
 	fm_cmdparser_t *parser;
-	const struct option *o;
+	const fm_long_option_t *o;
 	const char *pos;
 	int c, has_arg;
 
@@ -210,7 +210,7 @@ fm_cmdparser_find_subcommand(const fm_cmdparser_t *parser, const char *cmdname)
 
 fm_cmdparser_t *
 fm_cmdparser_add_subcommand(fm_cmdparser_t *parent, const char *name, unsigned int cmdid,
-				const char *short_options, const struct option *long_options,
+				const char *short_options, const fm_long_option_t *long_options,
 				bool (*opt_fn)(int, const char *))
 {
 	fm_cmdparser_t *parser;

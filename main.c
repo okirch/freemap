@@ -18,7 +18,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include <getopt.h>
 #include <mcheck.h>
 
 #include "freemap.h"
@@ -38,7 +37,7 @@ enum {
 	OPT_ALL_ADDRS,
 };
 
-static struct option main_long_options[] = {
+static fm_long_option_t main_long_options[] = {
 	{ "ipv4",		no_argument,		NULL,	OPT_IPV4_ONLY,	},
 	{ "ipv6",		no_argument,		NULL,	OPT_IPV6_ONLY,	},
 	{ "all-addresses",	no_argument,		NULL,	OPT_ALL_ADDRS,	},
@@ -47,7 +46,7 @@ static struct option main_long_options[] = {
 	{ NULL },
 };
 
-static struct option scan_long_options[] = {
+static fm_long_option_t scan_long_options[] = {
 	{ "logfile",		required_argument,	NULL,	'L',	},
 	{ "program",		required_argument,	NULL,	OPT_PROGRAM,	},
 	{ "dump",		no_argument,		NULL,	OPT_DUMP },

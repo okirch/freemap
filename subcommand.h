@@ -18,7 +18,16 @@
 #ifndef FREEMAP_SUBCOMMAND_H
 #define FREEMAP_SUBCOMMAND_H
 
-#include <getopt.h>
+#define no_argument		0
+#define required_argument	1
+#define optional_argument	2
+
+typedef struct fm_long_option {
+	const char *		name;
+	int			has_arg;
+	void *			dummy;
+	int			val;
+} fm_long_option_t;
 
 struct fm_cmdparser_option_handler {
 	const char *		name;
@@ -54,10 +63,10 @@ struct fm_command {
 };
 
 extern fm_cmdparser_t *	fm_cmdparser_main(const char *name, unsigned int cmdid,
-				const char *short_options, const struct option *long_options,
+				const char *short_options, const fm_long_option_t *long_options,
 				bool (*opt_fn)(int, const char *));
 extern fm_cmdparser_t *	fm_cmdparser_add_subcommand(fm_cmdparser_t *parent, const char *name, unsigned int cmdid,
-				const char *short_options, const struct option *long_options,
+				const char *short_options, const fm_long_option_t *long_options,
 				bool (*opt_fn)(int, const char *));
 extern fm_command_t *		fm_cmdparser_process_args(const fm_cmdparser_t *, int argc, char **argv);
 
