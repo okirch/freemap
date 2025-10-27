@@ -148,7 +148,7 @@ int
 main(int argc, char **argv)
 {
 	fm_cmdparser_t *parser;
-	unsigned int cmdid;
+	fm_command_t *cmd;
 
 #if 1
 	if (mcheck_pedantic(NULL) < 0)
@@ -159,8 +159,8 @@ main(int argc, char **argv)
 
 	fm_cmdparser_add_subcommand(parser, "scan", FM_CMDID_SCAN, NULL, scan_long_options, handle_scan_options);
 
-	cmdid = fm_cmdparser_process_args(parser, argc, argv);
-	if (cmdid == 0)
+	cmd = fm_cmdparser_process_args(parser, argc, argv);
+	if (cmd == NULL)
 		return 1;
 
 	fm_config_init_defaults(&fm_global);
@@ -175,11 +175,11 @@ main(int argc, char **argv)
 	/* Now apply any options for the main command */
 	apply_main_options();
 
-	switch (cmdid) {
+	switch (cmd->cmdid) {
 	case FM_CMDID_SCAN:
-		return perform_cmd_scan(argc - optind, argv + optind);
+		return perform_cmd_scan(cmd->nvalues, cmd->values);
 	default:
-		fm_log_fatal("Cannot execute command %u", cmdid);
+		fm_log_fatal("Cannot execute command %d", cmd->cmdid);
 	}
 
 }

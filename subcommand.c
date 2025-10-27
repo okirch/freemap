@@ -359,10 +359,11 @@ fm_arg_parser_next_positional(fm_arg_parser_t *state)
 	return state->argv[state->optind++];
 }
 
-int
+fm_command_t *
 fm_cmdparser_process_args(const fm_cmdparser_t *parser, int argc, char **argv)
 {
 	fm_arg_parser_t state;
+	fm_command_t *result;
 
 	fm_arg_parser_init(&state, argc, argv);
 
@@ -377,7 +378,7 @@ fm_cmdparser_process_args(const fm_cmdparser_t *parser, int argc, char **argv)
 				break;
 
 			if (c < 0)
-				return -1;
+				return NULL;
 
 			if (!state.found.setfn(state.found.value, state.found.argument))
 				fm_cmdparser_usage(parser, 1);
@@ -396,14 +397,18 @@ fm_cmdparser_process_args(const fm_cmdparser_t *parser, int argc, char **argv)
 			subparser = fm_cmdparser_find_subcommand(parser, cmdname);
 			if (subparser == NULL) {
 				fm_log_error("%s: unknown subcommand \"%s\"", parser->name, cmdname);
-				return -1;
+				return NULL;
 			}
 
 			parser = subparser;
 		}
 	}
 
-	optind = state.optind;
+	result = calloc(1, sizeof(*result));
+	result->fullname = parser->name;
+	result->cmdid = parser->cmdid;
+	result->nvalues = state.argc - state.optind;
+	result->values = state.argv + state.optind;
 
-	return parser->cmdid;
+	return result;
 }

@@ -43,13 +43,23 @@ struct fm_cmdparser {
 	fm_cmdparser_t **	subcommands;
 };
 
+typedef struct fm_command	fm_command_t;
+struct fm_command {
+	/* This would be something like "freemap scan" */
+	const char *		fullname;
+	int			cmdid;
+
+	unsigned int		nvalues;
+	char **			values;
+};
+
 extern fm_cmdparser_t *	fm_cmdparser_main(const char *name, unsigned int cmdid,
 				const char *short_options, const struct option *long_options,
 				bool (*opt_fn)(int, const char *));
 extern fm_cmdparser_t *	fm_cmdparser_add_subcommand(fm_cmdparser_t *parent, const char *name, unsigned int cmdid,
 				const char *short_options, const struct option *long_options,
 				bool (*opt_fn)(int, const char *));
-extern int			fm_cmdparser_process_args(const fm_cmdparser_t *, int argc, char **argv);
+extern fm_command_t *		fm_cmdparser_process_args(const fm_cmdparser_t *, int argc, char **argv);
 
 #endif /* FREEMAP_SUBCOMMAND_H */
 
