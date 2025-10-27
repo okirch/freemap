@@ -348,6 +348,30 @@ static fm_config_proc_t		fm_project_root = {
 	},
 };
 
+/*
+ * Replace _ with - and vice versa
+ */
+static const char *
+fm_attr_string_translate(const char *attr_name, char bad, char good)
+{
+	static char converted_name[128];
+	char *s;
+
+	if (strchr(attr_name, bad) == NULL)
+		return attr_name;
+
+	if (strlen(attr_name) >= sizeof(converted_name))
+		return attr_name;
+
+	strcpy(converted_name, attr_name);
+	for (s = converted_name; *s; ++s) {
+		if (*s == bad)
+			*s = good;
+	}
+
+	return converted_name;
+}
+
 static bool
 fm_config_apply_child(curly_node_t *parent, fm_config_proc_t *proc, void *data, curly_node_t *node)
 {
@@ -536,40 +560,43 @@ static bool
 fm_config_render_value(curly_node_t *node, void *data, const fm_config_attr_t *attr_def)
 {
 	void *attr_data = fm_config_addr_apply_offset(data, attr_def->offset);
+	const char *attr_name = attr_def->name;
 	bool okay;
+
+	attr_name = fm_attr_string_translate(attr_def->name, '_', '-');
 
 	switch (attr_def->type) {
 	case FM_CONFIG_ATTR_TYPE_INT:
-		okay = fm_config_attr_render_int(node, attr_data, attr_def->name);
+		okay = fm_config_attr_render_int(node, attr_data, attr_name);
 		break;
 
 	case FM_CONFIG_ATTR_TYPE_BOOL:
-		okay = fm_config_attr_render_bool(node, attr_data, attr_def->name);
+		okay = fm_config_attr_render_bool(node, attr_data, attr_name);
 		break;
 
 	case FM_CONFIG_ATTR_TYPE_STRING:
-		okay = fm_config_attr_render_string(node, attr_data, attr_def->name);
+		okay = fm_config_attr_render_string(node, attr_data, attr_name);
 		break;
 
 	case FM_CONFIG_ATTR_TYPE_SPECIAL:
 		if (attr_def->getfn == NULL) {
-			fm_config_complain(node, "attribute %s has not get() function", attr_def->name);
+			fm_config_complain(node, "attribute %s has not get() function", attr_name);
 			return false;
 		}
 		okay = attr_def->getfn(node, attr_data);
 		break;
 
 	case FM_CONFIG_ATTR_TYPE_STRING_ARRAY:
-		okay = fm_config_attr_render_string_array(node, attr_data, attr_def->name);
+		okay = fm_config_attr_render_string_array(node, attr_data, attr_name);
 		break;
 
 	default:
-		fm_config_complain(node, "attribute %s has unsupported type", attr_def->name);
+		fm_config_complain(node, "attribute %s has unsupported type", attr_name);
 		return false;
 	}
 
 	if (!okay)
-		fm_config_complain(node, "unable to render attribute %s", attr_def->name);
+		fm_config_complain(node, "unable to render attribute %s", attr_name);
 
 	return okay;
 }
@@ -578,21 +605,13 @@ static bool
 fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *data, curly_attr_t *attr)
 {
 	const char *attr_name = curly_attr_get_name(attr);
-	char converted_attr_name[64];
 	unsigned int i;
 
 	/* Owing to the way we build the processing information, the attr names in these
 	 * tables use C member field names like bla_size, while we want the config file(s)
 	 * to use "bla-size" instead.
 	 */
-	if (strchr(attr_name, '-') && strlen(attr_name) < sizeof(converted_attr_name)) {
-		char *s;
-
-		strcpy(converted_attr_name, attr_name);
-		while ((s = strchr(converted_attr_name, '-')) != NULL)
-			*s = '_';
-		attr_name = converted_attr_name;
-	}
+	attr_name = fm_attr_string_translate(attr_name, '-', '_');
 
 	for (i = 0; i < MAX_ATTRIBUTES; ++i) {
 		fm_config_attr_t *adef = &proc->attributes[i];
