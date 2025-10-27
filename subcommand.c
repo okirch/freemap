@@ -188,6 +188,7 @@ fm_cmdparser_install_subcommand(fm_cmdparser_t *parent, fm_cmdparser_t *parser)
 	parent->subcommands = realloc(parent->subcommands, (count + 2) * sizeof(parent->subcommands[0]));
 
 	parent->subcommands[count++] = parser;
+	parent->subcommands[count] = NULL;
 	parser->parent = parent;
 }
 
