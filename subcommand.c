@@ -308,7 +308,7 @@ fm_arg_parser_next_option(fm_arg_parser_t *state, const fm_cmdparser_t *parser)
 		char short_value = next[1];
 
 		if (!fm_cmdparser_find_short_option_handler(parser, short_value, state)) {
-			fm_arg_parser_error(state, "unknown option -%c", short_value);
+			fm_arg_parser_error(state, "unknown option -%c\n", short_value);
 			return FM_ARG_ERROR;
 		}
 
@@ -334,7 +334,7 @@ fm_arg_parser_next_option(fm_arg_parser_t *state, const fm_cmdparser_t *parser)
 		state->optind++;
 
 		if (!fm_cmdparser_find_long_option_handler(parser, next, state)) {
-			fm_arg_parser_error(state, "unknown option %s", next);
+			fm_arg_parser_error(state, "unknown option %s\n", next);
 			return FM_ARG_ERROR;
 		}
 
@@ -350,7 +350,7 @@ fm_arg_parser_next_option(fm_arg_parser_t *state, const fm_cmdparser_t *parser)
 		if (state->found.has_arg == FM_ARG_OPTIONAL)
 			return 0;
 
-		fm_arg_parser_error(state, "option %s requires an argument", state->found.option);
+		fm_arg_parser_error(state, "option %s requires an argument\n", state->found.option);
 		return FM_ARG_ERROR;
 	}
 
@@ -359,7 +359,7 @@ fm_arg_parser_next_option(fm_arg_parser_t *state, const fm_cmdparser_t *parser)
 		if (state->found.has_arg == FM_ARG_OPTIONAL)
 			return 0;
 
-		fm_arg_parser_error(state, "option %s requires an argument but i followed by \"%s\"",
+		fm_arg_parser_error(state, "option %s requires an argument but i followed by \"%s\"\n",
 				state->found.option, next);
 		return FM_ARG_ERROR;
 	}
