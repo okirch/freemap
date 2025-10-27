@@ -55,6 +55,21 @@ fm_string_array_get(fm_string_array_t *sarr, unsigned int index)
 	return sarr->entries[index];
 }
 
+bool
+fm_string_array_contains(const fm_string_array_t *array, const char *s)
+{
+	unsigned int i;
+
+	if (s == NULL)
+		return false;
+
+	for (i = 0; i < array->count; ++i) {
+		if (!strcmp(array->entries[i], s))
+			return true;
+	}
+	return false;
+}
+
 /*
  * Port range
  */
