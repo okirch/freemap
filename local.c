@@ -43,6 +43,8 @@ typedef struct fm_raw_socket_cache {
 } fm_raw_socket_cache_t;
 
 static struct hlist_head	raw_sock_cache = { .first = NULL, };
+static fm_address_prefix_array_t fm_local_address_prefixes;
+
 
 fm_socket_t *
 fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *driver)
@@ -151,6 +153,55 @@ fm_interface_by_address(const fm_address_t *addr)
 	return local_prefix->device;
 }
 
+const fm_address_prefix_t *
+fm_local_prefix_for_address(const fm_address_t *addr)
+{
+	const unsigned char *raw_addr1;
+	const unsigned char *raw_addr2;
+	unsigned int i, k, addr_bits, noctets;
+
+	raw_addr1 = fm_address_get_raw_addr(addr, &addr_bits);
+	if (raw_addr1 == NULL)
+		return NULL;
+
+	noctets = addr_bits / 8;
+
+	for (i = 0; i < fm_local_address_prefixes.count; ++i) {
+		fm_address_prefix_t *entry = &fm_local_address_prefixes.elements[i];
+		int xor = 0;
+
+		if (entry->address.ss_family != addr->ss_family)
+			continue;
+
+		raw_addr2 = fm_address_get_raw_addr(&entry->address, NULL);
+		for (k = 0; k < noctets && xor == 0; ++k)
+			xor = entry->raw_mask[k] & (raw_addr1[k] ^ raw_addr2[k]);
+
+		if (xor == 0)
+			return entry;
+	}
+
+	return NULL;
+}
+
+bool
+fm_interface_get_network_address(const fm_interface_t *nic, int af, fm_address_t *ret_addr)
+{
+	unsigned int i;
+
+	for (i = 0; i < fm_local_address_prefixes.count; ++i) {
+		fm_address_prefix_t *entry = &fm_local_address_prefixes.elements[i];
+
+		if (entry->device == nic && entry->address.ss_family == af) {
+			*ret_addr = entry->address;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+
 bool
 fm_interface_get_lladdr(const fm_interface_t *nic, struct sockaddr_ll *lladdr)
 {
@@ -184,8 +235,6 @@ fm_address_prefix_array_append(fm_address_prefix_array_t *array, const fm_addres
 /*
  * Discovery of local addresses
  */
-static fm_address_prefix_array_t	fm_local_address_prefixes;
-
 static inline unsigned int
 fm_mask_to_prefix(const struct sockaddr *mask)
 {
@@ -312,52 +361,3 @@ fm_local_discover(void)
 		entry->device = fm_interface_by_name(entry->ifname);
 	}
 }
-
-const fm_address_prefix_t *
-fm_local_prefix_for_address(const fm_address_t *addr)
-{
-	const unsigned char *raw_addr1;
-	const unsigned char *raw_addr2;
-	unsigned int i, k, addr_bits, noctets;
-
-	raw_addr1 = fm_address_get_raw_addr(addr, &addr_bits);
-	if (raw_addr1 == NULL)
-		return NULL;
-
-	noctets = addr_bits / 8;
-
-	for (i = 0; i < fm_local_address_prefixes.count; ++i) {
-		fm_address_prefix_t *entry = &fm_local_address_prefixes.elements[i];
-		int xor = 0;
-
-		if (entry->address.ss_family != addr->ss_family)
-			continue;
-
-		raw_addr2 = fm_address_get_raw_addr(&entry->address, NULL);
-		for (k = 0; k < noctets && xor == 0; ++k)
-			xor = entry->raw_mask[k] & (raw_addr1[k] ^ raw_addr2[k]);
-
-		if (xor == 0)
-			return entry;
-	}
-
-	return NULL;
-}
-
-bool
-fm_interface_get_network_address(const fm_interface_t *nic, int af, fm_address_t *ret_addr)
-{
-	unsigned int i;
-
-	for (i = 0; i < fm_local_address_prefixes.count; ++i) {
-		fm_address_prefix_t *entry = &fm_local_address_prefixes.elements[i];
-
-		if (entry->device == nic && entry->address.ss_family == af) {
-			*ret_addr = entry->address;
-			return true;
-		}
-	}
-
-	return false;
-}
-
