@@ -48,6 +48,9 @@ typedef struct fm_arg_parser {
 #define FM_ARG_POSITIONALS	-2
 #define FM_ARG_ERROR		-3
 
+/* Context for fm_cmdparser_usage() */
+static const fm_cmdparser_t *	last_parser_used;
+
 static int
 fm_short_options_iter(const char **pos, int *has_arg_p)
 {
@@ -221,13 +224,6 @@ fm_cmdparser_add_subcommand(fm_cmdparser_t *parent, const char *name, unsigned i
 	return parser;
 }
 
-static void
-fm_cmdparser_usage(const fm_cmdparser_t *parser, int exval)
-{
-	fprintf(stderr, "Usage message goes here\n");
-	exit(1);
-}
-
 static char *
 fm_cmdparser_fullname(const fm_cmdparser_t *parser)
 {
@@ -394,6 +390,8 @@ fm_cmdparser_process_args(const fm_cmdparser_t *parser, int argc, char **argv)
 		const char *cmdname;
 		int c;
 
+		last_parser_used = parser;
+
 		while (true) {
 			c = fm_arg_parser_next_option(&state, parser);
 
@@ -404,7 +402,7 @@ fm_cmdparser_process_args(const fm_cmdparser_t *parser, int argc, char **argv)
 				return NULL;
 
 			if (!state.found.setfn(state.found.value, state.found.argument))
-				fm_cmdparser_usage(parser, 1);
+				return NULL;
 		}
 
 		if (parser->subcommands == NULL)
@@ -413,7 +411,7 @@ fm_cmdparser_process_args(const fm_cmdparser_t *parser, int argc, char **argv)
 		cmdname = fm_arg_parser_next_positional(&state);
 		if (cmdname == NULL) {
 			fm_log_error("%s: missing subcommand", parser->name);
-			fm_cmdparser_usage(parser, 1);
+			return NULL;
 		} else {
 			fm_cmdparser_t *subparser;
 
@@ -434,4 +432,68 @@ fm_cmdparser_process_args(const fm_cmdparser_t *parser, int argc, char **argv)
 	result->values = state.argv + state.optind;
 
 	return result;
+}
+
+/*
+ * Display command usage
+ */
+static void
+fm_cmdparser_usage_work(FILE *fp, const fm_cmdparser_t *parser, bool last)
+{
+	char *fullname = fm_cmdparser_fullname(parser);
+	unsigned int k;
+
+	if (last) {
+		fprintf(fp, "Usage: %s ...\n", fullname);
+
+		if (parser->subcommands) {
+			fm_cmdparser_t *sub;
+
+			fprintf(fp, "\nAvailable subcommands:\n");
+			for (k = 0; (sub = parser->subcommands[k]) != NULL; ++k) {
+				fprintf(fp, "  %s (no help)\n", sub->name);
+			}
+		}
+
+		if (parser->num_options)
+			fprintf(fp, "\nOptions:\n");
+	} else if (parser->num_options) {
+		fprintf(fp, "\nAdditional %s options:\n", fullname);
+	}
+
+	free(fullname);
+
+	for (k = 0; k < parser->num_options; ++k) {
+		const fm_long_option_t *o = &parser->options[k];
+
+		if (o->has_arg == FM_ARG_NONE) {
+			fprintf(fp, "  %s", o->name);
+		} else {
+			const char *arg_name = "ARGUMENT";
+
+			if (o->has_arg == FM_ARG_OPTIONAL)
+				fprintf(fp, "  %s [%s]", o->name, arg_name);
+			else
+				fprintf(fp, "  %s %s", o->name, arg_name);
+		}
+
+		fprintf(fp, " (do something useful)\n");
+	}
+
+	if (parser->parent != NULL)
+		fm_cmdparser_usage_work(fp, parser->parent, false);
+}
+
+void
+fm_cmdparser_usage(FILE *fp)
+{
+	if (fp == NULL)
+		fp = stderr;
+
+	if (last_parser_used == NULL) {
+		fprintf(fp, "%s() called before any args have been parsed\n", __func__);
+		return;
+	}
+
+	fm_cmdparser_usage_work(fp, last_parser_used, true);
 }
