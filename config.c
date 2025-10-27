@@ -33,7 +33,7 @@ static fm_config_proc_t		fm_config_root;
 
 static bool		fm_config_process_node(curly_node_t *node, fm_config_proc_t *proc, void *data);
 static bool		fm_config_render_node(curly_node_t *node, fm_config_proc_t *proc, void *data);
-static bool		fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *attr_def, const char *value);
+static bool		fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *attr_def, const curly_attr_t *attr);
 static void		fm_config_dump(curly_node_t *np, unsigned int indent);
 
 fm_config_t *
@@ -141,6 +141,7 @@ enum {
 	FM_CONFIG_ATTR_TYPE_INT,
 	FM_CONFIG_ATTR_TYPE_BOOL,
 	FM_CONFIG_ATTR_TYPE_STRING,
+	FM_CONFIG_ATTR_TYPE_STRING_ARRAY,
 	FM_CONFIG_ATTR_TYPE_SPECIAL,
 };
 
@@ -178,6 +179,8 @@ struct fm_config_proc {
 		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_STRING }
 #define ATTRIB_SPECIAL(container, member, __setfn) \
 		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = __setfn }
+#define ATTRIB_STRING_ARRAY(container, member) \
+		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_STRING_ARRAY }
 
 static inline void *
 fm_config_addr_apply_offset(void *data, unsigned int offset)
@@ -434,10 +437,62 @@ fm_config_attr_render_string(curly_node_t *node, void *attr_data, const char *na
 }
 
 static bool
-fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *attr_def, const char *value)
+fm_config_attr_set_string_array(curly_node_t *node, void *attr_data, const curly_attr_t *attr)
+{
+	fm_string_array_t *array = (fm_string_array_t *) attr_data;
+	const char * const *values;
+
+	if (!(values = curly_attr_get_values(attr)))
+		return false;
+
+	/* zap what was there */
+	fm_string_array_destroy(array);
+
+	while (*values)
+		fm_string_array_append(array, *values++);
+
+	return true;
+
+}
+
+static bool
+fm_config_attr_render_string_array(curly_node_t *node, void *attr_data, const char *name)
+{
+	fm_string_array_t *array = (fm_string_array_t *) attr_data;
+	unsigned int i;
+
+	if (array->count == 0)
+		return true;
+
+	for (i = 0; i < array->count; ++i)
+		curly_node_add_attr_list(node, name, array->entries[i]);
+
+	return true;
+}
+
+static bool
+fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *attr_def, const curly_attr_t *attr)
 {
 	void *attr_data = fm_config_addr_apply_offset(data, attr_def->offset);
+	unsigned int count;
+	const char *value;
 	bool okay;
+
+	if (attr_def->type == FM_CONFIG_ATTR_TYPE_STRING_ARRAY) {
+		if (fm_config_attr_set_string_array(node, attr_data, attr))
+			return true;
+
+		fm_config_complain(node, "unable to parse string array attribute %s", attr_def->name);
+		return false;
+	}
+
+	count = curly_attr_get_count(attr);
+	if (count != 1) {
+		fm_config_complain(node, "attribute %s expects exactly one value", attr_def->name);
+		return false;
+	}
+
+	value = curly_attr_get_value(attr, 0);
 
 	switch (attr_def->type) {
 	case FM_CONFIG_ATTR_TYPE_INT:
@@ -499,6 +554,10 @@ fm_config_render_value(curly_node_t *node, void *data, const fm_config_attr_t *a
 		okay = attr_def->getfn(node, attr_data);
 		break;
 
+	case FM_CONFIG_ATTR_TYPE_STRING_ARRAY:
+		okay = fm_config_attr_render_string_array(node, attr_data, attr_def->name);
+		break;
+
 	default:
 		fm_config_complain(node, "attribute %s has unsupported type", attr_def->name);
 		return false;
@@ -515,7 +574,6 @@ fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *dat
 {
 	const char *attr_name = curly_attr_get_name(attr);
 	char converted_attr_name[64];
-	unsigned int count = curly_attr_get_count(attr);
 	unsigned int i;
 
 	/* Owing to the way we build the processing information, the attr names in these
@@ -538,21 +596,7 @@ fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *dat
 			break;
 
 		if (!strcmp(adef->name, attr_name)) {
-			const char *value;
-
-			if (count != 1) {
-				fm_config_complain(node, "attribute %s expects exactly one value", attr_name);
-				return false;
-			}
-
-			value = curly_attr_get_value(attr, 0);
-			if (!fm_config_apply_value(node, data, adef, value)) {
-				fm_config_complain(node, "unable to parse attribute %s=\"%s\"",
-						attr_name, value);
-				return false;
-			}
-
-			return true;
+			return fm_config_apply_value(node, data, adef, attr);
 		}
 	}
 
