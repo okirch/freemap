@@ -30,13 +30,6 @@ typedef struct fm_long_option {
 
 typedef bool			fm_cmdparser_option_handler_fn_t(int opt, const char *argument);
 
-struct fm_cmdparser_option_handler {
-	const char *		name;
-
-	int			value;
-	int			has_arg;
-};
-
 typedef struct fm_cmdparser	fm_cmdparser_t;
 
 struct fm_cmdparser {
@@ -48,7 +41,7 @@ struct fm_cmdparser {
 	fm_cmdparser_t *	parent;
 
 	unsigned int		num_handlers;
-	struct fm_cmdparser_option_handler *handlers;
+	fm_long_option_t *	handlers;
 
 	fm_cmdparser_t **	subcommands;
 };

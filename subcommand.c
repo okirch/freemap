@@ -82,7 +82,7 @@ fm_short_options_iter(const char **pos, int *has_arg_p)
 static void
 fm_cmdparser_add_handler(fm_cmdparser_t *parser, const char *name, int val, int has_arg)
 {
-	struct fm_cmdparser_option_handler *h;
+	fm_long_option_t *h;
 
 	if ((parser->num_handlers % 16) == 0)
 		parser->handlers = realloc(parser->handlers, (parser->num_handlers + 16) * sizeof(parser->handlers[0]));
@@ -101,7 +101,7 @@ fm_cmdparser_find_long_option_handler(const fm_cmdparser_t *parser, const char *
 
 	while (parser != NULL) {
 		for (i = 0; i < parser->num_handlers; ++i) {
-			const struct fm_cmdparser_option_handler *h = &parser->handlers[i];
+			const fm_long_option_t *h = &parser->handlers[i];
 
 			if (!strcmp(h->name, name)) {
 				state->found.option = h->name;
