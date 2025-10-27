@@ -66,11 +66,11 @@ fm_short_options_iter(const char **pos, int *has_arg_p)
 		return -1;
 	}
 
-	*has_arg_p = no_argument;
+	*has_arg_p = FM_ARG_NONE;
 	if (p[0] == ':') {
-		*has_arg_p = required_argument;
+		*has_arg_p = FM_ARG_REQUIRED;
 		if (p[1] == ':')
-			*has_arg_p = optional_argument;
+			*has_arg_p = FM_ARG_OPTIONAL;
 		while (*p == ':')
 			++p;
 	}
@@ -289,7 +289,7 @@ fm_arg_parser_next_option(fm_arg_parser_t *state, const fm_cmdparser_t *parser)
 			return FM_ARG_ERROR;
 		}
 
-		if (state->found.has_arg == no_argument) {
+		if (state->found.has_arg == FM_ARG_NONE) {
 			if (next[2] != '\0') {
 				/* -abc, and -a is an option that doesn't want an arg */
 				next[1] = '-';
@@ -315,7 +315,7 @@ fm_arg_parser_next_option(fm_arg_parser_t *state, const fm_cmdparser_t *parser)
 			return FM_ARG_ERROR;
 		}
 
-		if (state->found.has_arg == no_argument)
+		if (state->found.has_arg == FM_ARG_NONE)
 			return 0;
 	}
 
@@ -324,7 +324,7 @@ fm_arg_parser_next_option(fm_arg_parser_t *state, const fm_cmdparser_t *parser)
 	 *  --foobar blah
 	 */
 	if (state->optind >= state->argc) {
-		if (state->found.has_arg == optional_argument)
+		if (state->found.has_arg == FM_ARG_OPTIONAL)
 			return 0;
 
 		fm_arg_parser_error(state, "option %s requires an argument", state->found.option);
@@ -333,7 +333,7 @@ fm_arg_parser_next_option(fm_arg_parser_t *state, const fm_cmdparser_t *parser)
 
 	next = state->argv[state->optind];
 	if (!strncmp(next, "--", 2)) {
-		if (state->found.has_arg == optional_argument)
+		if (state->found.has_arg == FM_ARG_OPTIONAL)
 			return 0;
 
 		fm_arg_parser_error(state, "option %s requires an argument but i followed by \"%s\"",

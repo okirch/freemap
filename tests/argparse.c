@@ -24,10 +24,10 @@
 #include "freemap.h"
 #include "subcommand.h"
 
-struct option	global_long_options[] = {
-	{ "foobar",	required_argument,	NULL,	'f'	},
-	{ "debug",	no_argument,		NULL,	'd'	},
-	{ "brain",	optional_argument,	NULL,	'b'	},
+fm_long_option_t	global_long_options[] = {
+	{ "foobar",	FM_ARG_REQUIRED,	'f'	},
+	{ "debug",	FM_ARG_NONE,		'd'	},
+	{ "brain",	FM_ARG_OPTIONAL,	'b'	},
 	{ NULL }
 };
 
@@ -85,7 +85,7 @@ bool
 parse_one(fm_cmdparser_t *parser, char **argv, const struct global_opts *expect)
 {
 	int argc = 0;
-	int cmd;
+	fm_command_t *cmd;
 
 	while (argv[argc] != NULL)
 		++argc;
@@ -95,8 +95,13 @@ parse_one(fm_cmdparser_t *parser, char **argv, const struct global_opts *expect)
 	memset(&global_opts, 0, sizeof(global_opts));
 
 	cmd = fm_cmdparser_process_args(parser, argc, argv);
-	if (cmd != 1) {
-		fprintf(stderr, "%s: fm_cmdparser_process_args() return %d", argv[0], cmd);
+	if (cmd == NULL) {
+		fprintf(stderr, "%s: fm_cmdparser_process_args() returns error", argv[0]);
+		return false;
+	}
+
+	if (cmd->cmdid != 1) {
+		fprintf(stderr, "%s: fm_cmdparser_process_args() returns commmand id %d", argv[0], cmd->cmdid);
 		return false;
 	}
 

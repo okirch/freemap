@@ -18,14 +18,13 @@
 #ifndef FREEMAP_SUBCOMMAND_H
 #define FREEMAP_SUBCOMMAND_H
 
-#define no_argument		0
-#define required_argument	1
-#define optional_argument	2
+#define FM_ARG_NONE		0
+#define FM_ARG_REQUIRED		1
+#define FM_ARG_OPTIONAL		2
 
 typedef struct fm_long_option {
 	const char *		name;
 	int			has_arg;
-	void *			dummy;
 	int			val;
 } fm_long_option_t;
 

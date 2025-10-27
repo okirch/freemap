@@ -38,18 +38,18 @@ enum {
 };
 
 static fm_long_option_t main_long_options[] = {
-	{ "ipv4",		no_argument,		NULL,	OPT_IPV4_ONLY,	},
-	{ "ipv6",		no_argument,		NULL,	OPT_IPV6_ONLY,	},
-	{ "all-addresses",	no_argument,		NULL,	OPT_ALL_ADDRS,	},
-	{ "debug",		no_argument,		NULL,	'd',	},
-	{ "help",		no_argument,		NULL,	'h',	},
+	{ "ipv4",		FM_ARG_NONE,		OPT_IPV4_ONLY,	},
+	{ "ipv6",		FM_ARG_NONE,		OPT_IPV6_ONLY,	},
+	{ "all-addresses",	FM_ARG_NONE,		OPT_ALL_ADDRS,	},
+	{ "debug",		FM_ARG_NONE,		'd',	},
+	{ "help",		FM_ARG_NONE,		'h',	},
 	{ NULL },
 };
 
 static fm_long_option_t scan_long_options[] = {
-	{ "logfile",		required_argument,	NULL,	'L',	},
-	{ "program",		required_argument,	NULL,	OPT_PROGRAM,	},
-	{ "dump",		no_argument,		NULL,	OPT_DUMP },
+	{ "logfile",		FM_ARG_REQUIRED,	'L',	},
+	{ "program",		FM_ARG_REQUIRED,	OPT_PROGRAM,	},
+	{ "dump",		FM_ARG_NONE,		OPT_DUMP },
 	{ NULL },
 };
 
