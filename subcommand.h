@@ -28,13 +28,13 @@ typedef struct fm_long_option {
 	int			val;
 } fm_long_option_t;
 
+typedef bool			fm_cmdparser_option_handler_fn_t(int opt, const char *argument);
+
 struct fm_cmdparser_option_handler {
 	const char *		name;
 
 	int			value;
 	int			has_arg;
-	/* FIXME: the fn() could live in cmdparser, too - no need to duplicate it all over the place */
-	bool			(*fn)(int opt, const char *arg_value);
 };
 
 typedef struct fm_cmdparser	fm_cmdparser_t;
@@ -42,6 +42,8 @@ typedef struct fm_cmdparser	fm_cmdparser_t;
 struct fm_cmdparser {
 	const char *		name;
 	unsigned int		cmdid;
+
+	fm_cmdparser_option_handler_fn_t *process_option;
 
 	fm_cmdparser_t *	parent;
 
@@ -63,10 +65,10 @@ struct fm_command {
 
 extern fm_cmdparser_t *	fm_cmdparser_main(const char *name, unsigned int cmdid,
 				const char *short_options, const fm_long_option_t *long_options,
-				bool (*opt_fn)(int, const char *));
+				fm_cmdparser_option_handler_fn_t *process_option);
 extern fm_cmdparser_t *	fm_cmdparser_add_subcommand(fm_cmdparser_t *parent, const char *name, unsigned int cmdid,
 				const char *short_options, const fm_long_option_t *long_options,
-				bool (*opt_fn)(int, const char *));
+				fm_cmdparser_option_handler_fn_t *process_option);
 extern fm_command_t *		fm_cmdparser_process_args(const fm_cmdparser_t *, int argc, char **argv);
 
 #endif /* FREEMAP_SUBCOMMAND_H */

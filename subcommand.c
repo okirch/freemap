@@ -39,7 +39,7 @@ typedef struct fm_arg_parser {
 		int		value;
 		int		has_arg;
 		const char *	argument;
-		bool		(*setfn)(int, const char *);
+		fm_cmdparser_option_handler_fn_t *setfn;
 	} found;
 } fm_arg_parser_t;
 
@@ -80,7 +80,7 @@ fm_short_options_iter(const char **pos, int *has_arg_p)
 }
 
 static void
-fm_cmdparser_add_handler(fm_cmdparser_t *parser, const char *name, int val, int has_arg, bool (*fn)(int, const char *))
+fm_cmdparser_add_handler(fm_cmdparser_t *parser, const char *name, int val, int has_arg)
 {
 	struct fm_cmdparser_option_handler *h;
 
@@ -91,7 +91,6 @@ fm_cmdparser_add_handler(fm_cmdparser_t *parser, const char *name, int val, int 
 	h->name = strdup(name);
 	h->value = val;
 	h->has_arg = has_arg;
-	h->fn = fn;
 }
 
 static bool
@@ -108,7 +107,7 @@ fm_cmdparser_find_long_option_handler(const fm_cmdparser_t *parser, const char *
 				state->found.option = h->name;
 				state->found.value = h->value;
 				state->found.has_arg = h->has_arg;
-				state->found.setfn = h->fn;
+				state->found.setfn = parser->process_option;
 				return true;
 			}
 		}
@@ -154,12 +153,13 @@ fm_cmdparser_main(const char *name, unsigned int cmdid,
 	parser = calloc(1, sizeof(*parser));
 	parser->name = strdup(name);
 	parser->cmdid = cmdid;
+	parser->process_option = opt_fn;
 
 	for (o = long_options; o->name; ++o) {
 		char *long_name = NULL;
 
 		asprintf(&long_name, "--%s", o->name);
-		fm_cmdparser_add_handler(parser, long_name, o->val, o->has_arg, opt_fn);
+		fm_cmdparser_add_handler(parser, long_name, o->val, o->has_arg);
 		free(long_name);
 	}
 
@@ -168,7 +168,7 @@ fm_cmdparser_main(const char *name, unsigned int cmdid,
 		char namebuf[8];
 
 		snprintf(namebuf, sizeof(namebuf), "-%c" ,c);
-		fm_cmdparser_add_handler(parser, namebuf, c, has_arg, opt_fn);
+		fm_cmdparser_add_handler(parser, namebuf, c, has_arg);
 	}
 
 	return parser;
