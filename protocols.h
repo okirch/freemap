@@ -52,10 +52,7 @@ struct fm_protocol_ops {
 };
 
 struct fm_protocol_engine {
-	fm_protocol_t *	arp;
-	fm_protocol_t *	icmp;
-	fm_protocol_t *	udp;
-	fm_protocol_t *	tcp;
+	fm_protocol_t *	driver[__FM_PROTO_MAX];
 };
 
 extern fm_protocol_engine_t *fm_protocol_engine_create_default(void);

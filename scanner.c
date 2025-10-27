@@ -306,21 +306,7 @@ fm_scanner_get_protocol_engine(fm_scanner_t *scanner, const char *protocol_name)
 	if (id == FM_PROTO_NONE)
 		return NULL;
 
-	switch (id) {
-	case FM_PROTO_ARP:
-		return scanner->proto->arp;
-
-	case FM_PROTO_TCP:
-		return scanner->proto->tcp;
-
-	case FM_PROTO_UDP:
-		return scanner->proto->udp;
-
-	case FM_PROTO_ICMP:
-		return scanner->proto->icmp;
-	}
-
-	return NULL;
+	return scanner->proto->driver[id];
 }
 
 void
