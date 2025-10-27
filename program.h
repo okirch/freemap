@@ -100,6 +100,9 @@ typedef struct fm_scan_library {
 } fm_scan_library_t;
 
 extern fm_scan_program_t *	fm_scan_program_alloc(const char *name);
+extern fm_scan_program_t *	fm_scan_program_build(const char *name,
+					const char *reachability_scan,
+					const char *service_scan);
 extern void			fm_scan_program_free(fm_scan_program_t *);
 
 #endif /* FREEMAP_PROGRAM_H */

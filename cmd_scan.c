@@ -25,6 +25,7 @@
 #include "subcommand.h"
 #include "commands.h"
 #include "projects.h"
+#include "program.h"
 
 static fm_long_option_t scan_long_options[] = {
 	{ "logfile",		FM_ARG_REQUIRED,	'L',	},
@@ -114,12 +115,16 @@ fm_command_perform_scan(fm_command_t *cmd)
 		fm_report_add_logfile(report, scan_options.logfile);
 	}
 
-	if (scan_options.program == NULL)
-		scan_options.program = "default";
+	if (scan_options.program != NULL) {
+		program = fm_scan_library_load_program(scan_options.program);
+		if (program == NULL)
+			fm_log_fatal("Could not find scan program \"%s\"\n", scan_options.program);
+	} else {
+		program = fm_scan_program_build("scan",
+				project->reachability_probe?: "default-reachability",
+				project->service_probe?: "default-scan");
+	}
 
-	program = fm_scan_library_load_program(scan_options.program);
-	if (program == NULL)
-		fm_log_fatal("Could not find scan program \"%s\"\n", scan_options.program);
 	if (scan_options.dump)
 		fm_scan_program_dump(program);
 

@@ -441,6 +441,46 @@ fm_scan_program_call_routine(fm_scan_program_t *program, const char *name)
 }
 
 /*
+ * Convenience function for assembling a program from a reachability and a service scan
+ */
+static bool
+fm_scan_program_attach(fm_scan_program_t *program, const char *routine_name, bool abort_on_fail)
+{
+	fm_scan_exec_t *exec;
+
+	exec = fm_scan_program_call_routine(program, routine_name);
+	if (exec == NULL) {
+		fm_log_error("Could not attach reachability probe \"%s\"", routine_name);
+		return false;
+	}
+
+	if (abort_on_fail)
+		exec->abort_on_fail = true;
+	return true;
+}
+
+extern fm_scan_program_t *
+fm_scan_program_build(const char *name, const char *reachability_scan, const char *service_scan)
+{
+	fm_scan_program_t *program;
+
+	program = fm_scan_program_alloc(name);
+	if (reachability_scan != NULL
+	 && !fm_scan_program_attach(program, reachability_scan, true))
+		goto fail;
+
+	if (service_scan != NULL
+	 && fm_scan_program_attach(program, service_scan, false))
+		goto fail;
+
+	return program;
+
+fail:
+	fm_scan_program_free(program);
+	return NULL;
+}
+
+/*
  * Convert a program into a sequence of scan actions
  */
 static bool
