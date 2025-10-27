@@ -110,7 +110,7 @@ fm_icmp_process_bsd_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 	fm_extant_t *extant = NULL;
 
 	fm_log_debug("received ICMP reply from %s", fm_address_format(&pkt->recv_addr));
-	fm_print_hexdump(pkt->data, pkt->len);
+	/* fm_print_hexdump(pkt->data, pkt->len); */
 
 	/* When using PF_RAW sockets, the kernel stack seems to insert an ICMP id of its own choosing,
 	 * so we need to ignore the ID when looking for a matching request. */
