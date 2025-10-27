@@ -73,7 +73,7 @@ fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 	unsigned char src_hwaddr[ETH_ALEN];
 	uint32_t src_ipaddr;
 
-	fm_print_hexdump(pkt->data, pkt->len);
+	/* fm_print_hexdump(pkt->data, pkt->len); */
 
 	if (pkt->family != AF_PACKET)
 		return false;
