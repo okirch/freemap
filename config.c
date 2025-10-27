@@ -25,7 +25,13 @@
 #include "freemap.h"
 #include "config.h"
 
-static bool		fm_config_process(fm_config_t *conf, curly_node_t *node);
+typedef struct fm_config_child	fm_config_child_t;
+typedef struct fm_config_attr	fm_config_attr_t;
+typedef struct fm_config_proc	fm_config_proc_t;
+
+static fm_config_proc_t		fm_config_root;
+
+static bool		fm_config_process_node(curly_node_t *node, fm_config_proc_t *proc, void *data);;
 static void		fm_config_dump(curly_node_t *np, unsigned int indent);
 
 fm_config_t *
@@ -40,8 +46,8 @@ fm_config_create(const fm_config_t *inherit)
 	return conf;
 }
 
-bool
-fm_config_load(fm_config_t *conf, const char *path)
+static bool
+fm_config_load_work(const char *path, fm_config_proc_t *root_proc, void *data)
 {
 	curly_node_t *top;
 	bool rv;
@@ -57,10 +63,16 @@ fm_config_load(fm_config_t *conf, const char *path)
 
 	/* fm_config_dump(top, 0); */
 
-	rv = fm_config_process(conf, top);
+	rv = fm_config_process_node(top, root_proc, data);
 
 	curly_node_free(top);
 	return rv;
+}
+
+bool
+fm_config_load(fm_config_t *conf, const char *path)
+{
+	return fm_config_load_work(path, &fm_config_root, conf);
 }
 
 /*
@@ -80,10 +92,6 @@ fm_config_complain(curly_node_t *node, const char *fmt, ...)
 			msgbuf);
 	va_end(ap);
 }
-
-typedef struct fm_config_child	fm_config_child_t;
-typedef struct fm_config_attr	fm_config_attr_t;
-typedef struct fm_config_proc	fm_config_proc_t;
 
 enum {
 	FM_CONFIG_ATTR_TYPE_BAD = 0,
@@ -122,8 +130,6 @@ struct fm_config_proc {
 		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_BOOL }
 #define ATTRIB_SPECIAL(container, member, __setfn) \
 		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = __setfn }
-
-static bool			fm_config_process_node(curly_node_t *node, fm_config_proc_t *proc, void *data);
 
 static inline void *
 fm_config_addr_apply_offset(void *data, unsigned int offset)
@@ -239,7 +245,7 @@ static fm_config_proc_t		fm_config_arp = {
 };
 
 /*
- * root node
+ * config file root node
  */
 static fm_config_proc_t		fm_config_root = {
 	.children = {
@@ -408,12 +414,6 @@ fm_config_process_node(curly_node_t *node, fm_config_proc_t *proc, void *data)
 	}
 
 	return rv;
-}
-
-static bool
-fm_config_process(fm_config_t *conf, curly_node_t *node)
-{
-	return fm_config_process_node(node, &fm_config_root, conf);
 }
 
 static void
