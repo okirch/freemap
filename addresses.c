@@ -31,7 +31,7 @@
 #include "addresses.h"
 #include "network.h"
 
-extern const fm_address_prefix_t *	fm_address_find_local_prefix(const fm_address_t *);
+extern const fm_address_prefix_t *	fm_local_prefix_for_address(const fm_address_t *);
 
 /*
  * Common address handling functions
@@ -552,7 +552,7 @@ fm_create_cidr_address_enumerator(const char *addr_string)
 	if (ss.ss_family == AF_INET6) {
 		const fm_address_prefix_t *local_prefix;
 
-		local_prefix = fm_address_find_local_prefix(&ss);
+		local_prefix = fm_local_prefix_for_address(&ss);
 		if (local_prefix == NULL || cidr_bits < local_prefix->pfxlen) {
 			fm_log_error("%s: remote network enumeration not supported for IPv6", addr_string);
 			return NULL;

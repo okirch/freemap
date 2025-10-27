@@ -139,6 +139,18 @@ fm_interface_by_index(unsigned int ifindex)
 	return nic;
 }
 
+const fm_interface_t *
+fm_interface_by_address(const fm_address_t *addr)
+{
+	const fm_address_prefix_t *local_prefix;
+
+	/* Find the local address prefix and the device it lives on */
+	if (!(local_prefix = fm_local_prefix_for_address(addr)))
+		return NULL;
+
+	return local_prefix->device;
+}
+
 bool
 fm_interface_get_lladdr(const fm_interface_t *nic, struct sockaddr_ll *lladdr)
 {
@@ -235,7 +247,7 @@ fm_prefix_to_mask(int af, unsigned int pfxlen, unsigned char *mask, unsigned int
 }
 
 void
-fm_address_discover_local(void)
+fm_local_discover(void)
 {
 	struct ifaddrs *head, *ifa;
 	unsigned int i;
@@ -302,7 +314,7 @@ fm_address_discover_local(void)
 }
 
 const fm_address_prefix_t *
-fm_address_find_local_prefix(const fm_address_t *addr)
+fm_local_prefix_for_address(const fm_address_t *addr)
 {
 	const unsigned char *raw_addr1;
 	const unsigned char *raw_addr2;
@@ -332,20 +344,8 @@ fm_address_find_local_prefix(const fm_address_t *addr)
 	return NULL;
 }
 
-const fm_interface_t *
-fm_address_find_local_device(const fm_address_t *addr)
-{
-	const fm_address_prefix_t *local_prefix;
-
-	/* Find the local address prefix and the device it lives on */
-	if (!(local_prefix = fm_address_find_local_prefix(addr)))
-		return NULL;
-
-	return local_prefix->device;
-}
-
 bool
-fm_address_find_local_address(const fm_interface_t *nic, int af, fm_address_t *ret_addr)
+fm_interface_get_network_address(const fm_interface_t *nic, int af, fm_address_t *ret_addr)
 {
 	unsigned int i;
 
@@ -360,3 +360,4 @@ fm_address_find_local_address(const fm_interface_t *nic, int af, fm_address_t *r
 
 	return false;
 }
+

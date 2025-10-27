@@ -119,7 +119,7 @@ fm_scanner_create(void)
 
 	scanner->proto = fm_protocol_engine_create_default();
 
-	fm_address_discover_local();
+	fm_local_discover();
 
 	return scanner;
 }

@@ -43,10 +43,10 @@ extern void		fm_address_enumerator_destroy(fm_address_enumerator_t *);
 extern const char *	fm_address_format(const fm_address_t *);
 extern bool		fm_address_equal(const fm_address_t *, const fm_address_t *, bool with_port);
 
-extern void		fm_address_discover_local(void);
+extern void		fm_local_discover(void);
 extern fm_network_t *	fm_network_for_host(const fm_address_t *);
-extern const fm_interface_t *fm_address_find_local_device(const fm_address_t *);
-extern bool		fm_address_find_local_address(const fm_interface_t *nic, int af, fm_address_t *ret_addr);
+extern const fm_interface_t *fm_interface_by_address(const fm_address_t *);
+extern bool		fm_interface_get_network_address(const fm_interface_t *nic, int af, fm_address_t *ret_addr);
 
 extern const fm_interface_t *fm_interface_by_name(const char *ifname);
 extern const fm_interface_t *fm_interface_by_index(unsigned int ifindex);
