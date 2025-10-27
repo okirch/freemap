@@ -227,6 +227,29 @@ fm_cmdparser_usage(const fm_cmdparser_t *parser, int exval)
 	exit(1);
 }
 
+static char *
+fm_cmdparser_fullname(const fm_cmdparser_t *parser)
+{
+	const char *names[16];
+	unsigned int count, size = 0, k, pos;
+	char *result;
+
+	for (count = 0; parser; parser = parser->parent) {
+		size += strlen(parser->name) + 1;
+		names[count++] = parser->name;
+	}
+
+	result = calloc(size, 1);
+	for (k = count, pos = 0; k--; ) {
+		if (pos)
+			result[pos++] = ' ';
+		strcpy(result + pos, names[k]);
+		pos = strlen(result);
+	}
+
+	return result;
+}
+
 /*
  * Our own simple argv parser.
  */
@@ -404,7 +427,7 @@ fm_cmdparser_process_args(const fm_cmdparser_t *parser, int argc, char **argv)
 	}
 
 	result = calloc(1, sizeof(*result));
-	result->fullname = parser->name;
+	result->fullname = fm_cmdparser_fullname(parser);
 	result->cmdid = parser->cmdid;
 	result->nvalues = state.argc - state.optind;
 	result->values = state.argv + state.optind;
