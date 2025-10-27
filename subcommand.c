@@ -84,10 +84,9 @@ fm_cmdparser_add_handler(fm_cmdparser_t *parser, const char *name, int val, int 
 {
 	fm_long_option_t *h;
 
-	if ((parser->num_handlers % 16) == 0)
-		parser->handlers = realloc(parser->handlers, (parser->num_handlers + 16) * sizeof(parser->handlers[0]));
+	maybe_realloc_array(parser->options, parser->num_options, 16);
 
-	h = &parser->handlers[parser->num_handlers++];
+	h = &parser->options[parser->num_options++];
 	h->name = strdup(name);
 	h->value = val;
 	h->has_arg = has_arg;
@@ -100,8 +99,8 @@ fm_cmdparser_find_long_option_handler(const fm_cmdparser_t *parser, const char *
 	unsigned int i;
 
 	while (parser != NULL) {
-		for (i = 0; i < parser->num_handlers; ++i) {
-			const fm_long_option_t *h = &parser->handlers[i];
+		for (i = 0; i < parser->num_options; ++i) {
+			const fm_long_option_t *h = &parser->options[i];
 
 			if (!strcmp(h->name, name)) {
 				state->found.option = h->name;

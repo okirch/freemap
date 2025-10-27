@@ -40,8 +40,8 @@ struct fm_cmdparser {
 
 	fm_cmdparser_t *	parent;
 
-	unsigned int		num_handlers;
-	fm_long_option_t *	handlers;
+	unsigned int		num_options;
+	fm_long_option_t *	options;
 
 	fm_cmdparser_t **	subcommands;
 };
