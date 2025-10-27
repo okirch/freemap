@@ -209,8 +209,10 @@ fm_arp_locate_probe(uint32_t ipaddr, const unsigned char *eth_addr)
 	hlist_iterator_t iter;
 
 	target = fm_target_pool_find((struct sockaddr_storage *) &sin);
-	if (target == NULL)
+	if (target == NULL) {
+		fm_log_debug("ignoring arp response from %s", fm_address_format((struct sockaddr_storage *) &sin));
 		return NULL;
+	}
 
 	{
 		struct sockaddr_ll lladdr;
