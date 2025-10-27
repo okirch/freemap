@@ -30,6 +30,7 @@ LIB	= libfreemap.a
 UTILS	= freemap
 freemap_OBJS = \
 	  main.o \
+	  cmd_project.o \
 	  cmd_scan.o
 
 all::	$(LIB) $(UTILS)

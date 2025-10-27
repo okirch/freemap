@@ -22,6 +22,8 @@
 
 enum {
 	FM_CMDID_MAIN = 1,
+	FM_CMDID_INIT,
+	FM_CMDID_ADD_TARGETS,
 	FM_CMDID_SCAN,
 };
 
@@ -31,9 +33,14 @@ enum {
 	OPT_IPV4_ONLY,
 	OPT_IPV6_ONLY,
 	OPT_ALL_ADDRS,
+	OPT_FORCE,
 };
 
 extern void	fm_command_register_scan(fm_cmdparser_t *);
 extern int	fm_command_perform_scan(fm_command_t *);
+
+extern void	fm_command_register_project(fm_cmdparser_t *);
+extern int	fm_command_perform_init(fm_command_t *);
+extern int	fm_command_perform_add_targets(fm_command_t *);
 
 #endif /* FREEMAP_COMMANDS_H */

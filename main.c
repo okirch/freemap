@@ -101,6 +101,7 @@ main(int argc, char **argv)
 
 	/* register all subcommands */
 	fm_command_register_scan(parser);
+	fm_command_register_project(parser);
 
 	cmd = fm_cmdparser_process_args(parser, argc, argv);
 	if (cmd == NULL) {
@@ -123,6 +124,13 @@ main(int argc, char **argv)
 	switch (cmd->cmdid) {
 	case FM_CMDID_SCAN:
 		return fm_command_perform_scan(cmd);
+
+	case FM_CMDID_INIT:
+		return fm_command_perform_init(cmd);
+
+	case FM_CMDID_ADD_TARGETS:
+		return fm_command_perform_add_targets(cmd);
+
 	default:
 		fm_log_fatal("Cannot execute command %s", cmd->fullname);
 	}
