@@ -120,6 +120,7 @@ struct fm_config_attr {
 #define MAX_ATTRIBUTES		16
 
 struct fm_config_proc {
+	fm_config_attr_t	name;
 	fm_config_child_t	children[MAX_CHILDREN];
 	fm_config_attr_t	attributes[MAX_ATTRIBUTES];
 };
@@ -274,6 +275,15 @@ fm_config_apply_child(curly_node_t *parent, fm_config_proc_t *proc, void *data, 
 
 	type = curly_node_type(node);
 	name = curly_node_name(node);
+	if (proc->name.type != 0) {
+		if (name == NULL) {
+			fm_config_complain(parent, "missing name argument for child \"%s\"", type);
+			return false;
+		}
+
+		if (!fm_config_apply_value(node, data, &proc->name, name))
+			return false;
+	} else
 	if (name != NULL) {
 		fm_config_complain(parent, "unexpected extra name argument for child \"%s\"", type);
 		return false;
