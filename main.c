@@ -131,6 +131,9 @@ main(int argc, char **argv)
 	case FM_CMDID_ADD_TARGETS:
 		return fm_command_perform_add_targets(cmd);
 
+	case FM_CMDID_CONFIGURE:
+		return fm_command_perform_configure(cmd);
+
 	default:
 		fm_log_fatal("Cannot execute command %s", cmd->fullname);
 	}

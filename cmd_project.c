@@ -23,6 +23,7 @@
 #include "freemap.h"
 #include "commands.h"
 #include "projects.h"
+#include "program.h"
 
 static fm_long_option_t project_long_options[] = {
 	{ "force",	FM_ARG_NONE,		OPT_FORCE },
@@ -55,6 +56,7 @@ fm_command_register_project(fm_cmdparser_t *parser)
 {
 	fm_cmdparser_add_subcommand(parser, "init", FM_CMDID_INIT, NULL, project_long_options, handle_project_options);
 	fm_cmdparser_add_subcommand(parser, "add-targets", FM_CMDID_ADD_TARGETS, NULL, project_long_options, handle_project_options);
+	fm_cmdparser_add_subcommand(parser, "configure", FM_CMDID_CONFIGURE, NULL, project_long_options, handle_project_options);
 }
 
 int
@@ -119,6 +121,52 @@ fm_command_perform_add_targets(fm_command_t *cmd)
 		}
 
 		fm_string_array_append(&project->targets, name);
+	}
+
+	fm_project_save(project);
+	fm_project_free(project);
+	return 0;
+}
+
+static bool
+sanity_check_probe_name(const char *key, const char *name)
+{
+	fm_scan_program_t *program;
+	bool okay = true;
+
+	program = fm_scan_program_alloc(key);
+	if (fm_scan_program_call_routine(program, name) == NULL) {
+		okay = false;
+	}
+
+	fm_scan_program_free(program);
+	return okay;
+}
+
+int
+fm_command_perform_configure(fm_command_t *cmd)
+{
+	const char *key, *value;
+	fm_project_t *project;
+
+	if (cmd->nvalues != 2)
+		fm_cmdparser_fatal("Expected arguments: key value\n");
+
+	project = fm_project_load();
+	if (project == NULL) {
+		fm_log_error("could not detect scan project, please initialize first\n");
+		return 1;
+	}
+
+	key = cmd->values[0];
+	value = cmd->values[1];
+	if (!strcmp(key, "reachability-probe")) {
+		if (!sanity_check_probe_name(key, value))
+			return 1;
+		assign_string(&project->reachability_probe, value);
+	} else {
+		fm_log_error("Unknown project setting %s=\"%s\"", key, value);
+		return 1;
 	}
 
 	fm_project_save(project);
