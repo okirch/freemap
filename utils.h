@@ -32,6 +32,14 @@ drop_string(char **var)
 	}
 }
 
+static inline void
+assign_string(char **var, const char *value)
+{
+	drop_string(var);
+	if (value)
+		*var = strdup(value);
+}
+
 #define drop_pointer(pp) do { \
 	void **__pp = (void **) pp; \
 	if (*__pp) { \
