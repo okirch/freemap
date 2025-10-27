@@ -350,9 +350,9 @@ fm_target_pool_find(const fm_address_t *addr)
 	pool = fm_active_target_pool;
 
 	for (i = 0; i < pool->size; ++i) {
-		fm_target_t *target = pool->slots[pool->cursor];
+		fm_target_t *target = pool->slots[i];
 
-		if (fm_address_equal(&target->address, addr, false))
+		if (target && fm_address_equal(&target->address, addr, false))
 			return target;
 	}
 
