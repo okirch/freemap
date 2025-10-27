@@ -60,13 +60,6 @@ struct fm_protocol_engine {
 
 extern fm_protocol_engine_t *fm_protocol_engine_create_default(void);
 
-/* regular unprivileged socket */
-extern fm_protocol_t *	fm_tcp_bsdsock_create(void);
-extern fm_protocol_t *	fm_udp_bsdsock_create(void);
-extern fm_protocol_t *	fm_icmp_bsdsock_create(void);
-extern fm_protocol_t *	fm_icmp_rawsock_create(void);
-extern fm_protocol_t *	fm_arp_create(void);
-
 extern const char *	fm_protocol_id_to_string(unsigned int id);
 extern unsigned int	fm_protocol_string_to_id(const char *name);
 

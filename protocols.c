@@ -103,16 +103,17 @@ fm_socket_have_raw(void)
 	return (bool) have_raw;
 }
 
-static fm_protocol_engine_t *
-fm_protocol_engine_create_standard(void)
+/*
+ * Engine setup
+ */
+static void
+fm_protocol_engine_create_standard(struct fm_protocol_engine *engine)
 {
-	struct fm_protocol_engine *engine = NULL;
 	unsigned int id;
 	bool have_raw;
 
 	have_raw = fm_socket_have_raw();
 
-	engine = calloc(1, sizeof(*engine));
 	for (id = 0; id < __FM_PROTO_MAX; ++id) {
 		const struct fm_protocol_ops *ops;
 		const char *proto_name;
@@ -129,65 +130,18 @@ fm_protocol_engine_create_standard(void)
 		engine->driver[id] = fm_protocol_create(ops);
 		assert(engine->driver[id]);
 	}
-
-	return engine;
-}
-
-/*
- * Engine setup
- */
-static fm_protocol_engine_t *
-fm_protocol_engine_create_bsd_socket(void)
-{
-	static struct fm_protocol_engine *engine = NULL;
-
-	if (engine == NULL) {
-		engine = calloc(1, sizeof(*engine));
-
-		engine->driver[FM_PROTO_ICMP] = fm_icmp_bsdsock_create();
-		engine->driver[FM_PROTO_UDP] = fm_tcp_bsdsock_create();
-		engine->driver[FM_PROTO_TCP] = fm_udp_bsdsock_create();
-	}
-
-	return engine;
-}
-
-static fm_protocol_engine_t *
-fm_protocol_engine_create_raw_socket(void)
-{
-	static struct fm_protocol_engine *engine = NULL;
-	static bool initialized = false;
-
-	if (!initialized) {
-		fm_socket_t *sock;
-
-		initialized = true;
-
-		sock = fm_socket_create(AF_INET, SOCK_RAW, IPPROTO_ICMP, NULL);
-		if (sock == NULL)
-			return NULL;
-		fm_socket_free(sock);
-
-		engine = calloc(1, sizeof(*engine));
-
-		engine->driver[FM_PROTO_ARP] = fm_arp_create();
-		engine->driver[FM_PROTO_ICMP] = fm_icmp_rawsock_create();
-		engine->driver[FM_PROTO_TCP] = fm_tcp_bsdsock_create();
-		engine->driver[FM_PROTO_UDP] = fm_udp_bsdsock_create();
-	}
-
-	return engine;
 }
 
 fm_protocol_engine_t *
 fm_protocol_engine_create_default(void)
 {
-	static fm_protocol_engine_t *engine = NULL;;
+	static struct fm_protocol_engine *engine = NULL;;
 
 	if (engine == NULL) {
 		unsigned int id;
 
-		engine = fm_protocol_engine_create_standard();
+		engine = calloc(1, sizeof(*engine));
+		fm_protocol_engine_create_standard(engine);
 
 		for (id = 0; id < __FM_PROTO_MAX; ++id) {
 			fm_protocol_t *driver = engine->driver[id];

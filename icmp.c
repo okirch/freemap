@@ -83,18 +83,6 @@ static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
 FM_PROTOCOL_REGISTER(fm_icmp_bsdsock_ops);
 FM_PROTOCOL_REGISTER(fm_icmp_rawsock_ops);
 
-fm_protocol_t *
-fm_icmp_bsdsock_create(void)
-{
-	return fm_protocol_create(&fm_icmp_bsdsock_ops);
-}
-
-fm_protocol_t *
-fm_icmp_rawsock_create(void)
-{
-	return fm_protocol_create(&fm_icmp_rawsock_ops);
-}
-
 static fm_socket_t *
 fm_icmp_create_bsd_socket(fm_protocol_t *proto, int af)
 {
