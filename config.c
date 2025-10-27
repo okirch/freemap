@@ -98,6 +98,7 @@ enum {
 	FM_CONFIG_ATTR_TYPE_BAD = 0,
 	FM_CONFIG_ATTR_TYPE_INT,
 	FM_CONFIG_ATTR_TYPE_BOOL,
+	FM_CONFIG_ATTR_TYPE_STRING,
 	FM_CONFIG_ATTR_TYPE_SPECIAL,
 };
 
@@ -129,6 +130,8 @@ struct fm_config_proc {
 		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_INT }
 #define ATTRIB_BOOL(container, member) \
 		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_BOOL }
+#define ATTRIB_STRING(container, member) \
+		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_STRING }
 #define ATTRIB_SPECIAL(container, member, __setfn) \
 		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = __setfn }
 
@@ -321,6 +324,18 @@ fm_config_attr_set_bool(curly_node_t *node, void *attr_data, const char *value)
 }
 
 static bool
+fm_config_attr_set_string(curly_node_t *node, void *attr_data, const char *value)
+{
+	char **var = (char **) attr_data;
+
+	drop_string(var);
+	if (value != NULL)
+		*var = strdup(value);
+	return true;
+
+}
+
+static bool
 fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *attr_def, const char *value)
 {
 	void *attr_data = fm_config_addr_apply_offset(data, attr_def->offset);
@@ -333,6 +348,10 @@ fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *at
 
 	case FM_CONFIG_ATTR_TYPE_BOOL:
 		okay = fm_config_attr_set_bool(node, attr_data, value);
+		break;
+
+	case FM_CONFIG_ATTR_TYPE_STRING:
+		okay = fm_config_attr_set_string(node, attr_data, value);
 		break;
 
 	case FM_CONFIG_ATTR_TYPE_SPECIAL:
