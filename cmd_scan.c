@@ -123,6 +123,8 @@ fm_command_perform_scan(fm_command_t *cmd)
 		program = fm_scan_program_build("scan",
 				project->reachability_probe?: "default-reachability",
 				project->service_probe?: "default-scan");
+		if (program == NULL)
+			fm_log_fatal("Could not build scan program");
 	}
 
 	if (scan_options.dump)

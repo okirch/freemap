@@ -470,7 +470,7 @@ fm_scan_program_build(const char *name, const char *reachability_scan, const cha
 		goto fail;
 
 	if (service_scan != NULL
-	 && fm_scan_program_attach(program, service_scan, false))
+	 && !fm_scan_program_attach(program, service_scan, false))
 		goto fail;
 
 	return program;
