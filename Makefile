@@ -27,7 +27,9 @@ OBJS	= scanner.o \
 	  utils.o
 LIB	= libfreemap.a
 UTILS	= freemap
-freemap_OBJS = main.o
+freemap_OBJS = \
+	  main.o \
+	  cmd_scan.o
 
 all::	$(LIB) $(UTILS)
 

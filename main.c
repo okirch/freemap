@@ -22,20 +22,7 @@
 
 #include "freemap.h"
 #include "scanner.h"
-#include "subcommand.h"
-
-enum {
-	FM_CMDID_MAIN = 1,
-	FM_CMDID_SCAN,
-};
-
-enum {
-	OPT_PROGRAM,
-	OPT_DUMP,
-	OPT_IPV4_ONLY,
-	OPT_IPV6_ONLY,
-	OPT_ALL_ADDRS,
-};
+#include "commands.h"
 
 static fm_long_option_t main_long_options[] = {
 	{ "ipv4",		FM_ARG_NONE,		OPT_IPV4_ONLY,	},
@@ -46,27 +33,13 @@ static fm_long_option_t main_long_options[] = {
 	{ NULL },
 };
 
-static fm_long_option_t scan_long_options[] = {
-	{ "logfile",		FM_ARG_REQUIRED,	'L',	},
-	{ "program",		FM_ARG_REQUIRED,	OPT_PROGRAM,	},
-	{ "dump",		FM_ARG_NONE,		OPT_DUMP },
-	{ NULL },
-};
-
 struct fm_cmd_main_options {
 	int		ipv4_only;
 	int		ipv6_only;
 	int		all_addrs;
 };
 
-struct fm_cmd_scan_options {
-	const char *	logfile;
-	const char *	program;
-	bool		dump;
-};
-
 static struct fm_cmd_main_options main_options;
-static struct fm_cmd_scan_options scan_options;
 
 static bool
 handle_main_options(int c, const char *arg_value)
@@ -113,33 +86,6 @@ apply_main_options(void)
 		fm_global.address_generation.try_all = true;
 }
 
-static bool
-handle_scan_options(int c, const char *arg_value)
-{
-	switch (c) {
-	case 'L':
-		scan_options.logfile = arg_value;
-		break;
-
-	case OPT_DUMP:
-		scan_options.dump = true;
-		break;
-
-	case OPT_PROGRAM:
-		if (scan_options.program)
-			fm_log_fatal("duplicate program option given");
-		scan_options.program = arg_value;
-		break;
-
-	default:
-		return false;
-	}
-
-	return true;
-}
-
-static int	perform_cmd_scan(int argc, char **argv);
-
 int
 main(int argc, char **argv)
 {
@@ -153,7 +99,8 @@ main(int argc, char **argv)
 
 	parser = fm_cmdparser_main("freemap", FM_CMDID_MAIN, "d", main_long_options, handle_main_options);
 
-	fm_cmdparser_add_subcommand(parser, "scan", FM_CMDID_SCAN, NULL, scan_long_options, handle_scan_options);
+	/* register all subcommands */
+	fm_command_register_scan(parser);
 
 	cmd = fm_cmdparser_process_args(parser, argc, argv);
 	if (cmd == NULL) {
@@ -175,78 +122,10 @@ main(int argc, char **argv)
 
 	switch (cmd->cmdid) {
 	case FM_CMDID_SCAN:
-		return perform_cmd_scan(cmd->nvalues, cmd->values);
+		return fm_command_perform_scan(cmd);
 	default:
 		fm_log_fatal("Cannot execute command %s", cmd->fullname);
 	}
 
 	return 1;
-}
-
-int
-perform_cmd_scan(int nvalues, char **values)
-{
-	const fm_scan_program_t *program = NULL;
-	fm_scanner_t *scanner;
-
-	if (nvalues == 0)
-		fm_cmdparser_fatal("Missing scan target(s)\n");
-
-	scanner = fm_scanner_create();
-
-	while (nvalues--) {
-		fm_target_manager_t *mgr = scanner->target_manager;
-		fm_address_enumerator_t *agen;
-		const char *name = *values++;
-
-		if (strchr(name, '/')) {
-			agen = fm_create_cidr_address_enumerator(name);
-		} else {
-			agen = fm_create_simple_address_enumerator(name);
-		}
-
-		if (agen == NULL)
-			fm_log_fatal("Cannot parse address or network \"%s\"\n", name);
-
-		fm_target_manager_add_address_generator(mgr, agen);
-	}
-
-	if (scan_options.logfile != NULL) {
-		fm_report_t *report;
-
-		report = fm_scanner_get_report(scanner);
-		fm_report_add_logfile(report, scan_options.logfile);
-	}
-
-	if (scan_options.program == NULL)
-		scan_options.program = "default";
-
-	program = fm_scan_library_load_program(scan_options.program);
-	if (program == NULL)
-		fm_log_fatal("Could not find scan program \"%s\"\n", scan_options.program);
-	if (scan_options.dump)
-		fm_scan_program_dump(program);
-
-	if (!fm_scan_program_compile(program, scanner))
-		fm_log_fatal("Failed to compile scan program");
-
-	if (scan_options.dump)
-		fm_scanner_dump_program(scanner);
-
-	if (!fm_scanner_ready(scanner)) {
-		fprintf(stderr, "scanner is not fully configured\n");
-		return 1;
-	}
-
-	while (true) {
-		if (!fm_scanner_transmit(scanner)) {
-			printf("All probes completed (%.2f msec)\n",
-					fm_scanner_elapsed(scanner));
-			break;
-		}
-
-		fm_socket_poll_all();
-	}
-
-	return 0;
 }
