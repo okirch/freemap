@@ -1,11 +1,22 @@
-routine default-reachability serialize=strict:
+
+hosts-scan default serialize=strict:
 	host-probe arp optional;
 	host-probe icmp;
 
-routine default-scan:
+hosts-scan thorough serialize=strict:
+	host-probe arp optional;
+	host-probe icmp;
+	port-probe tcp 0;
+
+services-scan default:
 	port-probe tcp 1-20 21 22 25 53 80 137 138 139;
 	port-probe udp 53 111 2049 5353 137 138 139;
 
+services-scan thorough:
+	port-probe tcp 1-512 2049 8080;
+	port-probe udp 1-512 2049;
+
 program default:
-	call default-reachability onfail=abort;
-	call default-scan;
+	hosts-scan default onfail=abort;
+	services-scan default;
+

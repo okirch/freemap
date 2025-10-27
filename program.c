@@ -113,7 +113,7 @@ fm_scan_exec_set_abort_on_fail(fm_scan_exec_t *exec, bool value)
 }
 
 static inline const fm_scan_exec_t *
-fm_scan_exec_array_find_routine(const fm_scan_exec_array_t *array, const char *name)
+fm_scan_exec_array_find_routine(const fm_scan_exec_array_t *array, int type, const char *name)
 {
 	unsigned int i;
 
@@ -127,7 +127,7 @@ fm_scan_exec_array_find_routine(const fm_scan_exec_array_t *array, const char *n
 		if (exec->type == FM_SCAN_EXEC_ROUTINE) {
 			routine = exec->routine;
 		
-			if (!strcmp(routine->name, name))
+			if (routine->type == type && !strcmp(routine->name, name))
 				return exec;
 		}
 	}
@@ -159,13 +159,30 @@ fm_scan_exec_array_find_program(struct fm_scan_exec_array *array, const char *na
 }
 
 fm_scan_routine_t *
-fm_scan_routine_new(const char *name)
+fm_scan_routine_new(int type, const char *name)
 {
 	fm_scan_routine_t *ret;
 
 	ret = calloc(1, sizeof(*ret));
+	ret->type = type;
 	ret->name = strdup(name);
 	return ret;
+}
+
+const char *
+fm_scan_routine_type_to_name(int type)
+{
+	switch (type) {
+	case FM_SCAN_ROUTINE_TOPOLOGY:
+		return "topology";
+
+	case FM_SCAN_ROUTINE_HOSTS:
+		return "hosts";
+
+	case FM_SCAN_ROUTINE_SERVICES:
+		return "services";
+	}
+	return "unknown";
 }
 
 static fm_scan_step_t *
@@ -210,7 +227,7 @@ parse_step_definition(struct file_scanner *fs, int type)
 }
 
 static fm_scan_exec_t *
-parse_call(struct file_scanner *fs, const fm_scan_library_t *lib, fm_scan_program_t *program)
+parse_call(struct file_scanner *fs, const fm_scan_library_t *lib, fm_scan_program_t *program, int routine_type)
 {
 	fm_scan_exec_t *exec = NULL;
 	char *arg;
@@ -222,10 +239,10 @@ parse_call(struct file_scanner *fs, const fm_scan_library_t *lib, fm_scan_progra
 		if (exec == NULL) {
 			const fm_scan_exec_t *callee;
 
-			callee = fm_scan_exec_array_find_routine(&lib->routines, arg);
+			callee = fm_scan_exec_array_find_routine(&lib->routines, routine_type, arg);
 			if (callee == NULL) {
-				file_scanner_error(fs, "program %s calls unknown routine \"%s\": %s\n",
-						program->name, arg);
+				file_scanner_error(fs, "program %s calls unknown %s scan \"%s\": %s\n",
+						program->name, fm_scan_routine_type_to_name(routine_type), arg);
 				return NULL;
 			}
 
@@ -247,7 +264,7 @@ parse_call(struct file_scanner *fs, const fm_scan_library_t *lib, fm_scan_progra
 }
 
 static bool
-parse_routine_definition(struct file_scanner *fs, fm_scan_library_t *lib)
+parse_routine_definition(struct file_scanner *fs, fm_scan_library_t *lib, int type)
 {
 	fm_scan_routine_t *routine;
 	fm_scan_exec_t *exec;
@@ -256,10 +273,11 @@ parse_routine_definition(struct file_scanner *fs, fm_scan_library_t *lib)
 	if (!(name = file_scanner_continue_entry(fs)))
 		return file_scanner_error(fs, "missing name in \"routine\" declaration\n");
 
-	if (fm_scan_exec_array_find_routine(&lib->routines, name) != NULL)
-		return file_scanner_error(fs, "duplicate routine name \"%s\"\n", name);
+	if (fm_scan_exec_array_find_routine(&lib->routines, type, name) != NULL)
+		return file_scanner_error(fs, "duplicate %s routine name \"%s\"\n",
+				fm_scan_routine_type_to_name(type), name);
 
-	routine = fm_scan_routine_new(name);
+	routine = fm_scan_routine_new(type, name);
 	exec = fm_scan_library_append_routine(lib, routine);
 	(void) exec;
 
@@ -325,12 +343,19 @@ parse_program_definition(struct file_scanner *fs, fm_scan_library_t *lib)
 	}
 
 	while ((arg = file_scanner_continue_entry(fs)) != NULL) {
-		if (!strcmp(arg, "call")) {
-			if (!parse_call(fs, lib, program))
-				return file_scanner_error(fs, "program argument \"%s\"\n", arg);
+		bool okay;
+
+		if (!strcmp(arg, "hosts-scan")) {
+			okay = parse_call(fs, lib, program, FM_SCAN_ROUTINE_HOSTS);
+		} else
+		if (!strcmp(arg, "services-scan")) {
+			okay = parse_call(fs, lib, program, FM_SCAN_ROUTINE_SERVICES);
 		} else {
 			return file_scanner_error(fs, "unsupported program argument \"%s\"\n", arg);
 		}
+
+		if (!okay)
+			return file_scanner_error(fs, "could not handle call to \"%s\"\n", arg);
 	}
 
 	return true;
@@ -350,8 +375,12 @@ __fm_scan_library_load(const char *path)
 
 	lib = calloc(1, sizeof(*lib));
 	while ((cmd = file_scanner_next_entry(fs)) != NULL) {
-		if (!strcmp(cmd, "routine"))
-			parse_routine_definition(fs, lib);
+		if (!strcmp(cmd, "topology-scan"))
+			parse_routine_definition(fs, lib, FM_SCAN_ROUTINE_TOPOLOGY);
+		else if (!strcmp(cmd, "hosts-scan"))
+			parse_routine_definition(fs, lib, FM_SCAN_ROUTINE_HOSTS);
+		else if (!strcmp(cmd, "services-scan"))
+			parse_routine_definition(fs, lib, FM_SCAN_ROUTINE_SERVICES);
 		else if (!strcmp(cmd, "program"))
 			parse_program_definition(fs, lib);
 		else
@@ -381,6 +410,7 @@ fm_scan_library_load(void)
 	return fm_scan_library;
 }
 
+#if 0
 const fm_scan_exec_t *
 fm_scan_library_load_routine(const char *name)
 {
@@ -389,6 +419,7 @@ fm_scan_library_load_routine(const char *name)
 	lib = fm_scan_library_load();
 	return fm_scan_exec_array_find_routine(&lib->routines, name);
 }
+#endif
 
 const fm_scan_program_t *
 fm_scan_library_load_program(const char *name)
@@ -424,16 +455,17 @@ fm_scan_program_free(fm_scan_program_t *program)
 }
 
 fm_scan_exec_t *
-fm_scan_program_call_routine(fm_scan_program_t *program, const char *name)
+fm_scan_program_call_routine(fm_scan_program_t *program, int type, const char *name)
 {
 	fm_scan_library_t *lib;
 	const fm_scan_exec_t *exec;
 
 	lib = fm_scan_library_load();
 
-	exec = fm_scan_exec_array_find_routine(&lib->routines, name);
+	exec = fm_scan_exec_array_find_routine(&lib->routines, type, name);
 	if (exec == NULL) {
-		fm_log_error("Unable to find scan routine \"%s\"\n", name);
+		fm_log_error("Unable to find %s scan routine \"%s\"\n",
+				fm_scan_routine_type_to_name(type), name);
 		return NULL;
 	}
 
@@ -444,13 +476,14 @@ fm_scan_program_call_routine(fm_scan_program_t *program, const char *name)
  * Convenience function for assembling a program from a reachability and a service scan
  */
 static bool
-fm_scan_program_attach(fm_scan_program_t *program, const char *routine_name, bool abort_on_fail)
+fm_scan_program_attach(fm_scan_program_t *program, int type, const char *routine_name, bool abort_on_fail)
 {
 	fm_scan_exec_t *exec;
 
-	exec = fm_scan_program_call_routine(program, routine_name);
+	exec = fm_scan_program_call_routine(program, type, routine_name);
 	if (exec == NULL) {
-		fm_log_error("Could not attach reachability probe \"%s\"", routine_name);
+		fm_log_error("Could not attach %s scan routine \"%s\"",
+				fm_scan_routine_type_to_name(type), routine_name);
 		return false;
 	}
 
@@ -466,11 +499,11 @@ fm_scan_program_build(const char *name, const char *reachability_scan, const cha
 
 	program = fm_scan_program_alloc(name);
 	if (reachability_scan != NULL
-	 && !fm_scan_program_attach(program, reachability_scan, true))
+	 && !fm_scan_program_attach(program, FM_SCAN_ROUTINE_HOSTS, reachability_scan, true))
 		goto fail;
 
 	if (service_scan != NULL
-	 && !fm_scan_program_attach(program, service_scan, false))
+	 && !fm_scan_program_attach(program, FM_SCAN_ROUTINE_SERVICES, service_scan, false))
 		goto fail;
 
 	return program;

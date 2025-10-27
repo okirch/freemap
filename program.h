@@ -57,7 +57,14 @@ typedef struct fm_scan_exec_array {
 	fm_scan_exec_t *	entries;
 } fm_scan_exec_array_t;
 
+enum {
+	FM_SCAN_ROUTINE_TOPOLOGY,
+	FM_SCAN_ROUTINE_HOSTS,
+	FM_SCAN_ROUTINE_SERVICES,
+};
+
 typedef struct fm_scan_routine {
+	int			type;
 	const char *		name;
 
 	/* scan scheduler is allowed to execute requests in random order. */
