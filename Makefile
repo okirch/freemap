@@ -13,7 +13,7 @@ OBJS	= projects.o \
 	  addresses.o \
 	  network.o \
 	  socket.o \
-	  rawsock.o \
+	  local.o \
 	  facts.o \
 	  report.o \
 	  program.o \
