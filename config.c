@@ -127,15 +127,18 @@ fm_config_load(fm_config_t *conf, const char *path)
 static void
 fm_config_complain(curly_node_t *node, const char *fmt, ...)
 {
+	const char *filename = curly_node_get_source_file(node);
+	unsigned int line = curly_node_get_source_line(node);
 	char msgbuf[256];
 	va_list ap;
 
 	va_start(ap, fmt);
 	vsnprintf(msgbuf, sizeof(msgbuf), fmt, ap);
-	fm_log_error("%s, line %u: %s",
-			curly_node_get_source_file(node),
-			curly_node_get_source_line(node),
-			msgbuf);
+	if (filename != NULL) {
+		fm_log_error("%s, line %u: %s", filename, line, msgbuf);
+	} else {
+		fm_log_error("%s", msgbuf);
+	}
 	va_end(ap);
 }
 
