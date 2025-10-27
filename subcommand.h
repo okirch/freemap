@@ -25,7 +25,7 @@
 typedef struct fm_long_option {
 	const char *		name;
 	int			has_arg;
-	int			val;
+	int			value;
 } fm_long_option_t;
 
 typedef bool			fm_cmdparser_option_handler_fn_t(int opt, const char *argument);

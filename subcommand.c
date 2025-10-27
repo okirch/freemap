@@ -159,7 +159,7 @@ fm_cmdparser_main(const char *name, unsigned int cmdid,
 		char *long_name = NULL;
 
 		asprintf(&long_name, "--%s", o->name);
-		fm_cmdparser_add_handler(parser, long_name, o->val, o->has_arg);
+		fm_cmdparser_add_handler(parser, long_name, o->value, o->has_arg);
 		free(long_name);
 	}
 
