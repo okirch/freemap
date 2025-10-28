@@ -174,6 +174,25 @@ fm_pkt_rtt(const fm_pkt_t *pkt, const fm_socket_timestamp_t *send_ts)
 }
 
 /*
+ * Include IP headers in SOCK_RAW sockets
+ */
+bool
+fm_socket_enable_hdrincl(fm_socket_t *sock)
+{
+	int optval = 1;
+
+	if (sock->fd < 0)
+		return false;
+
+	if (setsockopt(sock->fd, SOL_IP, IP_HDRINCL, &optval, sizeof (optval)) < 0) {
+		fm_log_error("Cannot set IP socket's IP_HDRINCL option: %m");
+		return false;
+	}
+
+	return true;
+}
+
+/*
  * Access to socket level errors
  */
 bool
