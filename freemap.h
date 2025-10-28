@@ -52,6 +52,7 @@ extern const fm_interface_t *fm_interface_by_index(unsigned int ifindex);
 extern const fm_interface_t *fm_interface_by_address(const fm_address_t *);
 extern bool		fm_interface_get_lladdr(const fm_interface_t *nic, struct sockaddr_ll *sll);
 extern bool		fm_interface_get_network_address(const fm_interface_t *nic, int af, fm_address_t *ret_addr);
+extern fm_neighbor_t *	fm_interface_get_neighbor(const fm_interface_t *nic, const fm_address_t *network_address, bool create);
 
 extern void		fm_timestamp_init(struct timeval *ts);
 extern double		fm_timestamp_update(struct timeval *ts);

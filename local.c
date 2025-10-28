@@ -243,6 +243,15 @@ fm_local_cache_arp_entry(int ifindex, u_int32_t ipaddr, const struct sockaddr_ll
 	fm_neighbor_cache_update(nic->neighbor_cache, &network_address, lladdr);
 }
 
+fm_neighbor_t *
+fm_interface_get_neighbor(const fm_interface_t *nic, const fm_address_t *network_address, bool create)
+{
+	if (nic->neighbor_cache == NULL)
+		return NULL;
+
+	return fm_neighbor_cache_find_entry(nic->neighbor_cache, network_address, create);
+}
+
 /*
  * addr prefix lists
  */
