@@ -235,8 +235,9 @@ fm_address_prefix_array_append(fm_address_prefix_array_t *array, const fm_addres
 /*
  * Discovery of local addresses
  */
-static inline unsigned int
-fm_mask_to_prefix(const struct sockaddr *mask)
+/* should probably go to address.c */
+unsigned int
+fm_address_mask_to_prefixlen(const struct sockaddr *mask)
 {
 	const unsigned char *raw_mask;
 	unsigned int pfxlen = 0, addr_bits;
@@ -264,8 +265,9 @@ fm_mask_to_prefix(const struct sockaddr *mask)
 	return pfxlen;
 }
 
-static inline bool
-fm_prefix_to_mask(int af, unsigned int pfxlen, unsigned char *mask, unsigned int size)
+/* should probably go to address.c */
+bool
+fm_address_mask_from_prefixlen(int af, unsigned int pfxlen, unsigned char *mask, unsigned int size)
 {
 	unsigned int addr_bits, noctets;
 
@@ -323,7 +325,7 @@ fm_local_discover(void)
 		}
 
 		if (ifa->ifa_netmask) {
-			pfxlen = fm_mask_to_prefix(ifa->ifa_netmask);
+			pfxlen = fm_address_mask_to_prefixlen(ifa->ifa_netmask);
 
 			/* The loopback "network" is really just a single address */
 			if (ifa->ifa_flags & IFF_LOOPBACK)
@@ -346,7 +348,7 @@ fm_local_discover(void)
 			entry->ifname = strdup(ifa->ifa_name);
 			entry->source_addr = *(fm_address_t *) ifa->ifa_addr;
 
-			fm_prefix_to_mask(ifa->ifa_addr->sa_family, pfxlen, entry->raw_mask, sizeof(entry->raw_mask));
+			fm_address_mask_from_prefixlen(ifa->ifa_addr->sa_family, pfxlen, entry->raw_mask, sizeof(entry->raw_mask));
 		}
 	}
 
