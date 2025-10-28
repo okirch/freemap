@@ -200,7 +200,7 @@ fm_socket_enable_recverr(fm_socket_t *sock)
 		break;
         }
 
-	return false;
+	return true;
 }
 
 bool
