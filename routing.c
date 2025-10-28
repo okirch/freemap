@@ -28,6 +28,7 @@
 #include <assert.h>
 
 #include "freemap.h"
+#include "addresses.h"
 #include "routing.h"
 #include "utils.h"
 
@@ -123,7 +124,7 @@ rtcache_entry_cmp(const void *a, const void *b)
 
 	/* put longer prefix before shorter */
 	if (diff == 0)
-		diff = -(rta->dst_prefix_len - rtb->dst_prefix_len);
+		diff = -(rta->dst.prefix_len - rtb->dst.prefix_len);
 
 	/* put higher priority before shorter */
 	if (diff == 0)
@@ -451,8 +452,18 @@ rtnetlink_process_newroute(int af, nlpkt_t *pkt, fm_route_t **ret_p)
 #endif
 
 	route = fm_route_alloc(af, rt->rtm_type);
-	route->src_prefix_len = rt->rtm_src_len;
-	route->dst_prefix_len = rt->rtm_dst_len;
+	route->src.prefix_len = rt->rtm_src_len;
+	route->dst.prefix_len = rt->rtm_dst_len;
+
+	if (!fm_address_mask_from_prefixlen(af, route->src.prefix_len, route->src.raw_mask, sizeof(route->src.raw_mask))) {
+		fprintf(stderr, "invalid prefix len");
+		goto failed;
+	}
+
+	if (!fm_address_mask_from_prefixlen(af, route->dst.prefix_len, route->dst.raw_mask, sizeof(route->dst.raw_mask))) {
+		fprintf(stderr, "invalid prefix len");
+		goto failed;
+	}
 
 	while (nlpkt_available(pkt)) {
 		struct nlattr *nla;
@@ -476,11 +487,11 @@ rtnetlink_process_newroute(int af, nlpkt_t *pkt, fm_route_t **ret_p)
 			break;
 
 		case RTA_SRC:
-			ok = nlattr_get_address(nla, af, &route->src_addr);
+			ok = nlattr_get_address(nla, af, &route->src.addr);
 			break;
 
 		case RTA_DST:
-			ok = nlattr_get_address(nla, af, &route->dst_addr);
+			ok = nlattr_get_address(nla, af, &route->dst.addr);
 			break;
 
 		case RTA_OIF:
@@ -574,7 +585,7 @@ void
 fm_route_show(fm_route_t *r)
 {
 	printf("%-10s ", route_type_name(r->type));
-	printf("%-25s", route_prefix_format(&r->dst_addr, r->dst_prefix_len));
+	printf("%-25s", route_prefix_format(&r->dst.addr, r->dst.prefix_len));
 	if (r->gateway.ss_family != AF_UNSPEC)
 		printf(" via %s", address_format(&r->gateway));
 	if (r->priority)

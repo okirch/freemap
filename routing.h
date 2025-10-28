@@ -25,10 +25,13 @@ typedef struct fm_route {
 	unsigned int		type;		/* RTN_UNICAST and friends */
 	unsigned int		priority;
 	unsigned int		oif;
-	unsigned int		src_prefix_len;
-	fm_address_t		src_addr;
-	unsigned int		dst_prefix_len;
-	fm_address_t		dst_addr;
+
+	struct fm_route_prefix {
+		unsigned int	prefix_len;
+		fm_address_t	addr;
+		unsigned char	raw_mask[16];
+	} src, dst;
+
 	fm_address_t		pref_src_addr;
 	fm_address_t		gateway;
 } fm_route_t;
