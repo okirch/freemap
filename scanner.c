@@ -403,7 +403,7 @@ fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name, int 
 
 	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
 		if (!(flags & FM_SCAN_ACTION_FLAG_OPTIONAL)) {
-			fm_log_error("Cannot create host probe: no protocol engine for protocol id %s\n", protocol_name);
+			fm_log_error("Cannot create host probe: no driver for protocol id %s\n", protocol_name);
 			return NULL;
 		}
 
@@ -411,7 +411,7 @@ fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name, int 
 		action = fm_scanner_add_dummy_probe();
 	} else {
 		if (proto->ops->create_host_probe_action == NULL) {
-			fm_log_error("Cannot create host probe: no protocol engine %s does not support host probes\n", protocol_name);
+			fm_log_error("Cannot create host probe: protocol driver %s does not support host probes\n", protocol_name);
 			return NULL;
 		}
 
