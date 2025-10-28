@@ -47,6 +47,6 @@ test: $(LIB)
 $(LIB): $(OBJS)
 	$(AR) crv $@ $(OBJS)
 
-freemap: $(freemap_OBJS) $(LIB)
-	$(CC) $(CFLAGS) -o $@ $(freemap_OBJS) -L. -lfreemap -lc_malloc_debug
+freemap: $(freemap_OBJS) $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $(freemap_OBJS) $(OBJS) -lc_malloc_debug
 
