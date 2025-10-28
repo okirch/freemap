@@ -26,6 +26,7 @@ OBJS	= projects.o \
 	  wellknown/dns.o \
 	  subcommand.o \
 	  logging.o \
+	  buffer.o \
 	  utils.o
 LIB	= libfreemap.a
 UTILS	= freemap

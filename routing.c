@@ -30,6 +30,7 @@
 #include "freemap.h"
 #include "addresses.h"
 #include "routing.h"
+#include "buffer.h"
 #include "utils.h"
 
 #if 0
@@ -38,11 +39,6 @@
 # define nl_debug(fmt ...) \
 	do { } while (0)
 #endif
-
-typedef struct nlpkt {
-	unsigned int	rpos, wpos, size;
-	unsigned char	data[0];
-} fm_buffer_t;
 
 static unsigned int	netlink_seq = 0;
 
@@ -147,107 +143,6 @@ fm_routing_cache_dump(fm_routing_cache_t *cache)
 		fm_route_show(cache->entries[i]);
 	}
 	printf("\n");
-}
-
-fm_buffer_t *
-fm_buffer_alloc(size_t payload)
-{
-	fm_buffer_t *pkt;
-
-	pkt = malloc(sizeof(*pkt) + payload);
-	memset(pkt, 0, sizeof(*pkt));
-
-	pkt->size = payload;
-	return pkt;
-}
-
-void
-fm_buffer_free(fm_buffer_t *pkt)
-{
-	free(pkt);
-}
-
-void
-fm_buffer_compact(fm_buffer_t *pkt)
-{
-	if (pkt->wpos == 0)
-		return;
-
-	if (pkt->rpos == pkt->wpos) {
-		pkt->rpos = pkt->wpos = 0;
-		return;
-	}
-
-	assert(pkt->rpos < pkt->wpos);
-	memmove(pkt->data, pkt->data + pkt->rpos, pkt->wpos - pkt->rpos);
-
-	pkt->wpos -= pkt->rpos;
-	pkt->rpos = 0;
-}
-
-static inline unsigned int
-fm_buffer_available(fm_buffer_t *pkt)
-{
-	return pkt->wpos - pkt->rpos;
-}
-
-static inline unsigned int
-fm_buffer_tailroom(fm_buffer_t *pkt)
-{
-	return pkt->size - pkt->wpos;
-}
-
-void *
-fm_buffer_push(fm_buffer_t *pkt, size_t count)
-{
-	void *ret = pkt->data + pkt->wpos;
-
-	assert(pkt->size - pkt->wpos >= count);
-	pkt->wpos += count;
-	return ret;
-}
-
-void *
-fm_buffer_peek(fm_buffer_t *pkt, size_t len)
-{
-	if (pkt->wpos - pkt->rpos < len)
-		return NULL;
-	return pkt->data + pkt->rpos;
-}
-
-void *
-fm_buffer_pull(fm_buffer_t *pkt, size_t len)
-{
-	void *ret = fm_buffer_peek(pkt, len);
-
-	if (ret != NULL)
-		pkt->rpos += len;
-	return ret;
-}
-
-static fm_buffer_t *
-fm_buffer_pull_packet(fm_buffer_t *pkt, unsigned int count)
-{
-	fm_buffer_t *ret;
-
-	if (fm_buffer_available(pkt) < count)
-		return NULL;
-
-	ret = fm_buffer_alloc(count);
-	memcpy(ret->data, pkt->data + pkt->rpos, count);
-	pkt->rpos += count;
-	ret->wpos = count;
-
-	return ret;
-}
-
-static unsigned int
-fm_buffer_len(fm_buffer_t *pkt, void *base)
-{
-	size_t offset = (unsigned char *) base - pkt->data;
-
-	assert(offset <= pkt->wpos);
-	return pkt->wpos - offset;
 }
 
 static int
