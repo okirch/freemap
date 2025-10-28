@@ -95,7 +95,7 @@ fm_neighbor_cache_find_entry(fm_neighbor_cache_t *cache, const fm_address_t *add
 }
 
 bool
-fm_neighbor_cache_update(fm_neighbor_cache_t *cache, const fm_address_t *network_address, struct sockaddr_ll *link_address)
+fm_neighbor_cache_update(fm_neighbor_cache_t *cache, const fm_address_t *network_address, const struct sockaddr_ll *link_address)
 {
 	fm_neighbor_t *neigh;
 

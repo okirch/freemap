@@ -24,6 +24,7 @@
 
 #include "freemap.h"
 #include "addresses.h"
+#include "neighbor.h"
 #include "lists.h"
 
 struct fm_interface {
@@ -31,6 +32,8 @@ struct fm_interface {
 	char *			name;
 	int			ifindex;
 	struct sockaddr_ll	lladdr;
+
+	fm_neighbor_cache_t *	neighbor_cache;
 };
 
 static struct hlist_head	fm_interface_list = { .first = NULL, };
@@ -104,6 +107,8 @@ fm_interface_add(const char *name, const struct sockaddr_ll *lladdr)
 	nic->name = strdup(name);
 	nic->ifindex = lladdr->sll_ifindex;
 	nic->lladdr = *lladdr;
+
+	nic->neighbor_cache = fm_neighbor_cache_create(nic->ifindex);
 
 	hlist_append(&fm_interface_list, &nic->link);
 }
@@ -218,7 +223,24 @@ fm_interface_get_lladdr(const fm_interface_t *nic, struct sockaddr_ll *lladdr)
 extern void
 fm_local_cache_arp_entry(int ifindex, u_int32_t ipaddr, const struct sockaddr_ll *lladdr)
 {
-	/* TBD */
+	fm_address_t network_address;
+	const fm_interface_t *nic;
+
+	fm_address_set_ipv4(&network_address, ipaddr);
+
+	if ((nic = fm_interface_by_index(ifindex)) == NULL) {
+		fm_log_error("%s: no interface for index %u", __func__, ifindex);
+		return;
+	}
+
+	if (lladdr->sll_family != AF_PACKET || lladdr->sll_ifindex != ifindex) {
+		fm_log_error("%s: link address for %s has wrong ifindex %u", __func__,
+				fm_address_format(&network_address),
+				lladdr->sll_ifindex);
+		return;
+	}
+
+	fm_neighbor_cache_update(nic->neighbor_cache, &network_address, lladdr);
 }
 
 /*
