@@ -135,6 +135,18 @@ fm_routing_cache_sort(fm_routing_cache_t *cache)
 	qsort(cache->entries, cache->nroutes, sizeof(cache->entries[0]), rtcache_entry_cmp);
 }
 
+static void
+fm_routing_cache_attach_interfaces(fm_routing_cache_t *rtcache)
+{
+	for (unsigned int i = 0; i < rtcache->nroutes; ++i) {
+		fm_route_t *route = rtcache->entries[i];
+
+		if (route->interface == NULL
+		 && (route->interface = fm_interface_by_index(route->oif)) != NULL)
+			fprintf(stderr, "Unable to find NIC for ifindex %d\n", route->oif);
+	}
+}
+
 void
 fm_routing_cache_dump(fm_routing_cache_t *cache)
 {
@@ -617,6 +629,8 @@ netlink_build_routing_cache(int af)
 		fm_routing_cache_free(rtcache);
 		return NULL;
 	}
+
+	fm_routing_cache_attach_interfaces(rtcache);
 
 	fm_routing_cache_sort(rtcache);
 

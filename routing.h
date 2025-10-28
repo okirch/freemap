@@ -24,7 +24,9 @@ typedef struct fm_route {
 	int			family;
 	unsigned int		type;		/* RTN_UNICAST and friends */
 	unsigned int		priority;
+
 	unsigned int		oif;
+	const fm_interface_t *	interface;
 
 	struct fm_route_prefix {
 		unsigned int	prefix_len;
