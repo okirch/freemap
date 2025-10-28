@@ -133,7 +133,7 @@ rtcache_entry_cmp(const void *a, const void *b)
 	return diff;
 }
 
-void
+static void
 fm_routing_cache_sort(fm_routing_cache_t *cache)
 {
 	qsort(cache->entries, cache->nroutes, sizeof(cache->entries[0]), rtcache_entry_cmp);
@@ -250,7 +250,7 @@ nlpkt_len(nlpkt_t *pkt, void *base)
 	return pkt->wpos - offset;
 }
 
-int
+static int
 netlink_open(void)
 {
 	struct sockaddr_nl snl;
@@ -314,7 +314,7 @@ failed:
 	return -1;
 }
 
-bool
+static bool
 netlink_send(int fd, void *data, size_t len)
 {
 	if (sendto(fd, data, len, 0, NULL, 0) < 0) {
@@ -324,7 +324,7 @@ netlink_send(int fd, void *data, size_t len)
 	return true;
 }
 
-bool
+static bool
 netlink_recv(int fd, nlpkt_t *pkt)
 {
 	struct sockaddr_nl snl;
@@ -353,7 +353,7 @@ netlink_recv(int fd, nlpkt_t *pkt)
 	return true;
 }
 
-struct nlmsghdr *
+static struct nlmsghdr *
 nlmsg_begin(nlpkt_t *pkt, int type, int flags)
 {
 	struct nlmsghdr *nh;
@@ -366,7 +366,7 @@ nlmsg_begin(nlpkt_t *pkt, int type, int flags)
 	return nh;
 }
 
-void
+static void
 nlattr_add_int(nlpkt_t *pkt, int type, int value)
 {
 	struct nlattr *nla = nlpkt_push(pkt, sizeof(*nla) + 4);
@@ -376,7 +376,7 @@ nlattr_add_int(nlpkt_t *pkt, int type, int value)
 	*(int *) (nla + 1) = value;
 }
 
-bool
+static bool
 nlattr_get_int(struct nlattr *nla, unsigned int *ret)
 {
 	if (nla->nla_len != 8)
@@ -385,7 +385,7 @@ nlattr_get_int(struct nlattr *nla, unsigned int *ret)
 	return true;
 }
 
-bool
+static bool
 nlattr_get_ipv4(struct nlattr *nla, struct in_addr *ret)
 {
 	if (nla->nla_len != 8)
@@ -394,7 +394,7 @@ nlattr_get_ipv4(struct nlattr *nla, struct in_addr *ret)
 	return true;
 }
 
-bool
+static bool
 nlattr_get_ipv6(struct nlattr *nla, struct in6_addr *ret)
 {
 	if (nla->nla_len != 20)
@@ -403,7 +403,7 @@ nlattr_get_ipv6(struct nlattr *nla, struct in6_addr *ret)
 	return true;
 }
 
-bool
+static bool
 nlattr_get_address(struct nlattr *nla, int af, struct sockaddr_storage *ret)
 {
 	memset(ret, 0, sizeof(*ret));
@@ -424,7 +424,7 @@ nlattr_get_address(struct nlattr *nla, int af, struct sockaddr_storage *ret)
 	return false;
 }
 
-bool
+static bool
 rtnetlink_process_newroute(int af, nlpkt_t *pkt, fm_route_t **ret_p)
 {
 	fm_route_t *route;
@@ -678,7 +678,7 @@ netlink_send_dump_request(int fd, int af, int type)
 	return nh->nlmsg_seq;
 }
 
-bool
+static bool
 netlink_dump_rt(int fd, fm_routing_cache_t *rtcache)
 {
 	nlpkt_t *pkt;
@@ -784,18 +784,3 @@ fm_routing_for_address(const fm_address_t *addr)
 
 	return NULL;
 }
-
-#if 0
-int main(void)
-{
-	fm_routing_cache_t *rtcache;
-
-	if ((rtcache = fm_routing_cache_for_family(AF_INET)) != NULL)
-		fm_routing_cache_dump(rtcache);
-
-	if ((rtcache = fm_routing_cache_for_family(AF_INET6)) != NULL)
-		fm_routing_cache_dump(rtcache);
-
-	return 0;
-}
-#endif
