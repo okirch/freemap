@@ -750,19 +750,37 @@ fm_routing_cache_for_family(int af)
 	return *cache_p;
 }
 
-static inline bool
-fm_address_prefix_match(const fm_address_t *a, const fm_address_t *b, unsigned int pfxlen)
-{
-	return false;
-}
-
 fm_route_t *
 fm_routing_for_address(const fm_address_t *addr)
 {
 	fm_routing_cache_t *rtcache;
+	const unsigned char *raw_addr1;
+	const unsigned char *raw_addr2;
+	unsigned int i, k, addr_bits, noctets;
 
 	if ((rtcache = fm_routing_cache_for_family(addr->ss_family)) == NULL)
 		return NULL;
+
+	raw_addr1 = fm_address_get_raw_addr(addr, &addr_bits);
+	if (raw_addr1 == NULL)
+		return NULL;
+
+	noctets = addr_bits / 8;
+
+	for (i = 0; i < rtcache->nroutes; ++i) {
+		fm_route_t *route = rtcache->entries[i];
+		int xor = 0;
+
+		assert(route->family == addr->ss_family);
+
+		/* we could also cache the route's raw dst addr */
+		raw_addr2 = fm_address_get_raw_addr(&route->dst.addr, NULL);
+		for (k = 0; k < noctets && xor == 0; ++k)
+			xor = route->dst.raw_mask[k] & (raw_addr1[k] ^ raw_addr2[k]);
+
+		if (xor == 0)
+			return route;
+	}
 
 	return NULL;
 }
