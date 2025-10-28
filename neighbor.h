@@ -28,14 +28,14 @@ enum {
 	FM_NEIGHBOR_INVALID,
 };
 
-typedef struct fm_neighbor {
+struct fm_neighbor {
 	int			state;
 
 	fm_address_t		network_address;
 	fm_address_t		link_address;
 
 	fm_completion_t *	pending_probe;
-} fm_neighbor_t;
+};
 
 typedef struct fm_neighbor_array {
 	unsigned int		count;
