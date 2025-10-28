@@ -42,7 +42,7 @@
 typedef struct nlpkt {
 	unsigned int	rpos, wpos, size;
 	unsigned char	data[0];
-} nlpkt_t;
+} fm_buffer_t;
 
 static unsigned int	netlink_seq = 0;
 
@@ -149,10 +149,10 @@ fm_routing_cache_dump(fm_routing_cache_t *cache)
 	printf("\n");
 }
 
-nlpkt_t *
-nlpkt_alloc(size_t payload)
+fm_buffer_t *
+fm_buffer_alloc(size_t payload)
 {
-	nlpkt_t *pkt;
+	fm_buffer_t *pkt;
 
 	pkt = malloc(sizeof(*pkt) + payload);
 	memset(pkt, 0, sizeof(*pkt));
@@ -162,13 +162,13 @@ nlpkt_alloc(size_t payload)
 }
 
 void
-nlpkt_free(nlpkt_t *pkt)
+fm_buffer_free(fm_buffer_t *pkt)
 {
 	free(pkt);
 }
 
 void
-nlpkt_compact(nlpkt_t *pkt)
+fm_buffer_compact(fm_buffer_t *pkt)
 {
 	if (pkt->wpos == 0)
 		return;
@@ -186,19 +186,19 @@ nlpkt_compact(nlpkt_t *pkt)
 }
 
 static inline unsigned int
-nlpkt_available(nlpkt_t *pkt)
+fm_buffer_available(fm_buffer_t *pkt)
 {
 	return pkt->wpos - pkt->rpos;
 }
 
 static inline unsigned int
-nlpkt_tailroom(nlpkt_t *pkt)
+fm_buffer_tailroom(fm_buffer_t *pkt)
 {
 	return pkt->size - pkt->wpos;
 }
 
 void *
-nlpkt_push(nlpkt_t *pkt, size_t count)
+fm_buffer_push(fm_buffer_t *pkt, size_t count)
 {
 	void *ret = pkt->data + pkt->wpos;
 
@@ -208,7 +208,7 @@ nlpkt_push(nlpkt_t *pkt, size_t count)
 }
 
 void *
-nlpkt_peek(nlpkt_t *pkt, size_t len)
+fm_buffer_peek(fm_buffer_t *pkt, size_t len)
 {
 	if (pkt->wpos - pkt->rpos < len)
 		return NULL;
@@ -216,24 +216,24 @@ nlpkt_peek(nlpkt_t *pkt, size_t len)
 }
 
 void *
-nlpkt_pull(nlpkt_t *pkt, size_t len)
+fm_buffer_pull(fm_buffer_t *pkt, size_t len)
 {
-	void *ret = nlpkt_peek(pkt, len);
+	void *ret = fm_buffer_peek(pkt, len);
 
 	if (ret != NULL)
 		pkt->rpos += len;
 	return ret;
 }
 
-static nlpkt_t *
-nlpkt_pull_packet(nlpkt_t *pkt, unsigned int count)
+static fm_buffer_t *
+fm_buffer_pull_packet(fm_buffer_t *pkt, unsigned int count)
 {
-	nlpkt_t *ret;
+	fm_buffer_t *ret;
 
-	if (nlpkt_available(pkt) < count)
+	if (fm_buffer_available(pkt) < count)
 		return NULL;
 
-	ret = nlpkt_alloc(count);
+	ret = fm_buffer_alloc(count);
 	memcpy(ret->data, pkt->data + pkt->rpos, count);
 	pkt->rpos += count;
 	ret->wpos = count;
@@ -242,7 +242,7 @@ nlpkt_pull_packet(nlpkt_t *pkt, unsigned int count)
 }
 
 static unsigned int
-nlpkt_len(nlpkt_t *pkt, void *base)
+fm_buffer_len(fm_buffer_t *pkt, void *base)
 {
 	size_t offset = (unsigned char *) base - pkt->data;
 
@@ -325,7 +325,7 @@ netlink_send(int fd, void *data, size_t len)
 }
 
 static bool
-netlink_recv(int fd, nlpkt_t *pkt)
+netlink_recv(int fd, fm_buffer_t *pkt)
 {
 	struct sockaddr_nl snl;
 	socklen_t slen = sizeof(snl);
@@ -333,9 +333,9 @@ netlink_recv(int fd, nlpkt_t *pkt)
 	int n;
 
 	/* In case we have some data left from the previous receive */
-	nlpkt_compact(pkt);
+	fm_buffer_compact(pkt);
 
-	if ((tailroom = nlpkt_tailroom(pkt)) == 0) {
+	if ((tailroom = fm_buffer_tailroom(pkt)) == 0) {
 		fprintf(stderr, "Not enough room in receive packet\n");
 		return false;
 	}
@@ -354,11 +354,11 @@ netlink_recv(int fd, nlpkt_t *pkt)
 }
 
 static struct nlmsghdr *
-nlmsg_begin(nlpkt_t *pkt, int type, int flags)
+nlmsg_begin(fm_buffer_t *pkt, int type, int flags)
 {
 	struct nlmsghdr *nh;
 
-	nh = nlpkt_push(pkt, sizeof(*nh));
+	nh = fm_buffer_push(pkt, sizeof(*nh));
 	nh->nlmsg_type = type;
 	nh->nlmsg_flags = flags;
 	nh->nlmsg_seq = netlink_seq++;
@@ -367,9 +367,9 @@ nlmsg_begin(nlpkt_t *pkt, int type, int flags)
 }
 
 static void
-nlattr_add_int(nlpkt_t *pkt, int type, int value)
+nlattr_add_int(fm_buffer_t *pkt, int type, int value)
 {
-	struct nlattr *nla = nlpkt_push(pkt, sizeof(*nla) + 4);
+	struct nlattr *nla = fm_buffer_push(pkt, sizeof(*nla) + 4);
 
 	nla->nla_len = sizeof(*nla) + 4;
 	nla->nla_type = type;
@@ -425,7 +425,7 @@ nlattr_get_address(struct nlattr *nla, int af, struct sockaddr_storage *ret)
 }
 
 static bool
-rtnetlink_process_newroute(int af, nlpkt_t *pkt, fm_route_t **ret_p)
+rtnetlink_process_newroute(int af, fm_buffer_t *pkt, fm_route_t **ret_p)
 {
 	fm_route_t *route;
 	struct nlmsghdr *nh;
@@ -433,14 +433,14 @@ rtnetlink_process_newroute(int af, nlpkt_t *pkt, fm_route_t **ret_p)
 
 	*ret_p = NULL;
 
-	nh = nlpkt_pull(pkt, sizeof(*nh));
+	nh = fm_buffer_pull(pkt, sizeof(*nh));
 	if (nh == NULL)
 		return false;
 
 	if (nh->nlmsg_type != RTM_NEWROUTE)
 		return false;
 
-	rt = nlpkt_pull(pkt, sizeof(*rt));
+	rt = fm_buffer_pull(pkt, sizeof(*rt));
 #if 0
 	printf("af %u type %d dlen %u slen %d flags 0x%x payload %u\n",
 			rt->rtm_family,
@@ -448,7 +448,7 @@ rtnetlink_process_newroute(int af, nlpkt_t *pkt, fm_route_t **ret_p)
 			rt->rtm_dst_len,
 			rt->rtm_src_len,
 			rt->rtm_flags,
-			nlpkt_available(pkt));
+			fm_buffer_available(pkt));
 #endif
 
 	route = fm_route_alloc(af, rt->rtm_type);
@@ -465,12 +465,12 @@ rtnetlink_process_newroute(int af, nlpkt_t *pkt, fm_route_t **ret_p)
 		goto failed;
 	}
 
-	while (nlpkt_available(pkt)) {
+	while (fm_buffer_available(pkt)) {
 		struct nlattr *nla;
 		bool ok = true;
 
-		if (!(nla = nlpkt_peek(pkt, sizeof(*nla)))
-		 || nlpkt_available(pkt) < nla->nla_len) {
+		if (!(nla = fm_buffer_peek(pkt, sizeof(*nla)))
+		 || fm_buffer_available(pkt) < nla->nla_len) {
 			fprintf(stderr, "truncated rtnetlink attribute\n");
 			goto failed;
 		}
@@ -517,7 +517,7 @@ rtnetlink_process_newroute(int af, nlpkt_t *pkt, fm_route_t **ret_p)
 			goto failed;
 		}
 
-		nlpkt_pull(pkt, (nla->nla_len + 3) & ~3);
+		fm_buffer_pull(pkt, (nla->nla_len + 3) & ~3);
 	}
 
 	*ret_p = route;
@@ -598,34 +598,34 @@ fm_route_show(fm_route_t *r)
 }
 
 static bool
-netlink_process_response(fm_routing_cache_t *rtcache, nlpkt_t *pkt, unsigned int expect_seq, bool *done_p)
+netlink_process_response(fm_routing_cache_t *rtcache, fm_buffer_t *pkt, unsigned int expect_seq, bool *done_p)
 {
-	nl_debug("processing netlink response (%u bytes)\n", nlpkt_available(pkt));
+	nl_debug("processing netlink response (%u bytes)\n", fm_buffer_available(pkt));
 	while (!*done_p) {
 		struct nlmsghdr *nh;
-		nlpkt_t *msg;
+		fm_buffer_t *msg;
 
-		nh = nlpkt_peek(pkt, sizeof(*nh));
-		if (nh == NULL || nh->nlmsg_len > nlpkt_available(pkt))
+		nh = fm_buffer_peek(pkt, sizeof(*nh));
+		if (nh == NULL || nh->nlmsg_len > fm_buffer_available(pkt))
 			break;
 
 		/* any other rtnetlink message - how come? */
 		if (nh->nlmsg_seq != expect_seq) {
 			printf("unexpected sequence %u != %u\n", nh->nlmsg_seq, expect_seq);
-			nlpkt_pull(pkt, nh->nlmsg_len);
+			fm_buffer_pull(pkt, nh->nlmsg_len);
 			continue;
 		}
 
 		nl_debug("nlmsg type=%d len=%u flags=%x\n", nh->nlmsg_type, nh->nlmsg_len, nh->nlmsg_flags);
 
 		/* Create a copy of this nlmsg */
-		msg = nlpkt_pull_packet(pkt, nh->nlmsg_len);
+		msg = fm_buffer_pull_packet(pkt, nh->nlmsg_len);
 
 		if (nh->nlmsg_type == RTM_NEWROUTE) {
 			fm_route_t *route;
 
 			if (!rtnetlink_process_newroute(rtcache->family, msg, &route)) {
-				nlpkt_free(msg);
+				fm_buffer_free(msg);
 				return false;
 			}
 
@@ -642,7 +642,7 @@ netlink_process_response(fm_routing_cache_t *rtcache, nlpkt_t *pkt, unsigned int
 			*done_p = true;
 		}
 
-		nlpkt_free(msg);
+		fm_buffer_free(msg);
 	}
 
 	return true;
@@ -651,26 +651,26 @@ netlink_process_response(fm_routing_cache_t *rtcache, nlpkt_t *pkt, unsigned int
 static unsigned int
 netlink_send_dump_request(int fd, int af, int type)
 {
-	nlpkt_t *pkt;
+	fm_buffer_t *pkt;
 	struct nlmsghdr *nh;
 	struct rtmsg *rt;
 	bool ok;
 
-	pkt = nlpkt_alloc(256);
+	pkt = fm_buffer_alloc(256);
 	memset(pkt->data, 0, pkt->size);
 
 	nh = nlmsg_begin(pkt, type, NLM_F_REQUEST|NLM_F_DUMP);
-	rt = nlpkt_push(pkt, sizeof(*rt));
+	rt = fm_buffer_push(pkt, sizeof(*rt));
 	rt->rtm_family = af;
 
 	nlattr_add_int(pkt, RTA_TABLE, RT_TABLE_MAIN);
-	nh->nlmsg_len = nlpkt_len(pkt, nh);
+	nh->nlmsg_len = fm_buffer_len(pkt, nh);
 
 	/* End with a NUL packet */
 	nlmsg_begin(pkt, 0, 0);
 
 	ok = netlink_send(fd, pkt->data, pkt->wpos);
-	nlpkt_free(pkt);
+	fm_buffer_free(pkt);
 
 	if (!ok)
 		return 0;
@@ -681,7 +681,7 @@ netlink_send_dump_request(int fd, int af, int type)
 static bool
 netlink_dump_rt(int fd, fm_routing_cache_t *rtcache)
 {
-	nlpkt_t *pkt;
+	fm_buffer_t *pkt;
 	bool done = false;
 	unsigned int expect_seq;
 
@@ -691,7 +691,7 @@ netlink_dump_rt(int fd, fm_routing_cache_t *rtcache)
 	if (expect_seq == 0)
 		return false;
 
-	pkt = nlpkt_alloc(65536);
+	pkt = fm_buffer_alloc(65536);
 	do {
 		if (!netlink_recv(fd, pkt))
 			break;
@@ -699,7 +699,7 @@ netlink_dump_rt(int fd, fm_routing_cache_t *rtcache)
 			break;
 	} while (!done);
 
-	nlpkt_free(pkt);
+	fm_buffer_free(pkt);
 	return done;
 }
 
