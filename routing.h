@@ -44,4 +44,16 @@ typedef struct fm_routing_cache {
 	fm_route_t **		entries;
 } fm_routing_cache_t;
 
+/* This may be better off in types.h */
+typedef struct fm_routing_info {
+	struct {
+		fm_address_t	network_address;
+		fm_address_t	link_address;
+	} src, dst, nh;
+
+	fm_interface_t *	nic;
+
+	fm_neighbor_t *		incomplete_neighbor_entry;
+} fm_routing_info_t;
+
 #endif /* FREEMAP_ROUTING_H */

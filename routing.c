@@ -30,6 +30,7 @@
 #include "freemap.h"
 #include "addresses.h"
 #include "routing.h"
+#include "neighbor.h"
 #include "buffer.h"
 #include "utils.h"
 
@@ -693,6 +694,61 @@ fm_routing_for_address(const fm_address_t *addr)
 
 	return NULL;
 }
+
+/*
+ * Given an IP destination, fill in source address and the lladdrs.
+ */
+
+bool
+fm_routing_lookup(fm_routing_info_t *info)
+{
+	fm_route_t *route;
+	fm_neighbor_t *neigh;
+
+	if (!(route = fm_routing_for_address(&info->dst.network_address))) {
+		fm_log_error("%s: no route to host", fm_address_format(&info->dst.link_address));
+		return false;
+	}
+
+	info->src.network_address = route->pref_src_addr;
+
+	if (route->interface == NULL) {
+		fm_log_error("%s: no interface for route", fm_address_format(&info->dst.link_address));
+		return false;
+	}
+
+	if (!fm_interface_get_lladdr(route->interface, (struct sockaddr_ll *) &info->src.link_address)) {
+		fm_log_error("%s: no interface has no lladdr", fm_address_format(&info->dst.link_address));
+		return false;
+	}
+
+	if (route->gateway.ss_family == AF_UNSPEC) {
+		info->nh.network_address = info->dst.network_address;
+	} else {
+		info->nh.network_address = route->gateway;
+	}
+
+	/* FIXME: if the interface is eg a tunnel or some point-to-point link, we
+	 * won't have to do any neighbor lookup */
+
+	/* We need the link-layer address for the next hop */
+	neigh = fm_interface_get_neighbor(route->interface, &info->nh.network_address, true);
+	assert(neigh);
+
+	if (neigh->state == FM_NEIGHBOR_LARVAL) {
+		/* tell the caller that we're still waiting for neighbor resolution */
+		info->incomplete_neighbor_entry = neigh;
+	} else
+	if (neigh->state == FM_NEIGHBOR_VALID) {
+		info->nh.link_address = neigh->link_address;
+	} else {
+		/* negative entry; nothing we can do here */
+		return false;
+	}
+
+	return true;
+}
+
 
 void
 fm_routing_discover(void)
