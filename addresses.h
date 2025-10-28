@@ -80,6 +80,7 @@ extern void			fm_interface_add(const char *name, const struct sockaddr_ll *);
 extern const fm_address_prefix_t *fm_local_prefix_for_address(const fm_address_t *addr);
 extern unsigned int		fm_address_mask_to_prefixlen(const struct sockaddr *mask);
 extern bool			fm_address_mask_from_prefixlen(int af, unsigned int pfxlen, unsigned char *mask, unsigned int size);
+extern void			fm_local_cache_arp_entry(int ifindex, u_int32_t ipaddr, const struct sockaddr_ll *lladdr);
 
 static inline unsigned int
 fm_addrfamily_max_addrbits(int af)

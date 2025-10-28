@@ -36,11 +36,12 @@ struct arp_host_probe_params {
 
 static bool		get_ipv4_address(const fm_address_t *, uint32_t *);
 static bool		get_eth_address(const struct sockaddr_ll *, unsigned char *, unsigned int);
-static fm_extant_t *	fm_arp_locate_probe(uint32_t ipaddr, const unsigned char *eth_addr);
+static fm_extant_t *	fm_arp_locate_probe(uint32_t ipaddr, const unsigned char *eth_addr, struct sockaddr_ll *);
 
 static fm_socket_t *	fm_arp_create_socket(fm_protocol_t *proto, int ipproto);
 static bool		fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 
+static int		fm_arp_probe_original_ifindex(const fm_probe_t *);
 static fm_scan_action_t *fm_arp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
 
 static struct fm_protocol_ops	fm_arp_ops = {
@@ -69,6 +70,7 @@ fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 	const struct arphdr *arp;
 	unsigned char src_hwaddr[ETH_ALEN];
 	uint32_t src_ipaddr;
+	struct sockaddr_ll src_lladdr = { 0 };
 
 	/* fm_print_hexdump(pkt->data, pkt->len); */
 
@@ -88,10 +90,18 @@ fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 	memcpy(src_hwaddr, (unsigned char *) (arp + 1), ETH_ALEN);
 	memcpy(&src_ipaddr, ((unsigned char *) (arp + 1) + ETH_ALEN), 4);
 
-	extant = fm_arp_locate_probe(src_ipaddr, src_hwaddr);
+	extant = fm_arp_locate_probe(src_ipaddr, src_hwaddr, NULL);
 	if (extant != NULL) {
 		/* Mark the probe as successful, and update the RTT estimate */
 		fm_extant_received_reply(extant, pkt);
+
+		if (src_lladdr.sll_family != AF_UNSPEC) {
+			int ifindex = fm_arp_probe_original_ifindex(extant->probe);
+
+			if (ifindex > 0)
+				fm_local_cache_arp_entry(ifindex, src_ipaddr, &src_lladdr);
+		}
+
 		fm_extant_free(extant);
 	}
 
@@ -199,7 +209,7 @@ fm_arp_expect_response(uint32_t dst_ipaddr, fm_probe_t *probe)
 }
 
 static fm_extant_t *
-fm_arp_locate_probe(uint32_t ipaddr, const unsigned char *eth_addr)
+fm_arp_locate_probe(uint32_t ipaddr, const unsigned char *eth_addr, struct sockaddr_ll *found_addr)
 {
 	struct sockaddr_in sin = { .sin_family = AF_INET, .sin_addr = { ipaddr }};
 	fm_target_t *target;
@@ -225,7 +235,8 @@ fm_arp_locate_probe(uint32_t ipaddr, const unsigned char *eth_addr)
 				fm_address_format(&target->address),
 				fm_address_format((fm_address_t *) &lladdr));
 
-		/* FIXME: record the target's ethernet address */
+		if (found_addr != NULL)
+			*found_addr = lladdr;
 	}
 
         fm_extant_iterator_init(&iter, &target->expecting);
@@ -352,6 +363,18 @@ fm_arp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const struct
 
 	fm_log_debug("Created ARP socket probe for %s\n", fm_address_format(&target->address));
 	return &probe->base;
+}
+
+int
+fm_arp_probe_original_ifindex(const fm_probe_t *probe)
+{
+	const struct fm_arp_host_probe *arp;
+
+	if (probe->ops != &fm_arp_host_probe_ops)
+		return -1;
+
+	arp = (struct fm_arp_host_probe *) probe;
+	return arp->params.src_lladdr.sll_ifindex;
 }
 
 /*

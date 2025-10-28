@@ -213,6 +213,15 @@ fm_interface_get_lladdr(const fm_interface_t *nic, struct sockaddr_ll *lladdr)
 }
 
 /*
+ * Neighbor cache
+ */
+extern void
+fm_local_cache_arp_entry(int ifindex, u_int32_t ipaddr, const struct sockaddr_ll *lladdr)
+{
+	/* TBD */
+}
+
+/*
  * addr prefix lists
  */
 fm_address_prefix_t *
