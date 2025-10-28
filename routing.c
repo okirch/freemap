@@ -679,3 +679,12 @@ fm_routing_for_address(const fm_address_t *addr)
 
 	return NULL;
 }
+
+void
+fm_routing_discover(void)
+{
+	fm_local_discover();
+
+	(void) fm_routing_cache_for_family(AF_INET);
+	(void) fm_routing_cache_for_family(AF_INET6);
+}

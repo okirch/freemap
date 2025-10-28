@@ -300,8 +300,13 @@ fm_address_mask_from_prefixlen(int af, unsigned int pfxlen, unsigned char *mask,
 void
 fm_local_discover(void)
 {
+	static bool initialized = false;
 	struct ifaddrs *head, *ifa;
 	unsigned int i;
+
+	if (initialized)
+		return;
+	initialized = true;
 
 	if (getifaddrs(&head) < 0)
 		fm_log_fatal("getifaddrs: %m");
