@@ -46,6 +46,7 @@ struct icmp_host_probe_params {
 
 static fm_socket_t *	fm_icmp_create_bsd_socket(fm_protocol_t *proto, int ipproto);
 static bool		fm_icmp_process_bsd_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
+static bool		fm_icmp_process_bsd_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static fm_socket_t *	fm_icmp_create_raw_socket(fm_protocol_t *proto, int ipproto);
 static fm_socket_t *	fm_icmp_create_raw_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 static bool		fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
@@ -64,6 +65,7 @@ static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.create_socket	= fm_icmp_create_bsd_socket,
 	.create_host_probe_action = fm_icmp_create_host_probe_action,
 	.process_packet	= fm_icmp_process_bsd_packet,
+	.process_error	= fm_icmp_process_bsd_error,
 };
 
 static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
@@ -112,6 +114,54 @@ fm_icmp_process_bsd_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 	if (extant != NULL) {
 		/* Mark the probe as successful, and update the RTT estimate */
 		fm_extant_received_reply(extant, pkt);
+		fm_extant_free(extant);
+	}
+
+	return true;
+}
+
+bool
+fm_icmp_process_bsd_error(fm_protocol_t *proto, fm_pkt_t *pkt)
+{
+	const struct sock_extended_err *ee;
+	fm_extant_t *extant = NULL;
+
+	/* fm_print_hexdump(pkt->data, pkt->len); */
+
+	if ((ee = pkt->info.ee) == NULL)
+		return false;
+
+	if (pkt->family == AF_INET && ee->ee_origin == SO_EE_ORIGIN_ICMP) {
+		if (ee->ee_type != ICMP_DEST_UNREACH) {
+			fm_log_debug("%s ignoring icmp packet with type %d.%d",
+					fm_address_format(&pkt->recv_addr),
+					ee->ee_type, ee->ee_code);
+			return false;
+		}
+
+		fm_log_debug("%s destination unreachable (code %d)\n",
+				fm_address_format(&pkt->recv_addr), ee->ee_code);
+
+		/* update asset state right away */
+		fm_host_asset_update_state_by_address(&pkt->recv_addr, FM_ASSET_STATE_CLOSED);
+		if (pkt->info.offender != NULL)
+			fm_host_asset_update_state_by_address(pkt->info.offender, FM_ASSET_STATE_OPEN);
+
+		/* The errqueue stuff is a bit non-intuitive at times. When receiving an
+		 * ICMP packet, the "from" address is the IP we originally sent the packet
+		 * to, and the offender is the address of the host that generated the
+		 * ICMP packet. */
+		extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, false, true);
+
+		/* TODO: record the gateway that generated this error code;
+		 * we could build a rough sketch of the network topo and avoid swamping
+		 * the gateway with too many packets (which would result in ICMP errors
+		 * being dropped). */
+	}
+
+	if (extant != NULL) {
+		/* Mark the probe as failed, and update the RTT estimate */
+		fm_extant_received_error(extant, pkt);
 		fm_extant_free(extant);
 	}
 
