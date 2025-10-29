@@ -448,5 +448,6 @@ fm_local_discover(void)
 			continue;
 
 		entry->device = fm_interface_by_name(entry->ifname);
+		entry->ifindex = entry->device->ifindex;
 	}
 }

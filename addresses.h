@@ -30,14 +30,20 @@
 typedef struct fm_address_prefix fm_address_prefix_t;
 
 struct fm_address_prefix {
+	/* This is the address we can route to.
+	 * For point-to-point devices like tunnels, this will be the host address
+	 * of the remote end.
+	 */
 	fm_address_t		address;
 	unsigned int		pfxlen;
 
+	/* This is the address we use when talking to this device */
 	fm_address_t		source_addr;
 
 	unsigned char		raw_mask[16];
 
 	/* for local addrs */
+	int			ifindex;
 	char *			ifname;
 	const fm_interface_t *	device;
 };
