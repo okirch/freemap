@@ -286,14 +286,25 @@ fm_protocol_attach_rtt_estimator(fm_protocol_t *proto, fm_target_t *target, fm_p
 fm_probe_t *
 fm_protocol_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port)
 {
-	fm_probe_t *probe;
+	fm_probe_t *probe = NULL;
 
-	if (proto->ops->create_port_probe == NULL) {
-		fprintf(stderr, "Error: protocol %s cannot create a port probe\n", proto->ops->name);
-		return NULL;
+	if (proto->ops->create_parameterized_probe != NULL) {
+		fm_probe_params_t params = { .port = port };
+
+		if (!fm_protocol_supports_param(proto, FM_PARAM_TYPE_PORT)) {
+			fm_log_error("%s probe does not support port parameter", proto->ops->name);
+			return NULL;
+		}
+
+		probe = proto->ops->create_parameterized_probe(proto, target, &params);
+	} else
+	if (proto->ops->create_port_probe != NULL) {
+		probe = proto->ops->create_port_probe(proto, target, port);
+	} else {
+		fm_log_error("protocol %s cannot create a port probe\n", proto->ops->name);
 	}
 
-	if ((probe = proto->ops->create_port_probe(proto, target, port)) != NULL)
+	if (probe != NULL)
 		fm_protocol_attach_rtt_estimator(proto, target, probe);
 	return probe;
 }

@@ -33,19 +33,24 @@ static fm_socket_t *	fm_udp_create_bsd_socket(fm_protocol_t *proto, int af);
 static fm_socket_t *	fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 static bool		fm_udp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
-static fm_probe_t *	fm_udp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port);
+static fm_probe_t *	fm_udp_create_parameterized_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params);
 
 static struct fm_protocol_ops	fm_udp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "udp",
 	.id		= FM_PROTO_UDP,
 
+	.supported_parameters = 
+			  FM_PROBE_PARAM_MASK(PORT) |
+//			  FM_PROBE_PARAM_MASK(TTL) |
+			  FM_PROBE_PARAM_MASK(RETRIES),
+
 	.create_socket	= fm_udp_create_bsd_socket,
 	.create_host_shared_socket = fm_udp_create_shared_socket,
 	.process_packet = fm_udp_process_packet,
 	.process_error	= fm_udp_process_error,
 
-	.create_port_probe = fm_udp_create_port_probe,
+	.create_parameterized_probe = fm_udp_create_parameterized_probe,
 };
 
 FM_PROTOCOL_REGISTER(fm_udp_bsdsock_ops);
@@ -218,11 +223,10 @@ struct fm_udp_port_probe {
 	 */
 	bool		use_connected_socket;
 
-	unsigned int	send_retries;
-
-	unsigned int	port;
 	fm_address_t	host_address;
 	fm_socket_t *	sock;
+
+	fm_probe_params_t params;
 };
 
 static void
@@ -258,7 +262,7 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 	}
 
 	/* Check if we can guess a well-known service */
-	if ((wks = fm_wellknown_service_for_port("udp", udp->port)) == NULL) {
+	if ((wks = fm_wellknown_service_for_port("udp", udp->params.port)) == NULL) {
 		/* If we can't guess the UDP service, send a single NUL byte as payload. */
 		static fm_probe_packet_t dummy_packet = { "", 1 };
 		static fm_wellknown_service_t dummy_udp = {
@@ -274,10 +278,10 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 		return FM_SEND_ERROR;
 	}
 
-	fm_udp_expect_response(probe, udp->host_address.ss_family, udp->port);
+	fm_udp_expect_response(probe, udp->host_address.ss_family, udp->params.port);
 
 	/* update the asset state */
-	fm_target_update_port_state(probe->target, FM_PROTO_UDP, udp->port, FM_ASSET_STATE_PROBE_SENT);
+	fm_target_update_port_state(probe->target, FM_PROTO_UDP, udp->params.port, FM_ASSET_STATE_PROBE_SENT);
 
 	return 0;
 }
@@ -309,20 +313,25 @@ static struct fm_probe_ops fm_udp_port_probe_ops = {
 };
 
 static fm_probe_t *
-fm_udp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port)
+fm_udp_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params)
 {
 	struct sockaddr_storage tmp_address = target->address;
 	struct fm_udp_port_probe *probe;
 	char name[32];
 
-	if (!fm_address_set_port(&tmp_address, port))
+	if (params->port == 0) {
+		fm_log_error("%s: parameterized probe requires destination port", proto->ops->name);
+		return NULL;
+	}
+
+	if (!fm_address_set_port(&tmp_address, params->port))
 		return NULL;
 
-	snprintf(name, sizeof(name), "udp/%u", port);
+	snprintf(name, sizeof(name), "udp/%u", params->port);
 
 	probe = (struct fm_udp_port_probe *) fm_probe_alloc(name, &fm_udp_port_probe_ops, proto, target);
 
-	probe->port = port;
+	probe->params = *params;
 	probe->host_address = tmp_address;
 	probe->sock = NULL;
 
@@ -332,4 +341,3 @@ fm_udp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t por
 	fm_log_debug("Created UDP socket probe for %s\n", fm_address_format(&probe->host_address));
 	return &probe->base;
 }
-

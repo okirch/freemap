@@ -33,19 +33,24 @@ static fm_socket_t *	fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af);
 static bool		fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_connecton_established(fm_protocol_t *proto, const fm_address_t *);
-static fm_probe_t *	fm_tcp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port);
+static fm_probe_t *	fm_tcp_create_parameterized_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params);
 
 static struct fm_protocol_ops	fm_tcp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "tcp",
 	.id		= FM_PROTO_TCP,
 
+	.supported_parameters = 
+			  FM_PROBE_PARAM_MASK(PORT) |
+//			  FM_PROBE_PARAM_MASK(TTL) |
+			  FM_PROBE_PARAM_MASK(RETRIES),
+
 	.create_socket	= fm_tcp_create_bsd_socket,
 	.process_packet = fm_tcp_process_packet,
 	.process_error	= fm_tcp_process_error,
 	.connection_established = fm_tcp_connecton_established,
 
-	.create_port_probe = fm_tcp_create_port_probe,
+	.create_parameterized_probe = fm_tcp_create_parameterized_probe,
 };
 
 FM_PROTOCOL_REGISTER(fm_tcp_bsdsock_ops);
@@ -154,7 +159,7 @@ fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 struct fm_tcp_port_probe {
 	fm_probe_t	base;
 
-	unsigned int	port;
+	fm_probe_params_t params;
 	fm_address_t	host_address;
 	fm_socket_t *	sock;
 };
@@ -192,10 +197,10 @@ fm_tcp_port_probe_send(fm_probe_t *probe)
 		}
 	}
 
-	fm_tcp_expect_response(probe, tcp->host_address.ss_family, tcp->port);
+	fm_tcp_expect_response(probe, tcp->host_address.ss_family, tcp->params.port);
 
 	/* update the asset state */
-	fm_target_update_port_state(probe->target, FM_PROTO_TCP, tcp->port, FM_ASSET_STATE_PROBE_SENT);
+	fm_target_update_port_state(probe->target, FM_PROTO_TCP, tcp->params.port, FM_ASSET_STATE_PROBE_SENT);
 
 	return 0;
 }
@@ -209,20 +214,25 @@ static struct fm_probe_ops fm_tcp_port_probe_ops = {
 };
 
 static fm_probe_t *
-fm_tcp_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port)
+fm_tcp_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params)
 {
 	struct sockaddr_storage tmp_address = target->address;
 	struct fm_tcp_port_probe *probe;
 	char name[32];
 
-	if (!fm_address_set_port(&tmp_address, port))
+	if (params->port == 0) {
+		fm_log_error("%s: parameterized probe requires destination port", proto->ops->name);
+		return NULL;
+	}
+
+	if (!fm_address_set_port(&tmp_address, params->port))
 		return NULL;
 
-	snprintf(name, sizeof(name), "tcp/%u", port);
+	snprintf(name, sizeof(name), "tcp/%u", params->port);
 
 	probe = (struct fm_tcp_port_probe *) fm_probe_alloc(name, &fm_tcp_port_probe_ops, proto, target);
 
-	probe->port = port;
+	probe->params = *params;
 	probe->host_address = tmp_address;
 	probe->sock = NULL;
 

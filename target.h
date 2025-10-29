@@ -37,6 +37,7 @@ struct fm_probe_ops {
 	const char *		name;
 	size_t			obj_size;
 
+	/* do we still use this? */
 	long			default_timeout;
 
 	void			(*destroy)(fm_probe_t *);

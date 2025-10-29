@@ -30,6 +30,23 @@ struct fm_protocol {
 	const struct fm_protocol_ops *ops;
 };
 
+typedef enum fm_param_type {
+	FM_PARAM_TYPE_NONE = 0,
+	FM_PARAM_TYPE_RETRIES,
+	FM_PARAM_TYPE_PORT,
+	FM_PARAM_TYPE_TTL,
+	FM_PARAM_TYPE_TOS,
+
+	__FM_PARAM_TYPE_MAX,
+} fm_param_type_t;
+
+typedef struct fm_probe_params {
+	unsigned int	retries;
+	unsigned int	port;
+	unsigned int	ttl;
+	unsigned int	tos;
+} fm_probe_params_t;
+
 struct fm_protocol_ops {
 	size_t		obj_size;
 	const char *	name;
@@ -38,6 +55,8 @@ struct fm_protocol_ops {
 
 	/* true if it uses features like PF_PACKET sockets that require CAP_NET_RAW */
 	bool		require_raw;
+
+	unsigned int	supported_parameters;
 
 	void		(*destroy)(fm_protocol_t *);
 
@@ -52,7 +71,11 @@ struct fm_protocol_ops {
 
 	fm_probe_t *	(*create_host_probe)(fm_protocol_t *, fm_target_t *, unsigned int retries);
 	fm_probe_t *	(*create_port_probe)(fm_protocol_t *, fm_target_t *, uint16_t);
+
+	fm_probe_t *	(*create_parameterized_probe)(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params);
 };
+
+#define FM_PROBE_PARAM_MASK(N)	(1 << (FM_PARAM_TYPE_##N))
 
 #define FM_PROTOCOL_ENGINE_MAX	256
 struct fm_protocol_engine {
@@ -84,6 +107,12 @@ static void \
 fm_protocol_register_ ## ops(void) \
 { \
 	fm_protocol_directory_add(&ops); \
+}
+
+static inline bool
+fm_protocol_supports_param(fm_protocol_t *proto, fm_param_type_t type)
+{
+	return !!(proto->ops->supported_parameters & (1 << type));
 }
 
 static inline uint16_t
