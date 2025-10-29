@@ -562,6 +562,7 @@ netlink_send_dump_request(int fd, int af, int type)
 	fm_buffer_t *pkt;
 	struct nlmsghdr *nh;
 	struct rtmsg *rt;
+	unsigned int seq;
 	bool ok;
 
 	pkt = fm_buffer_alloc(256);
@@ -578,12 +579,14 @@ netlink_send_dump_request(int fd, int af, int type)
 	nlmsg_begin(pkt, 0, 0);
 
 	ok = netlink_send(fd, pkt->data, pkt->wpos);
+	seq = nh->nlmsg_seq;
+
 	fm_buffer_free(pkt);
 
 	if (!ok)
 		return 0;
 
-	return nh->nlmsg_seq;
+	return seq;
 }
 
 static bool
