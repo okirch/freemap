@@ -345,7 +345,7 @@ fm_host_asset_report_ports(const fm_host_asset_t *host,
 			if (word == 0)
 				continue;
 
-			for (port = word_index * 32; word; ++port, word >>= 2) {
+			for (port = word_index * 16; word; ++port, word >>= 2) {
 				if (word & 0x03)
 					visitor(host, proto_name, port, word & 0x03, user_data);
 			}
