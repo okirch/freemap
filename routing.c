@@ -170,24 +170,6 @@ fm_routing_cache_dump(fm_routing_cache_t *cache)
 }
 
 static const char *
-address_format(const struct sockaddr_storage *ap)
-{
-	static char extra[128];
-	if (ap->ss_family == AF_INET) {
-		const struct sockaddr_in *sin = (const struct sockaddr_in *) ap;
-
-		return inet_ntoa(sin->sin_addr);
-	} else
-	if (ap->ss_family == AF_INET6) {
-		const struct sockaddr_in6 *six = (const struct sockaddr_in6 *) ap;
-
-		return inet_ntop(AF_INET6, &six->sin6_addr, extra, sizeof(extra));
-	}
-
-	return "BAD";
-}
-
-static const char *
 route_prefix_format(struct sockaddr_storage *addr, unsigned int pfxlen)
 {
 	static char abuf[128];
@@ -195,7 +177,7 @@ route_prefix_format(struct sockaddr_storage *addr, unsigned int pfxlen)
 	if (pfxlen == 0)
 		return "default";
 
-	snprintf(abuf, sizeof(abuf), "%s/%u", address_format(addr), pfxlen);
+	snprintf(abuf, sizeof(abuf), "%s/%u", fm_address_format(addr), pfxlen);
 	return abuf;
 }
 
@@ -227,7 +209,7 @@ fm_route_show(fm_route_t *r)
 	printf("%-10s ", route_type_name(r->type));
 	printf("%-25s", route_prefix_format(&r->dst.addr, r->dst.prefix_len));
 	if (r->gateway.ss_family != AF_UNSPEC)
-		printf(" via %s", address_format(&r->gateway));
+		printf(" via %s", fm_address_format(&r->gateway));
 	if (r->priority)
 		printf(" priority %u", r->priority);
 	if (r->interface)
@@ -235,7 +217,7 @@ fm_route_show(fm_route_t *r)
 	else if (r->oif)
 		printf(" oif %u", r->oif);
 	if (r->pref_src_addr.ss_family != AF_UNSPEC)
-		printf(" prefsrc %s", address_format(&r->pref_src_addr));
+		printf(" prefsrc %s", fm_address_format(&r->pref_src_addr));
 	printf("\n");
 }
 
