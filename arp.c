@@ -89,7 +89,7 @@ fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 	memcpy(src_hwaddr, (unsigned char *) (arp + 1), ETH_ALEN);
 	memcpy(&src_ipaddr, ((unsigned char *) (arp + 1) + ETH_ALEN), 4);
 
-	extant = fm_arp_locate_probe(src_ipaddr, src_hwaddr, NULL);
+	extant = fm_arp_locate_probe(src_ipaddr, src_hwaddr, &src_lladdr);
 	if (extant != NULL) {
 		/* Mark the probe as successful, and update the RTT estimate */
 		fm_extant_received_reply(extant, pkt);
@@ -97,8 +97,10 @@ fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 		if (src_lladdr.sll_family != AF_UNSPEC) {
 			int ifindex = fm_arp_probe_original_ifindex(extant->probe);
 
-			if (ifindex > 0)
+			if (ifindex > 0) {
+				src_lladdr.sll_ifindex = ifindex;
 				fm_local_cache_arp_entry(ifindex, src_ipaddr, &src_lladdr);
+			}
 		}
 
 		fm_extant_free(extant);
