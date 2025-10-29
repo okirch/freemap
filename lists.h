@@ -81,6 +81,12 @@ hlist_remove(struct hlist *entry)
 	entry->next = NULL;
 }
 
+static inline void *
+hlist_head_get_first(struct hlist_head *head)
+{
+	return head->first;
+}
+
 typedef struct list_iterator {
 	struct hlist *next;
 } hlist_iterator_t;

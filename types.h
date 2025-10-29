@@ -46,8 +46,14 @@ typedef const struct fm_wellknown_service fm_wellknown_service_t;
 typedef struct fm_string_array fm_string_array_t;
 typedef struct fm_neighbor fm_neighbor_t;
 typedef struct fm_neighbor_cache fm_neighbor_cache_t;
+typedef struct fm_event_listener fm_event_listener_t;
 
+/* For now, fm_address is just a sockaddr_storage */
 typedef struct sockaddr_storage	fm_address_t;
+
+/* Events are identified by a 32bit id. */
+typedef unsigned int fm_event_t;
+typedef bool fm_event_callback_t(fm_probe_t *, fm_event_t);
 
 /* so that we don't have to include linux/if_packet.h all the time */
 struct sockaddr_ll;
@@ -126,6 +132,14 @@ typedef struct fm_pkt {
 
 	unsigned char		data[0];
 } fm_pkt_t;
+
+/*
+ * Trivial event mechanism
+ */
+enum {
+	FM_EVENT_ID_NONE = 0,
+	FM_EVENT_ID_NEIGHBOR_CACHE,
+};
 
 /*
  * Representation of errors, and information about a target

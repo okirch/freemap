@@ -67,6 +67,11 @@ struct fm_probe {
 
 	fm_rtt_stats_t *	rtt;
 
+	/* Used when waiting for some event to occur (such as other
+	 * probes finishing, or a neighbor lookup completing).
+	 */
+	fm_event_listener_t *	event_listener;
+
 	/* When probing eg UDP based services, we need to slap some
 	 * constant value on the timeout derived from the RTT estimate,
 	 * because the RTT will be largely based on the network timing;

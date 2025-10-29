@@ -118,6 +118,9 @@ extern bool		fm_target_get_local_bind_address(fm_target_t *, fm_address_t *);
 extern fm_fact_t *	fm_probe_send(fm_probe_t *);
 extern void		fm_probe_free(fm_probe_t *);
 
+extern void		fm_event_post(fm_event_t event);
+extern void		fm_event_process_all(void);
+
 extern void		fm_rtt_stats_init(fm_rtt_stats_t *, unsigned long initial_rtt, unsigned int multiple);
 extern void		fm_rtt_stats_update(fm_rtt_stats_t *, double rtt);
 

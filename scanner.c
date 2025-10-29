@@ -285,6 +285,9 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 	/* Handle probes that have timed out */
 	fm_scanner_process_timeouts(scanner);
 
+	/* Process events */
+	fm_event_process_all();
+
 	/* Schedule and transmit a few additional probes */
 	fm_scheduler_transmit_some(scanner->scheduler, fm_ratelimit_available(&scanner->send_rate_limit));
 

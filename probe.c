@@ -20,8 +20,160 @@
 #include "target.h"
 #include "network.h"
 #include "utils.h"
+#include "lists.h"
 
+/*
+ * We implement a simple and hopefully robust mechanism that allows
+ * probes to wait for certain events.
+ *
+ * A probe can point to a event_listener object that describes the event(s)
+ * it is waiting for.
+ * These objects, when active, are inserted into a linked list managed
+ * by the job scheduler. When an event is signaled, the job scheduler
+ * walks this list and calls every probe that is waiting for this
+ * specific event.
+ */
+struct fm_event_listener {
+	struct hlist		link;
 
+	/* Callback to invoke.
+	 * returns true to indicate that the probe is done waiting.
+	 */
+	fm_event_callback_t *	callback;
+
+	/* Back pointer to the probe */
+	fm_probe_t *		probe;
+
+	/* Event we're waiting for.
+	 * Right now, a probe cannot wait for more than one event at
+	 * a time (but extending that should be easy).
+	 */
+	fm_event_t		event;
+};
+
+/*
+ * Straightforward for now: we use a single linked list of listeners.
+ * Once the number of events grow, it will become more expensive to
+ * traverse this list all the time, so we may want to optimize this.
+ */
+static struct hlist_head	fm_event_listeners;
+static struct hlist_head	fm_event_recycler;
+
+/*
+ * Events are not delivered synchronously, but get posted here and
+ * will be processed by the job scheduler when convenient/safe.
+ * This should help avoid the usual messy recursion and race condition
+ * issues.
+ */
+typedef struct fm_posted_event {
+	struct hlist		link;
+	fm_event_t		event;
+} fm_posted_event_t;
+
+static struct hlist_head	fm_posted_events;
+
+/*
+ * Allocate an event listener.
+ */
+static fm_event_listener_t *
+fm_event_listener_alloc(fm_probe_t *probe, fm_event_callback_t *callback, fm_event_t event)
+{
+	fm_event_listener_t *evl;
+
+	evl = calloc(1, sizeof(*evl));
+	evl->probe = probe;
+	evl->callback = callback;
+	evl->event = event;
+
+	hlist_insert(&fm_event_listeners, &evl->link);
+
+	return evl;
+}
+
+static void
+fm_event_listener_disable(fm_event_listener_t *evl)
+{
+	if (evl->probe && evl->probe->event_listener == evl)
+		evl->probe->event_listener = NULL;
+	hlist_remove(&evl->link);
+
+	hlist_insert(&fm_event_recycler, &evl->link);
+}
+
+/*
+ * Nothing outside this file should ever free the event listener
+ * themselves.
+ * If they really need to, they can call fm_event_listener_disable
+ * to detach the listener, allowing them to wait for some other
+ * event.
+ */
+static void
+fm_event_listener_free(fm_event_listener_t *evl)
+{
+	if (evl->probe && evl->probe->event_listener == evl)
+		evl->probe->event_listener = NULL;
+	hlist_remove(&evl->link);
+
+	free(evl);
+}
+
+/*
+ * Handle an event.
+ * Note that the iterator tolerates dropping the current list item.
+ */
+static void
+fm_event_dispatch(fm_event_t event)
+{
+	fm_event_listener_t *evl;
+	hlist_iterator_t it;
+
+	hlist_iterator_init(&it, &fm_event_listeners);
+	while ((evl = hlist_iterator_next(&it)) != NULL) {
+		if (evl->event == event
+		 && evl->callback(evl->probe, event))
+			fm_event_listener_disable(evl);
+	}
+
+	/* Garbage collection.
+	 */
+	hlist_iterator_init(&it, &fm_event_recycler);
+	while ((evl = hlist_iterator_next(&it)) != NULL)
+		fm_event_listener_free(evl);
+}
+
+/*
+ * Event posting
+ */
+void
+fm_event_post(fm_event_t event)
+{
+	fm_posted_event_t *posted;
+
+	posted = calloc(1, sizeof(*posted));
+	hlist_insert(&fm_posted_events, &posted->link);
+	posted->event = event;
+}
+
+/*
+ * Drain and process the entire event queue.
+ * This ensures that we immediately process new events generated
+ * by one of the callbacks.
+ */
+void
+fm_event_process_all(void)
+{
+	fm_posted_event_t *posted;
+
+	while ((posted = hlist_head_get_first(&fm_posted_events)) != NULL) {
+		fm_event_dispatch(posted->event);
+		hlist_remove(&posted->link);
+		free(posted);
+	}
+}
+
+/*
+ * Probe objects
+ */
 fm_probe_t *
 fm_probe_alloc(const char *id, const struct fm_probe_ops *ops, fm_protocol_t *proto, fm_target_t *target)
 {
@@ -48,6 +200,9 @@ fm_probe_free(fm_probe_t *probe)
 
 	if (probe->target != NULL)
 		fm_target_forget_pending(probe->target, probe);
+
+	if (probe->event_listener != NULL)
+		fm_event_listener_free(probe->event_listener);
 
 	fm_probe_unlink(probe);
 
@@ -151,6 +306,36 @@ void
 fm_probe_timed_out(fm_probe_t *probe)
 {
 	fm_probe_render_verdict(probe, FM_PROBE_VERDICT_TIMEOUT);
+}
+
+/*
+ * Handle probe event listening
+ */
+bool
+fm_probe_wait_for_event(fm_probe_t *probe, fm_event_callback_t *callback, fm_event_t event)
+{
+	fm_event_listener_t *evl;
+
+	if ((evl = probe->event_listener) != NULL) {
+		if (evl->callback == callback && evl->event == event)
+			return true;
+		fm_log_error("%s: cannot wait for more than one event at a time", probe->name);
+		return false;
+	}
+
+	probe->event_listener = fm_event_listener_alloc(probe, callback, event);
+	return true;
+}
+
+void
+fm_probe_finish_waiting(fm_probe_t *probe)
+{
+	fm_event_listener_t *evl;
+
+	if ((evl = probe->event_listener) != NULL) {
+		fm_event_listener_disable(evl);
+		probe->event_listener = NULL;
+	}
 }
 
 /*
