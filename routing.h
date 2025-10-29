@@ -62,5 +62,6 @@ typedef struct fm_routing_cache {
 } fm_routing_cache_t;
 
 extern fm_interface_t *		fm_interface_alloc(int ifindex, int hatype);
+extern fm_address_prefix_t *	fm_local_address_prefix_create(const fm_address_t *local_address, unsigned int pfxlen, int ifindex);
 
 #endif /* FREEMAP_ROUTING_H */

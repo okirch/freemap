@@ -362,6 +362,28 @@ fm_address_mask_from_prefixlen(int af, unsigned int pfxlen, unsigned char *mask,
 	return true;
 }
 
+fm_address_prefix_t *
+fm_local_address_prefix_create(const fm_address_t *local_address, unsigned int pfxlen, int ifindex)
+{
+	fm_address_prefix_t *entry;
+
+	entry = fm_address_prefix_array_append(&fm_local_address_prefixes, local_address, pfxlen);
+	entry->source_addr = *local_address;
+	entry->ifindex = ifindex;
+
+	fm_address_mask_from_prefixlen(local_address->ss_family, pfxlen,
+			entry->raw_mask, sizeof(entry->raw_mask));
+
+	if (ifindex != 0) {
+		entry->device = fm_interface_by_index(ifindex);
+		if (entry->device == NULL)
+			fm_log_warning("address prefix %s/%u: no device for ifinidex %d",
+					fm_address_format(local_address), pfxlen, ifindex);
+	}
+
+	return entry;
+}
+
 void
 fm_local_discover(void)
 {
@@ -412,13 +434,8 @@ fm_local_discover(void)
 			fm_interface_add(ifa->ifa_name,
 						(const struct sockaddr_ll *) ifa->ifa_addr);
 		} else {
-			entry = fm_address_prefix_array_append(&fm_local_address_prefixes,
-						(fm_address_t *) ifa->ifa_addr, pfxlen);
-
+			entry = fm_local_address_prefix_create((fm_address_t *) ifa->ifa_addr, pfxlen, 0);
 			entry->ifname = strdup(ifa->ifa_name);
-			entry->source_addr = *(fm_address_t *) ifa->ifa_addr;
-
-			fm_address_mask_from_prefixlen(ifa->ifa_addr->sa_family, pfxlen, entry->raw_mask, sizeof(entry->raw_mask));
 		}
 	}
 
