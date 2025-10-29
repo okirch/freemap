@@ -95,6 +95,28 @@ fm_addrfamily_max_addrbits(int af)
 	return 0;
 }
 
+/*
+ * Various functions for casting fm_address_t to sockaddr_*
+ */
+#define fm_address_maybe_cast(__addr, __af, __dtype) do { \
+	if (__addr->ss_family != __af) \
+		return NULL; \
+	return (__dtype *) __addr; \
+} while (0)
+
+#define DECLARE_FM_ADDRESS_CAST_FUNCTIONS(__af, __name, __dtype) \
+static inline __dtype *__name(fm_address_t *addr) { \
+	fm_address_maybe_cast(addr, __af, __dtype); \
+} \
+static inline const __dtype *__name ## _const(const fm_address_t *addr) { \
+	fm_address_maybe_cast(addr, __af, const __dtype); \
+}
+
+DECLARE_FM_ADDRESS_CAST_FUNCTIONS(AF_PACKET, fm_address_to_link, struct sockaddr_ll)
+DECLARE_FM_ADDRESS_CAST_FUNCTIONS(AF_INET, fm_address_to_ipv4, struct sockaddr_in)
+DECLARE_FM_ADDRESS_CAST_FUNCTIONS(AF_INET6, fm_address_to_ipv6, struct sockaddr_in6)
+
+
 static inline bool
 fm_address_generator_address_eligible(const fm_address_t *address)
 {
