@@ -15,6 +15,7 @@ OBJS	= projects.o \
 	  socket.o \
 	  local.o \
 	  routing.o \
+	  neighbor.o \
 	  facts.o \
 	  report.o \
 	  program.o \
