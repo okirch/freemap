@@ -164,6 +164,9 @@ fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 		return false;
 	}
 
+	/* update asset state right away */
+	fm_host_asset_update_state_by_address(&pkt->recv_addr, FM_ASSET_STATE_OPEN);
+
 	if (!(pkt->family == AF_INET && ip.ipproto == IPPROTO_ICMP) 
 	 && !(pkt->family == AF_INET6 && ip.ipproto == IPPROTO_ICMPV6)) {
 		fm_log_debug("%s: %s -> %s: unexpected protocol %d", __func__,
