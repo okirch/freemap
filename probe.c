@@ -237,13 +237,6 @@ fm_probe_send(fm_probe_t *probe)
 }
 
 void
-fm_probe_set_status(fm_probe_t *probe, fm_fact_t *fact)
-{
-	/* probe->elapsed = fm_timestamp_since(&probe->sent); */
-	probe->done = true;
-}
-
-void
 fm_probe_set_error(fm_probe_t *probe, fm_error_t error)
 {
 	if (!probe->done) {
