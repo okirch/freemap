@@ -212,15 +212,15 @@ fm_probe_free(fm_probe_t *probe)
 	free(probe);
 }
 
-fm_fact_t *
+fm_error_t
 fm_probe_send(fm_probe_t *probe)
 {
-	fm_fact_t *error;
+	fm_error_t error;
 
 	probe->timeout = 0;
 
 	error = probe->ops->send(probe);
-	if (error == NULL) {
+	if (error == 0) {
 		/* Record when we sent the first packet */
 		fm_timestamp_init(&probe->sent);
 

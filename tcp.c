@@ -170,7 +170,7 @@ fm_tcp_port_probe_destroy(fm_probe_t *probe)
 	}
 }
 
-static fm_fact_t *
+static fm_error_t
 fm_tcp_port_probe_send(fm_probe_t *probe)
 {
 	struct fm_tcp_port_probe *tcp = (struct fm_tcp_port_probe *) probe;
@@ -178,15 +178,17 @@ fm_tcp_port_probe_send(fm_probe_t *probe)
 	if (tcp->sock == NULL) {
 		tcp->sock = fm_protocol_create_socket(probe->proto, tcp->host_address.ss_family);
 		if (tcp->sock == NULL) {
-			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create TCP socket for %s: %m",
+			fm_log_error("Unable to create TCP socket for %s: %m",
 					fm_address_format(&tcp->host_address));
+			return FM_SEND_ERROR;
 		}
 
 		/* fm_socket_enable_recverr(tcp->sock); */
 
 		if (!fm_socket_connect(tcp->sock, &tcp->host_address)) {
-			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to connect TCP socket for %s: %m",
+			fm_log_error("Unable to connect TCP socket for %s: %m",
 					fm_address_format(&tcp->host_address));
+			return FM_SEND_ERROR;
 		}
 	}
 
@@ -195,7 +197,7 @@ fm_tcp_port_probe_send(fm_probe_t *probe)
 	/* update the asset state */
 	fm_target_update_port_state(probe->target, FM_PROTO_TCP, tcp->port, FM_ASSET_STATE_PROBE_SENT);
 
-	return NULL;
+	return 0;
 }
 
 static fm_fact_t *

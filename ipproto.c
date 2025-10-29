@@ -279,7 +279,7 @@ fm_ipproto_build_proto_probe(fm_routing_info_t *rtinfo, int ipproto)
 	return bp;
 }
 
-static fm_fact_t *
+static fm_error_t
 fm_ipproto_port_probe_send(fm_probe_t *probe)
 {
 	struct fm_ipproto_port_probe *ipprobe = (struct fm_ipproto_port_probe *) probe;
@@ -288,17 +288,23 @@ fm_ipproto_port_probe_send(fm_probe_t *probe)
 	fm_socket_t *sock;
 	fm_buffer_t *bp;
 
-	if (rtinfo->nh.link_address.ss_family == AF_UNSPEC)
-		return fm_fact_create_error(FM_FACT_SEND_ERROR, "%s: neighbor discovery failed",
+	if (rtinfo->nh.link_address.ss_family == AF_UNSPEC) {
+		fm_log_error("%s: neighbor discovery failed",
 				fm_address_format(&ip->dst_addr));
+		return FM_SEND_ERROR;
+	}
 
 	sock = fm_rawip_create_socket(probe->proto, &rtinfo->nh.link_address);
-	if (sock == NULL)
-		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create packet socket for %s: %m",
+	if (sock == NULL) {
+		fm_log_error("Unable to create packet socket for %s: %m",
 				fm_address_format(&ip->dst_addr));
+		return FM_SEND_ERROR;
+	}
 
-	if (!(bp = fm_ipproto_build_proto_probe(rtinfo, ip->ipproto)))
-		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to build IP proto probe");
+	if (!(bp = fm_ipproto_build_proto_probe(rtinfo, ip->ipproto))) {
+		fm_log_error("Unable to build IP proto probe");
+		return FM_SEND_ERROR;
+	}
 
 	if (fm_debug_level) {
 		struct sockaddr_ll *lladdr = fm_address_to_link(&rtinfo->nh.link_address);
@@ -310,8 +316,10 @@ fm_ipproto_port_probe_send(fm_probe_t *probe)
 		fm_print_hexdump(bp->data, bp->wpos);
 	}
 
-	if (!fm_socket_send(sock, &rtinfo->nh.link_address, bp->data, bp->wpos))
-		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to send IP proto probe: %m");
+	if (!fm_socket_send(sock, &rtinfo->nh.link_address, bp->data, bp->wpos)) {
+		fm_log_error("Unable to send IP proto probe: %m");
+		return FM_SEND_ERROR;
+	}
 
 	fm_ipproto_expect_response(probe, rtinfo->dst.network_address.ss_family, ip->ipproto);
 
@@ -319,7 +327,7 @@ fm_ipproto_port_probe_send(fm_probe_t *probe)
 	fm_target_update_host_state(probe->target, FM_PROTO_IP, FM_ASSET_STATE_PROBE_SENT);
 
 	probe->timeout = 1000;
-	return NULL;
+	return 0;
 }
 
 /*

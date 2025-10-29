@@ -426,12 +426,11 @@ fm_target_continue_probe(fm_target_t *target, fm_probe_t *probe)
 void
 fm_target_send_probe(fm_target_t *tgt, fm_probe_t *probe)
 {
-	fm_fact_t *error;
+	fm_error_t error;
 
 	error = fm_probe_send(probe);
-	if (error != NULL) {
+	if (error < 0) {
 		fm_probe_free(probe);
-		fm_fact_log_append(&tgt->log, error);
 	} else {
 		fm_probe_insert(&tgt->pending_probes, probe);
 
@@ -459,12 +458,14 @@ fm_target_process_timeouts(fm_target_t *target, unsigned int quota)
 			if (probe->ops->should_resend != NULL
 			 && probe->ops->should_resend(probe)) {
 				if (num_sent < quota) {
-					fm_fact_t *error;
+					fm_error_t error;
 
 					fm_log_debug("%s: resending %s probe\n", fm_address_format(&target->address), probe->name);
 					error = fm_probe_send(probe);
-					if (error != NULL)
-						fm_probe_set_status(probe, error);
+					if (error != 0) {
+						/* fm_probe_set_status(probe, error); */
+						abort();
+					}
 					num_sent += 1;
 				}
 				continue;

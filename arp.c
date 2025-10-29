@@ -249,7 +249,7 @@ struct fm_arp_host_probe {
 	struct arp_host_probe_params params;
 };
 
-static fm_fact_t *
+static fm_error_t
 fm_arp_host_probe_send(fm_probe_t *probe)
 {
 	fm_target_t *target = probe->target;
@@ -265,13 +265,16 @@ fm_arp_host_probe_send(fm_probe_t *probe)
 
 	sock = fm_raw_socket_get((fm_address_t *) &arp->params.src_lladdr, probe->proto, SOCK_DGRAM);
 	if (sock == NULL) {
-		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create ARP socket for %s",
+		fm_log_error("Unable to create ARP socket for %s",
 				fm_address_format(&target->address));
+		return FM_SEND_ERROR;
 	}
 
 	pktlen = fm_arp_build_request(&arp->params, pktbuf, sizeof(pktbuf));
-	if (pktlen == 0)
-		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Don't know hot to build ARP packet");
+	if (pktlen == 0) {
+		fm_log_error("Don't know how to build ARP packet");
+		return FM_SEND_ERROR;
+	}
 
 	/* inform the ARP response matching code that we're waiting for a response to this packet */
 	fm_arp_expect_response(arp->params.dst_ipaddr, probe);
@@ -280,8 +283,10 @@ fm_arp_host_probe_send(fm_probe_t *probe)
 	eth_bcast.sll_pkttype = PACKET_BROADCAST;
 	memset(eth_bcast.sll_addr, 0xFF, ETH_ALEN);
 
-	if (!fm_socket_send(sock, (fm_address_t *) &eth_bcast, pktbuf, pktlen))
-		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to send ARP packet: %m");
+	if (!fm_socket_send(sock, (fm_address_t *) &eth_bcast, pktbuf, pktlen)) {
+		fm_log_error("Unable to send ARP packet: %m");
+		return FM_SEND_ERROR;
+	}
 
 	/* Update the asset state */
 	fm_target_update_host_state(target, FM_PROTO_ARP, FM_ASSET_STATE_PROBE_SENT);
@@ -290,7 +295,7 @@ fm_arp_host_probe_send(fm_probe_t *probe)
 		arp->params.retries -= 1;
 
 	probe->timeout = FM_ARP_RESPONSE_TIMEOUT;
-	return NULL;
+	return 0;
 }
 
 static bool

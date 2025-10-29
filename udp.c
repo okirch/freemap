@@ -236,7 +236,7 @@ fm_udp_port_probe_destroy(fm_probe_t *probe)
 	}
 }
 
-static fm_fact_t *
+static fm_error_t
 fm_udp_port_probe_send(fm_probe_t *probe)
 {
 	struct fm_udp_port_probe *udp = (struct fm_udp_port_probe *) probe;
@@ -251,9 +251,11 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 		sock = fm_protocol_create_host_shared_socket(probe->proto, probe->target);
 	}
 
-	if (sock == NULL)
-		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create UDP socket for %s: %m",
+	if (sock == NULL) {
+		fm_log_error("Unable to create UDP socket for %s: %m",
 				fm_address_format(&udp->host_address));
+		return FM_SEND_ERROR;
+	}
 
 	/* Check if we can guess a well-known service */
 	if ((wks = fm_wellknown_service_for_port("udp", udp->port)) == NULL) {
@@ -267,15 +269,17 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 	}
 
 	pkt = wks->probe_packet;
-	if (!fm_socket_send(sock, &udp->host_address, pkt->data, pkt->len))
-		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to send UDP packet: %m");
+	if (!fm_socket_send(sock, &udp->host_address, pkt->data, pkt->len)) {
+		fm_log_error("Unable to send UDP packet: %m");
+		return FM_SEND_ERROR;
+	}
 
 	fm_udp_expect_response(probe, udp->host_address.ss_family, udp->port);
 
 	/* update the asset state */
 	fm_target_update_port_state(probe->target, FM_PROTO_UDP, udp->port, FM_ASSET_STATE_PROBE_SENT);
 
-	return NULL;
+	return 0;
 }
 
 /*

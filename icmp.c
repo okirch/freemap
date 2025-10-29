@@ -554,7 +554,7 @@ fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr)
 	return sock;
 }
 
-static fm_fact_t *
+static fm_error_t
 fm_icmp_host_probe_send(fm_probe_t *probe)
 {
 	fm_target_t *target = probe->target;
@@ -571,24 +571,30 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 		if (icmp->sock == NULL) {
 			icmp->sock = fm_icmp_create_connected_socket(probe->proto, &target->address);
 		}
-		if (icmp->sock == NULL)
-			return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create ICMP socket for %s: %m",
+		if (icmp->sock == NULL) {
+			fm_log_error("Unable to create ICMP socket for %s: %m",
 					fm_address_format(&target->address));
+			return FM_SEND_ERROR;
+		}
 
 		sock = icmp->sock;
 	}
 
 	pktlen = fm_icmp_build_echo_request(af, &icmp->params, pktbuf, sizeof(pktbuf));
-	if (pktlen == 0)
-		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Don't know hot to build ICMP packet for address family %d", af);
+	if (pktlen == 0) {
+		fm_log_error("Don't know how to build ICMP packet for address family %d", af);
+		return FM_SEND_ERROR;
+	}
 
 	/* inform the ICMP response matching code that we're waiting for a response to this packet */
 	fm_icmp_expect_response(af, pktbuf, pktlen, probe);
 
 	icmp->params.seq += 1;
 
-	if (!fm_socket_send(sock, NULL, pktbuf, pktlen))
-		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to send ICMP packet: %m");
+	if (!fm_socket_send(sock, NULL, pktbuf, pktlen)) {
+		fm_log_error("Unable to send ICMP packet: %m");
+		return FM_SEND_ERROR;
+	}
 
 	if (icmp->params.retries > 0)
 		icmp->params.retries -= 1;
@@ -603,7 +609,7 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 	/* Update the asset state */
 	fm_target_update_host_state(target, FM_PROTO_ICMP, FM_ASSET_STATE_PROBE_SENT);
 
-	return NULL;
+	return 0;
 }
 
 static bool
