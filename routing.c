@@ -298,6 +298,15 @@ nlattr_add_int(fm_buffer_t *pkt, int type, int value)
 }
 
 static bool
+nlattr_get_byte(struct nlattr *nla, unsigned int *ret)
+{
+	if (nla->nla_len != 5)
+		return false;
+	*ret = *(unsigned char *) (nla + 1);
+	return true;
+}
+
+static bool
 nlattr_get_int(struct nlattr *nla, unsigned int *ret)
 {
 	if (nla->nla_len != 8)
@@ -325,6 +334,24 @@ nlattr_get_ipv6(struct nlattr *nla, struct in6_addr *ret)
 }
 
 static bool
+nlattr_get_string(struct nlattr *nla, char **ret)
+{
+	unsigned int len = nla->nla_len - sizeof(*nla);
+	char *value;
+
+	if (len == 0) {
+		*ret = NULL;
+	} else {
+		value = malloc(len + 1);
+		memcpy(value, nla + 1, len);
+		value[len] = '\0';
+	}
+
+	*ret = value;
+	return true;
+}
+
+static bool
 nlattr_get_address(struct nlattr *nla, int af, struct sockaddr_storage *ret)
 {
 	memset(ret, 0, sizeof(*ret));
@@ -343,6 +370,20 @@ nlattr_get_address(struct nlattr *nla, int af, struct sockaddr_storage *ret)
 	}
 
 	return false;
+}
+
+static bool
+nlattr_get_hwaddress(struct nlattr *nla, struct sockaddr_ll *ret)
+{
+	unsigned int alen = nla->nla_len - sizeof(*nla);
+
+	if (alen > sizeof(ret->sll_addr))
+		return false;
+
+	ret->sll_halen = alen;
+	memcpy(ret->sll_addr, (nla + 1), alen);
+
+	return true;
 }
 
 static bool
@@ -450,6 +491,179 @@ rtnetlink_process_newroute(fm_buffer_t *pkt, fm_route_t **ret_p)
 failed:
 	if (route != NULL)
 		fm_route_free(route);
+	return false;
+}
+
+static bool
+rtnetlink_process_newlink(fm_buffer_t *pkt)
+{
+	struct nlmsghdr *nh;
+	struct ifinfomsg *ifi;
+	fm_interface_t *nic;
+
+	nh = fm_buffer_pull(pkt, sizeof(*nh));
+	if (nh == NULL)
+		return false;
+
+	if (nh->nlmsg_type != RTM_NEWLINK)
+		return false;
+
+	ifi = fm_buffer_pull(pkt, sizeof(*ifi));
+
+	nic = (fm_interface_t *) fm_interface_by_index(ifi->ifi_index);
+	if (true || nic == NULL) {
+		nic = fm_interface_alloc(ifi->ifi_index, ifi->ifi_type);
+		nic->lladdr.sll_family = AF_PACKET;
+		nic->lladdr.sll_hatype = ifi->ifi_type;
+		nic->llbcast.sll_family = AF_PACKET;
+		nic->llbcast.sll_hatype = ifi->ifi_type;
+	}
+
+	nic->ifflags = ifi->ifi_flags;
+
+	while (fm_buffer_available(pkt)) {
+		struct nlattr *nla;
+		bool ok = true;
+
+		if (!(nla = fm_buffer_peek(pkt, sizeof(*nla)))
+		 || fm_buffer_available(pkt) < nla->nla_len) {
+			fprintf(stderr, "truncated rtnetlink attribute\n");
+			goto failed;
+		}
+
+		switch (nla->nla_type) {
+		case IFLA_IFNAME:
+			if (nic->name == NULL)
+				ok = nlattr_get_string(nla, &nic->name);
+			break;
+
+		case IFLA_ADDRESS:
+			ok = nlattr_get_hwaddress(nla, &nic->lladdr);
+			break;
+
+		case IFLA_BROADCAST:
+			ok = nlattr_get_hwaddress(nla, &nic->llbcast);
+			break;
+
+		case IFLA_OPERSTATE:
+			ok = nlattr_get_byte(nla, &nic->operstate);
+			break;
+
+		case IFLA_LINKMODE:
+			ok = nlattr_get_byte(nla, &nic->linkmode);
+			break;
+
+		case IFLA_CARRIER:
+			ok = nlattr_get_byte(nla, &nic->carrier);
+			break;
+
+		default:
+			/* nl_debug("   unexpected attr %u len %u\n", nla->nla_type, nla->nla_len); */
+			break;
+		}
+
+		if (!ok) {
+			fprintf(stderr, "failed to parse netlink attribute %u len %u\n",
+					nla->nla_type, nla->nla_len);
+			goto failed;
+		}
+
+		fm_buffer_pull(pkt, (nla->nla_len + 3) & ~3);
+	}
+
+	return true;
+
+failed:
+	return false;
+}
+
+static bool
+rtnetlink_process_newaddr(fm_buffer_t *pkt)
+{
+	struct nlmsghdr *nh;
+	struct ifaddrmsg *ifa;
+	fm_address_prefix_t *prefix = NULL;
+	int af;
+
+	nh = fm_buffer_pull(pkt, sizeof(*nh));
+	if (nh == NULL)
+		return false;
+
+	if (nh->nlmsg_type != RTM_NEWADDR)
+		return false;
+
+	ifa = fm_buffer_pull(pkt, sizeof(*ifa));
+
+	af = ifa->ifa_family;
+
+	while (fm_buffer_available(pkt)) {
+		struct nlattr *nla;
+		bool ok = true;
+
+		if (!(nla = fm_buffer_peek(pkt, sizeof(*nla)))
+		 || fm_buffer_available(pkt) < nla->nla_len) {
+			fprintf(stderr, "truncated rtnetlink attribute\n");
+			goto failed;
+		}
+
+		if (prefix == NULL && nla->nla_type == IFA_ADDRESS) {
+			fm_address_t address;
+
+			if (!nlattr_get_address(nla, af, &address)) {
+				fm_log_error("cannot extract IFA_ADDRESS");
+				goto failed;
+			}
+
+			prefix = fm_local_address_prefix_create(&address, ifa->ifa_prefixlen, ifa->ifa_index);
+			continue;
+		}
+
+		if (prefix == NULL) {
+			fm_log_error("Expected IFA_ADDRESS as first attribute");
+			goto failed;
+		}
+
+		switch (nla->nla_type) {
+		case IFA_ADDRESS:
+			break;
+
+		case IFA_LOCAL:
+			ok = nlattr_get_address(nla, af, &prefix->source_addr);
+			break;
+
+		case IFA_LABEL:
+			/* ok = nlattr_get_string(nla, &prefix->ifname); */
+			break;
+
+		case IFA_CACHEINFO:
+		case IFA_FLAGS:
+		case IFA_BROADCAST:
+		case IFA_PROTO: /* what is this for?! */
+			break;
+
+		default:
+			nl_debug("   unexpected attr %u len %u\n", nla->nla_type, nla->nla_len);
+			break;
+		}
+
+		if (!ok) {
+			fprintf(stderr, "failed to parse netlink attribute %u len %u\n",
+					nla->nla_type, nla->nla_len);
+			goto failed;
+		}
+
+		fm_buffer_pull(pkt, (nla->nla_len + 3) & ~3);
+	}
+
+	if (prefix != NULL) {
+		fm_log_debug("  %-8s  %s/%u\n",
+				prefix->device? fm_interface_get_name(prefix->device) : prefix->ifname,
+				fm_address_format(&prefix->source_addr), prefix->pfxlen);
+	}
+
+	return true;
+
+failed:
 	return false;
 }
 
@@ -565,6 +779,18 @@ netlink_process_response(fm_buffer_t *pkt, unsigned int expect_seq, bool *done_p
 					fm_route_free(route);
 			}
 		} else
+		if (nh->nlmsg_type == RTM_NEWLINK) {
+			if (!rtnetlink_process_newlink(msg)) {
+				fm_buffer_free(msg);
+				return false;
+			}
+		} else
+		if (nh->nlmsg_type == RTM_NEWADDR) {
+			if (!rtnetlink_process_newaddr(msg)) {
+				fm_buffer_free(msg);
+				return false;
+			}
+		} else
 		if (nh->nlmsg_type == NLMSG_DONE) {
 			nl_debug("found DONE; done with this request\n");
 			*done_p = true;
@@ -601,6 +827,20 @@ netlink_send_dump_request(int fd, int af, int type)
 		rt->rtm_family = af;
 
 		nlattr_add_int(pkt, RTA_TABLE, RT_TABLE_MAIN);
+	} else
+	if (type == RTM_GETLINK) {
+		struct ifinfomsg *ifi;
+
+		ifi = fm_buffer_push(pkt, sizeof(*ifi));
+		ifi->ifi_family = af;
+
+		nlattr_add_int(pkt, IFLA_EXT_MASK, 9);
+	} else
+	if (type == RTM_GETADDR) {
+		struct ifaddrmsg *ifa;
+
+		ifa = fm_buffer_push(pkt, sizeof(*ifa));
+		ifa->ifa_family = af;
 	} else {
 		fm_log_fatal("%s: unsupported rtnetlink request %d", __func__, type);
 	}
@@ -669,6 +909,38 @@ netlink_build_routing_cache(fm_routing_cache_t *rtcache)
 
 		fm_routing_cache_dump(rtcache);
 	}
+
+	return okay;
+}
+
+static bool
+netlink_build_device_cache(void)
+{
+	bool okay;
+	int fd;
+
+	if ((fd = netlink_open()) < 0)
+		return false;
+
+	nl_debug("About to dump net devices\n");
+	okay = netlink_dump(fd, RTM_GETLINK, AF_UNSPEC);
+	close(fd);
+
+	return okay;
+}
+
+static bool
+netlink_build_address_cache(void)
+{
+	bool okay;
+	int fd;
+
+	if ((fd = netlink_open()) < 0)
+		return false;
+
+	nl_debug("About to dump addresses\n");
+	okay = netlink_dump(fd, RTM_GETADDR, AF_UNSPEC);
+	close(fd);
 
 	return okay;
 }
@@ -791,6 +1063,9 @@ fm_routing_lookup_complete(fm_routing_info_t *rtinfo)
 void
 fm_routing_discover(void)
 {
+	netlink_build_device_cache();
+	netlink_build_address_cache();
+
 	if (fm_routing_cache_ipv4 == NULL) {
 		fm_routing_cache_ipv4 = fm_routing_cache_alloc(AF_INET);
 		netlink_build_routing_cache(fm_routing_cache_ipv4);
