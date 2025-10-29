@@ -172,6 +172,7 @@ enum {
 typedef enum {
 	FM_SUCCESS = 0,
 	FM_SEND_ERROR = -1,
+	FM_TIMED_OUT = -2,
 } fm_error_t;
 
 /*

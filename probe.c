@@ -248,6 +248,32 @@ fm_probe_set_status(fm_probe_t *probe, fm_fact_t *fact)
 		fact->elapsed = fm_timestamp_since(&probe->sent);
 		probe->status = fact;
 	}
+	probe->done = true;
+}
+
+void
+fm_probe_set_error(fm_probe_t *probe, fm_error_t error)
+{
+	if (!probe->done) {
+		if (!probe->error)
+			probe->error = error;
+
+		if (error != FM_TIMED_OUT) {
+			/* for later */
+			/* probe->elapsed = fm_timestamp_since(&probe->sent); */
+		}
+	}
+	probe->done = true;
+}
+
+void
+fm_probe_mark_complete(fm_probe_t *probe)
+{
+	if (!probe->done) {
+		/* for later */
+		/* probe->elapsed = fm_timestamp_since(&probe->sent); */
+	}
+	probe->done = true;
 }
 
 static void
@@ -268,6 +294,7 @@ fm_probe_render_verdict(fm_probe_t *probe, fm_probe_verdict_t verdict)
 
 	fact->elapsed = fm_timestamp_since(&probe->sent);
 	probe->status = fact;
+	probe->done = true;
 }
 
 void

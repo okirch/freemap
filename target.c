@@ -430,6 +430,7 @@ fm_target_send_probe(fm_target_t *tgt, fm_probe_t *probe)
 
 	error = fm_probe_send(probe);
 	if (error < 0) {
+		fm_probe_set_error(probe, error);
 		fm_probe_free(probe);
 	} else {
 		fm_probe_insert(&tgt->pending_probes, probe);
@@ -462,18 +463,15 @@ fm_target_process_timeouts(fm_target_t *target, unsigned int quota)
 
 					fm_log_debug("%s: resending %s probe\n", fm_address_format(&target->address), probe->name);
 					error = fm_probe_send(probe);
-					if (error != 0) {
-						/* fm_probe_set_status(probe, error); */
-						abort();
-					}
+					if (error != 0)
+						fm_probe_set_error(probe, error);
 					num_sent += 1;
 				}
 				continue;
 			}
 
-			fm_probe_set_status(probe, fm_fact_create_error(FM_FACT_PROBE_TIMED_OUT,
-						"%s no response received",
-						probe->name));
+			fm_log_debug("%s: no response received", probe->name);
+			fm_probe_set_error(probe, FM_TIMED_OUT);
 		}
 	}
 
@@ -491,7 +489,7 @@ fm_target_inspect_pending(fm_target_t *target)
         for (probe = (fm_probe_t *) (target->pending_probes.hlist.first); probe != NULL; probe = next) {
                 next = (fm_probe_t *) probe->link.next;
 
-		if (probe->status != NULL) {
+		if (probe->status != NULL || probe->done) {
 			fm_log_debug("STATUS %s %s\n", fm_address_format(&target->address), fm_fact_render(probe->status));
 			fm_fact_log_append(&target->log, probe->status);
 			probe->status = NULL;

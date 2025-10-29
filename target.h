@@ -88,6 +88,8 @@ struct fm_probe {
 
 	/* for probes that have completed */
 	fm_fact_t *		status;
+	bool			done;
+	fm_error_t		error;
 };
 
 struct fm_probe_list {
@@ -199,6 +201,8 @@ extern void		fm_probe_received_reply(fm_probe_t *, double *rtt);
 extern void		fm_probe_received_error(fm_probe_t *, double *rtt);
 extern void		fm_probe_timed_out(fm_probe_t *);
 extern void		fm_probe_set_status(fm_probe_t *, fm_fact_t *);
+extern void		fm_probe_set_error(fm_probe_t *, fm_error_t);
+extern void		fm_probe_mark_complete(fm_probe_t *);
 
 extern void		fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt);
 extern void		fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt);
