@@ -147,6 +147,7 @@ extern bool		fm_address_get_ipv4(const fm_address_t *addr, u_int32_t *ip_addr);
 extern bool		fm_address_set_port(fm_address_t *address, unsigned short port);
 extern unsigned short	fm_address_get_port(const struct sockaddr_storage *ss);
 extern unsigned int	fm_addrfamily_sockaddr_size(int family);
+extern const char *	fm_addrfamily_name(int family);
 
 extern fm_socket_t *	fm_socket_create(int family, int type, int proto, fm_protocol_t *driver);
 extern void		fm_socket_free(fm_socket_t *);

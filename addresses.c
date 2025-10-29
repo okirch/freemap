@@ -213,6 +213,23 @@ fm_addrfamily_sockaddr_size(int family)
 	return 0;
 }
 
+const char *
+fm_addrfamily_name(int family)
+{
+	switch (family) {
+	case AF_PACKET:
+		return "link-level";
+
+	case AF_INET:
+		return "ipv4";
+
+	case AF_INET6:
+		return "ipv6";
+	}
+
+	return "unknown";
+}
+
 static bool
 fm_try_parse_cidr(const char *addr_string, struct sockaddr_storage *ss, unsigned int *nbits)
 {

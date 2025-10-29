@@ -164,7 +164,7 @@ fm_routing_cache_attach_interfaces(fm_routing_cache_t *rtcache)
 void
 fm_routing_cache_dump(fm_routing_cache_t *cache)
 {
-	printf("Routing cache for af %d\n", cache->family);
+	printf("Routing cache for %s addresses\n", fm_addrfamily_name(cache->family));
 	for (unsigned int i = 0; i < cache->nroutes; ++i) {
 		fm_route_show(cache->entries[i]);
 	}
