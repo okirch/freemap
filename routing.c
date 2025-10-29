@@ -78,11 +78,18 @@ fm_routing_cache_alloc(int af)
 fm_routing_cache_t *
 fm_routing_cache_for_family(int af)
 {
+	fm_routing_cache_t **cachep;
+
 	if (af == AF_INET)
-		return fm_routing_cache_ipv4;
-	if (af == AF_INET6)
-		return fm_routing_cache_ipv6;
-	return NULL;
+		cachep = &fm_routing_cache_ipv4;
+	else if (af == AF_INET6)
+		cachep = &fm_routing_cache_ipv6;
+	else
+		return NULL;
+
+	if (*cachep == NULL)
+		*cachep = fm_routing_cache_alloc(af);
+	return *cachep;
 }
 
 void
@@ -883,28 +890,6 @@ netlink_dump_rt(int fd, fm_routing_cache_t *rtcache)
 }
 
 static bool
-netlink_build_routing_cache(fm_routing_cache_t *rtcache)
-{
-	bool okay;
-	int fd;
-
-	if ((fd = netlink_open()) < 0)
-		return false;
-
-	okay = netlink_dump_rt(fd, rtcache);
-	close(fd);
-
-	if (okay) {
-		fm_routing_cache_attach_interfaces(rtcache);
-		fm_routing_cache_sort(rtcache);
-
-		fm_routing_cache_dump(rtcache);
-	}
-
-	return okay;
-}
-
-static bool
 netlink_build_device_cache(void)
 {
 	bool okay;
@@ -931,6 +916,22 @@ netlink_build_address_cache(void)
 
 	nl_debug("About to dump addresses\n");
 	okay = netlink_dump(fd, RTM_GETADDR, AF_UNSPEC);
+	close(fd);
+
+	return okay;
+}
+
+bool
+netlink_build_routing_cache(int af)
+{
+	bool okay;
+	int fd;
+
+	if ((fd = netlink_open()) < 0)
+		return false;
+
+	nl_debug("About to dump routes\n");
+	okay = netlink_dump(fd, RTM_GETROUTE, AF_UNSPEC);
 	close(fd);
 
 	return okay;
@@ -1051,19 +1052,40 @@ fm_routing_lookup_complete(fm_routing_info_t *rtinfo)
 	return true;
 }
 
+/*
+ * Route discovery.
+ * Most of the actual work happens in netlink.c
+ */
+static void
+refresh_routing_cache(int af)
+{
+	if (netlink_build_routing_cache(af)) {
+		fm_routing_cache_t *rtcache = fm_routing_cache_for_family(af);
+
+		if (rtcache != NULL) {
+			fm_routing_cache_attach_interfaces(rtcache);
+			fm_routing_cache_sort(rtcache);
+
+			fm_routing_cache_dump(rtcache);
+		} else {
+			fm_log_debug("It seems that we do not have any %s routes",
+					fm_addrfamily_name(af));
+		}
+	}
+}
+
 void
 fm_routing_discover(void)
 {
+	fm_log_debug("About to dump net devices\n");
 	netlink_build_device_cache();
+
+	fm_log_debug("About to dump addresses\n");
 	netlink_build_address_cache();
 
-	if (fm_routing_cache_ipv4 == NULL) {
-		fm_routing_cache_ipv4 = fm_routing_cache_alloc(AF_INET);
-		netlink_build_routing_cache(fm_routing_cache_ipv4);
-	}
+	if (fm_routing_cache_ipv4 == NULL)
+		refresh_routing_cache(AF_INET);
 
-	if (fm_routing_cache_ipv6 == NULL) {
-		fm_routing_cache_ipv6 = fm_routing_cache_alloc(AF_INET6);
-		netlink_build_routing_cache(fm_routing_cache_ipv6);
-	}
+	if (fm_routing_cache_ipv6 == NULL)
+		refresh_routing_cache(AF_INET6);
 }
