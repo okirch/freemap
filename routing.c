@@ -749,6 +749,28 @@ fm_routing_lookup(fm_routing_info_t *info)
 	return true;
 }
 
+/*
+ * We get here to check whether neighbor discovery is complete.
+ * This returns true even if the decision was negative, so the
+ * caller needs to check rtinfo->nh.link_address if it's valid.
+ */
+bool
+fm_routing_lookup_complete(fm_routing_info_t *rtinfo)
+{
+	const fm_neighbor_t *neigh;
+
+	neigh = rtinfo->incomplete_neighbor_entry;
+
+	/* This should not disappear, but better make it robust */
+	if (neigh == NULL)
+		return true;
+
+	if (!fm_neighbor_get_link_address(neigh, &rtinfo->nh.link_address))
+		return false;
+
+	rtinfo->incomplete_neighbor_entry = NULL;
+	return true;
+}
 
 void
 fm_routing_discover(void)
