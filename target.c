@@ -276,6 +276,8 @@ fm_target_create(const fm_address_t *address, fm_network_t *network)
 	if (tgt->local_device != NULL)
 		fm_interface_get_network_address(tgt->local_device, address->ss_family, &tgt->local_bind_address);
 
+	tgt->host_asset = fm_host_asset_get(address, true);
+
 	return tgt;
 }
 
@@ -366,6 +368,28 @@ fm_target_get_send_quota(fm_target_t *target)
 {
 	fm_ratelimit_update(&target->host_rate_limit);
 	return fm_ratelimit_available(&target->host_rate_limit);
+}
+
+/*
+ * Update the host asset information
+ */
+void
+fm_target_update_host_state(fm_target_t *target, unsigned int proto_id, fm_asset_state_t state)
+{
+	if (target->host_asset) {
+		/* ignore the proto id for now */
+		if (fm_host_asset_update_state(target->host_asset, state))
+			fm_event_post(FM_EVENT_ID_ASSET_CHANGED);
+	}
+}
+
+void
+fm_target_update_port_state(fm_target_t *target, unsigned int proto_id, unsigned int port, fm_asset_state_t state)
+{
+	if (target->host_asset) {
+		if (fm_host_asset_update_port_state(target->host_asset, proto_id, port, state))
+			fm_event_post(FM_EVENT_ID_ASSET_CHANGED);
+	}
 }
 
 bool

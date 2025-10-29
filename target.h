@@ -160,6 +160,8 @@ struct fm_target {
 
 	struct fm_extant_list	expecting;
 
+	/* This is where we report host/port state to */
+	fm_host_asset_t *	host_asset;
 	fm_fact_log_t		log;
 };
 

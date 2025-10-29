@@ -162,6 +162,7 @@ typedef struct fm_routing_info {
 enum {
 	FM_EVENT_ID_NONE = 0,
 	FM_EVENT_ID_NEIGHBOR_CACHE,
+	FM_EVENT_ID_ASSET_CHANGED,
 };
 
 /*
