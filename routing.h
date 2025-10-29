@@ -18,7 +18,24 @@
 #ifndef FREEMAP_ROUTING_H
 #define FREEMAP_ROUTING_H
 
+#include <linux/if_packet.h>
 #include "freemap.h"
+
+struct fm_interface {
+	struct hlist		link;
+	char *			name;
+
+	unsigned int		ifflags;
+	unsigned int		operstate;
+	unsigned int		linkmode;
+	unsigned int		carrier;
+
+	int			ifindex;
+	struct sockaddr_ll	lladdr;
+	struct sockaddr_ll	llbcast;
+
+	fm_neighbor_cache_t *	neighbor_cache;
+};
 
 typedef struct fm_route {
 	int			family;
@@ -43,5 +60,7 @@ typedef struct fm_routing_cache {
 	unsigned int		nroutes;
 	fm_route_t **		entries;
 } fm_routing_cache_t;
+
+extern fm_interface_t *		fm_interface_alloc(int ifindex, int hatype);
 
 #endif /* FREEMAP_ROUTING_H */

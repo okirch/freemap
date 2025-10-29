@@ -25,16 +25,8 @@
 #include "freemap.h"
 #include "addresses.h"
 #include "neighbor.h"
+#include "routing.h"
 #include "lists.h"
-
-struct fm_interface {
-	struct hlist		link;
-	char *			name;
-	int			ifindex;
-	struct sockaddr_ll	lladdr;
-
-	fm_neighbor_cache_t *	neighbor_cache;
-};
 
 static struct hlist_head	fm_interface_list = { .first = NULL, };
 
@@ -97,6 +89,26 @@ fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *driver, int sotype)
 /*
  * Manage list of interfaces
  */
+fm_interface_t *
+fm_interface_alloc(int ifindex, int hatype)
+{
+	fm_interface_t *nic;
+
+	nic = calloc(1, sizeof(*nic));
+	nic->ifindex = ifindex;
+
+	nic->lladdr.sll_family = AF_PACKET;
+	nic->lladdr.sll_hatype = hatype;
+	nic->llbcast.sll_family = AF_PACKET;
+	nic->llbcast.sll_hatype = hatype;
+
+	nic->neighbor_cache = fm_neighbor_cache_create(nic->ifindex);
+
+	hlist_append(&fm_interface_list, &nic->link);
+
+	return nic;
+}
+
 void
 fm_interface_add(const char *name, const struct sockaddr_ll *lladdr)
 {
