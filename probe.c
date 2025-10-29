@@ -268,22 +268,14 @@ fm_probe_mark_complete(fm_probe_t *probe)
 	probe->done = true;
 }
 
+/*
+ * This function used to be much more complex.
+ * We keep it around in case we later need a way to collect the outcome of a probe.
+ */
 static void
 fm_probe_render_verdict(fm_probe_t *probe, fm_probe_verdict_t verdict)
 {
-	fm_fact_t *fact;
-
-	fact = probe->ops->render_verdict(probe, verdict);
-	if (fact == NULL) {
-		fm_log_error("%s: cannot render verdict %d", probe->name, verdict);
-		return;
-	}
-
-	fm_log_debug("verdict: %s", fm_fact_render(fact));
-	fm_fact_free(fact);
-
-	/* fact->elapsed = fm_timestamp_since(&probe->sent); */
-	probe->done = true;
+	fm_probe_mark_complete(probe);
 }
 
 void

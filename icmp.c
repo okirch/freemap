@@ -626,24 +626,6 @@ fm_icmp_host_probe_should_resend(fm_probe_t *probe)
 	return true;
 }
 
-static fm_fact_t *
-fm_icmp_host_probe_render_verdict(fm_probe_t *probe, fm_probe_verdict_t verdict)
-{
-	switch (verdict) {
-	case FM_PROBE_VERDICT_REACHABLE:
-		return fm_fact_create_host_reachable("icmp");
-
-	case FM_PROBE_VERDICT_UNREACHABLE:
-	case FM_PROBE_VERDICT_TIMEOUT:
-		return fm_fact_create_host_unreachable("icmp");
-		break;
-
-	default:
-		break;
-	}
-	return NULL;
-}
-
 static struct fm_probe_ops fm_icmp_host_probe_ops = {
 	.obj_size	= sizeof(struct fm_icmp_host_probe),
 	.name 		= "icmp",
@@ -653,7 +635,6 @@ static struct fm_probe_ops fm_icmp_host_probe_ops = {
 	.destroy	= fm_icmp_host_probe_destroy,
 	.send		= fm_icmp_host_probe_send,
 	.should_resend	= fm_icmp_host_probe_should_resend,
-	.render_verdict	= fm_icmp_host_probe_render_verdict,
 };
 
 static fm_probe_t *

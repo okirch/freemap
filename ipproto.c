@@ -341,29 +341,6 @@ fm_ipproto_port_probe_should_resend(fm_probe_t *probe)
 	return false;
 }
 
-static fm_fact_t *
-fm_ipproto_port_probe_render_verdict(fm_probe_t *probe, fm_probe_verdict_t verdict)
-{
-	struct fm_ipproto_port_probe *ipproto = (struct fm_ipproto_port_probe *) probe;
-	fm_ip_info_t *ip = &ipproto->ip;
-
-	switch (verdict) {
-	case FM_PROBE_VERDICT_REACHABLE:
-		return fm_fact_create_port_reachable("ipproto", ip->ipproto);
-
-	case FM_PROBE_VERDICT_UNREACHABLE:
-		return fm_fact_create_port_unreachable("ipproto", ip->ipproto);
-
-	case FM_PROBE_VERDICT_TIMEOUT:
-		return fm_fact_create_port_heisenberg("ipproto", ip->ipproto);
-
-	default:
-		break;
-	}
-
-	return NULL;
-}
-
 /*
  * Event handling callback
  */
@@ -390,7 +367,6 @@ static struct fm_probe_ops fm_ipproto_port_probe_ops = {
 	.destroy	= fm_ipproto_port_probe_destroy,
 	.send		= fm_ipproto_port_probe_send,
 	.should_resend	= fm_ipproto_port_probe_should_resend,
-	.render_verdict	= fm_ipproto_port_probe_render_verdict,
 };
 
 static fm_probe_t *

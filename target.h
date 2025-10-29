@@ -49,7 +49,6 @@ struct fm_probe_ops {
 	void			(*destroy)(fm_probe_t *);
 	fm_error_t		(*send)(fm_probe_t *);
 	bool			(*should_resend)(fm_probe_t *);
-	fm_fact_t *		(*render_verdict)(fm_probe_t *, fm_probe_verdict_t verdict);
 };
 
 struct fm_probe {

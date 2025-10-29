@@ -299,28 +299,6 @@ fm_udp_port_probe_should_resend(fm_probe_t *probe)
 	return false;
 }
 
-static fm_fact_t *
-fm_udp_port_probe_render_verdict(fm_probe_t *probe, fm_probe_verdict_t verdict)
-{
-	struct fm_udp_port_probe *udp = (struct fm_udp_port_probe *) probe;
-
-	switch (verdict) {
-	case FM_PROBE_VERDICT_REACHABLE:
-		return fm_fact_create_port_reachable("udp", udp->port);
-
-	case FM_PROBE_VERDICT_UNREACHABLE:
-		return fm_fact_create_port_unreachable("udp", udp->port);
-
-	case FM_PROBE_VERDICT_TIMEOUT:
-		return fm_fact_create_port_heisenberg("udp", udp->port);
-
-	default:
-		break;
-	}
-
-	return NULL;
-}
-
 static struct fm_probe_ops fm_udp_port_probe_ops = {
 	.obj_size	= sizeof(struct fm_udp_port_probe),
 	.name 		= "udp",
@@ -328,7 +306,6 @@ static struct fm_probe_ops fm_udp_port_probe_ops = {
 	.destroy	= fm_udp_port_probe_destroy,
 	.send		= fm_udp_port_probe_send,
 	.should_resend	= fm_udp_port_probe_should_resend,
-	.render_verdict	= fm_udp_port_probe_render_verdict,
 };
 
 static fm_probe_t *

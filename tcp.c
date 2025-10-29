@@ -200,35 +200,12 @@ fm_tcp_port_probe_send(fm_probe_t *probe)
 	return 0;
 }
 
-static fm_fact_t *
-fm_tcp_port_probe_render_verdict(fm_probe_t *probe, fm_probe_verdict_t verdict)
-{
-	struct fm_tcp_port_probe *tcp = (struct fm_tcp_port_probe *) probe;
-
-	switch (verdict) {
-	case FM_PROBE_VERDICT_REACHABLE:
-		return fm_fact_create_port_reachable("tcp", tcp->port);
-
-	case FM_PROBE_VERDICT_UNREACHABLE:
-		return fm_fact_create_port_unreachable("tcp", tcp->port);
-
-	case FM_PROBE_VERDICT_TIMEOUT:
-		return fm_fact_create_port_heisenberg("tcp", tcp->port);
-
-	default:
-		break;
-	}
-
-	return NULL;
-}
-
 static struct fm_probe_ops fm_tcp_port_probe_ops = {
 	.obj_size	= sizeof(struct fm_tcp_port_probe),
 	.name 		= "tcp",
 
 	.destroy	= fm_tcp_port_probe_destroy,
 	.send		= fm_tcp_port_probe_send,
-	.render_verdict	= fm_tcp_port_probe_render_verdict,
 };
 
 static fm_probe_t *
