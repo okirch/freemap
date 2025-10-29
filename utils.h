@@ -70,6 +70,7 @@ extern bool		fm_string_array_contains(const fm_string_array_t *, const char *);
 extern void		fm_uint_array_append(fm_uint_array_t *, unsigned int);
 extern void		fm_uint_array_destroy(fm_uint_array_t *);
 extern int		fm_uint_array_get(fm_uint_array_t *, unsigned int);
+extern void		fm_uint_array_randomize(fm_uint_array_t *);
 
 extern bool		fm_parse_port_range(const char *, fm_port_range_t *);
 extern bool		fm_parse_numeric_argument(const char *arg, const char *option_name, unsigned int *value_p);

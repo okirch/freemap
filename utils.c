@@ -47,6 +47,33 @@ fm_uint_array_get(fm_uint_array_t *array, unsigned int index)
 	return array->entries[index];
 }
 
+void
+fm_uint_array_randomize(fm_uint_array_t *array)
+{
+	unsigned int count;
+
+	/* We randomize the array by a sequence of pair swaps.
+	 * Algebra 101 - every permutation can be reduced to pair swaps.
+	 *
+	 * I don't really know what is random "enough" but let's try
+	 * by doing 2 * arraysize swaps
+	 */
+	count = 2 * array->count;
+
+	while (count--) {
+		unsigned int i, k, value;
+
+		do {
+			i = random() % array->count;
+			k = random() % array->count;
+		} while (i == k);
+
+		value = array->entries[i];
+		array->entries[i] = array->entries[k];
+		array->entries[k] = value;
+	}
+}
+
 /*
  * Arrays of strings
  */

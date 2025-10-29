@@ -27,7 +27,7 @@
 
 
 static void			fm_scanner_map_heisenberg(fm_target_t *);
-static fm_scan_action_t *	fm_scan_action_port_scan(fm_protocol_t *proto, unsigned int nranges, const fm_port_range_t *range);
+static fm_scan_action_t *	fm_scan_action_port_scan(fm_protocol_t *proto, unsigned int nranges, const fm_port_range_t *range, bool randomize);
 static fm_scan_action_t *	fm_scan_action_reachability_check(void);
 
 static inline void
@@ -456,6 +456,7 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, int 
 	fm_scan_action_t *action = NULL;
 	fm_string_array_t proto_args;
 	fm_protocol_t *proto;
+	bool randomize = false;
 
 	memset(&proto_args, 0, sizeof(proto_args));
 
@@ -476,6 +477,8 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, int 
                                 fm_log_error("Unable to parse port range \"%s\"", arg);
                                 return NULL;
                         }
+		} else if (!strcmp(arg, "random")) {
+			randomize = true;
 		} else {
 			fm_string_array_append(&proto_args, arg);
 		}
@@ -489,7 +492,7 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, int 
 		return NULL;
 	}
 
-	if (!(action = fm_scan_action_port_scan(proto, nranges, ranges)))
+	if (!(action = fm_scan_action_port_scan(proto, nranges, ranges, randomize)))
 		return NULL;
 
 	action->flags |= flags;
@@ -560,7 +563,7 @@ static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
 };
 
 fm_scan_action_t *
-fm_scan_action_port_scan(fm_protocol_t *proto, unsigned int nranges, const fm_port_range_t *range)
+fm_scan_action_port_scan(fm_protocol_t *proto, unsigned int nranges, const fm_port_range_t *range, bool randomize)
 {
 	struct fm_simple_port_scan *portscan;
 	unsigned int i;
@@ -593,6 +596,9 @@ fm_scan_action_port_scan(fm_protocol_t *proto, unsigned int nranges, const fm_po
 		while (low_port <= high_port)
 			fm_uint_array_append(&portscan->ports, low_port++);
 	}
+
+	if (randomize)
+		fm_uint_array_randomize(&portscan->ports);
 
 	portscan->base.nprobes = portscan->ports.count;
 
