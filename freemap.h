@@ -133,14 +133,6 @@ extern void		fm_event_process_all(void);
 extern void		fm_rtt_stats_init(fm_rtt_stats_t *, unsigned long initial_rtt, unsigned int multiple);
 extern void		fm_rtt_stats_update(fm_rtt_stats_t *, double rtt);
 
-extern void		fm_fact_log_append(fm_fact_log_t *, fm_fact_t *);
-extern void		fm_fact_log_destroy(fm_fact_log_t *);
-extern void		fm_fact_free(fm_fact_t *);
-extern const char *	fm_fact_render(const fm_fact_t *fact);
-extern bool		fm_fact_check_protocol(const fm_fact_t *fact, const char *protocol_id);
-extern const fm_fact_t *fm_fact_log_find(const fm_fact_log_t *, fm_fact_type_t);
-extern const fm_fact_t *fm_fact_log_find_iter(const fm_fact_log_t *, fm_fact_type_t, unsigned int *);
-
 extern fm_host_asset_t *fm_host_asset_get(const fm_address_t *addr, bool create);
 extern fm_asset_state_t	fm_host_asset_get_state(const fm_host_asset_t *host);
 extern bool		fm_host_asset_update_state(fm_host_asset_t *host, fm_asset_state_t state);;

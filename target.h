@@ -26,13 +26,6 @@
 #include "lists.h"
 #include "addresses.h"
 
-extern fm_fact_t *		fm_fact_create_error(fm_fact_type_t type, const char *fmt, ...);
-extern fm_fact_t *		fm_fact_create_port_reachable(const char *proto_id, unsigned int port);
-extern fm_fact_t *		fm_fact_create_port_unreachable(const char *proto_id, unsigned int port);
-extern fm_fact_t *		fm_fact_create_port_heisenberg(const char *proto_id, unsigned int port);
-extern fm_fact_t *		fm_fact_create_host_reachable(const char *proto_id);
-extern fm_fact_t *		fm_fact_create_host_unreachable(const char *proto_id);
-
 typedef enum {
 	FM_PROBE_VERDICT_NONE = 0,
 	FM_PROBE_VERDICT_REACHABLE,
@@ -157,7 +150,6 @@ struct fm_target {
 
 	/* This is where we report host/port state to */
 	fm_host_asset_t *	host_asset;
-	fm_fact_log_t		log;
 };
 
 struct fm_target_pool {
@@ -198,7 +190,6 @@ extern void		fm_probe_set_rtt_estimator(fm_probe_t *, fm_rtt_stats_t *);
 extern void		fm_probe_received_reply(fm_probe_t *, double *rtt);
 extern void		fm_probe_received_error(fm_probe_t *, double *rtt);
 extern void		fm_probe_timed_out(fm_probe_t *);
-extern void		fm_probe_set_status(fm_probe_t *, fm_fact_t *);
 extern void		fm_probe_set_error(fm_probe_t *, fm_error_t);
 extern void		fm_probe_mark_complete(fm_probe_t *);
 

@@ -41,7 +41,6 @@ typedef const struct fm_protocol_engine fm_protocol_engine_t;
 typedef struct fm_probe fm_probe_t;
 typedef struct fm_socket fm_socket_t;
 typedef struct fm_report fm_report_t;
-typedef struct fm_fact_log fm_fact_log_t;
 typedef const struct fm_wellknown_service fm_wellknown_service_t;
 typedef struct fm_string_array fm_string_array_t;
 typedef struct fm_uint_array fm_uint_array_t;
@@ -176,40 +175,8 @@ typedef enum {
 } fm_error_t;
 
 /*
- * Representation of errors, and information about a target
+ * Asset state (hosts, protocols, port... )
  */
-typedef enum {
-	FM_FACT_NONE,
-
-	FM_FACT_SEND_ERROR,
-	FM_FACT_PROBE_TIMED_OUT,
-	FM_FACT_HOST_REACHABLE,
-	FM_FACT_HOST_UNREACHABLE,
-	FM_FACT_PORT_REACHABLE,
-	FM_FACT_PORT_UNREACHABLE,
-	FM_FACT_PORT_HEISENBERG,
-	FM_FACT_PORT_MAYBE_REACHABLE,
-
-} fm_fact_type_t;
-
-typedef struct fm_fact	fm_fact_t;
-
-struct fm_fact {
-	fm_fact_type_t		type;
-	double			elapsed;
-	const struct fm_fact_ops {
-		size_t		obj_size;
-		const char *	(*render)(const fm_fact_t *);
-		void		(*destroy)(fm_fact_t *);
-		bool		(*check_protocol)(const fm_fact_t *, const char *);
-	} *ops;
-};
-
-typedef struct fm_fact_log {
-	unsigned int		count;
-	fm_fact_t **		entries;
-} fm_fact_log_t;
-
 typedef enum fm_asset_state {
 	FM_ASSET_STATE_UNDEF		= 0x00,	/* no probe sent */
 	FM_ASSET_STATE_PROBE_SENT	= 0x01,	/* sent, no answer yet */
