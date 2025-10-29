@@ -18,6 +18,7 @@ OBJS	= projects.o \
 	  local.o \
 	  routing.o \
 	  neighbor.o \
+	  assets.o \
 	  facts.o \
 	  report.o \
 	  program.o \

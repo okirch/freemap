@@ -48,6 +48,8 @@ typedef struct fm_uint_array fm_uint_array_t;
 typedef struct fm_neighbor fm_neighbor_t;
 typedef struct fm_neighbor_cache fm_neighbor_cache_t;
 typedef struct fm_event_listener fm_event_listener_t;
+typedef struct fm_host_asset fm_host_asset_t;
+typedef struct fm_protocol_asset fm_protocol_asset_t;
 
 /* For now, fm_address is just a sockaddr_storage */
 typedef struct sockaddr_storage	fm_address_t;
@@ -196,6 +198,13 @@ typedef struct fm_fact_log {
 	unsigned int		count;
 	fm_fact_t **		entries;
 } fm_fact_log_t;
+
+typedef enum fm_asset_state {
+	FM_ASSET_STATE_UNDEF		= 0x00,	/* no probe sent */
+	FM_ASSET_STATE_PROBE_SENT	= 0x01,	/* sent, no answer yet */
+	FM_ASSET_STATE_CLOSED		= 0x02, /* negative response */
+	FM_ASSET_STATE_OPEN		= 0x03,	/* positive response */
+} fm_asset_state_t;
 
 #endif /* FREEMAP_TYPES_H */
 
