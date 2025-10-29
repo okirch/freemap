@@ -35,7 +35,7 @@
 #include "utils.h"
 
 #if 0
-# define nl_debug	printf
+# define nl_debug	fm_log_debug
 #else
 # define nl_debug(fmt ...) \
 	do { } while (0)
@@ -257,7 +257,7 @@ netlink_recv(int fd, fm_buffer_t *pkt)
 	fm_buffer_compact(pkt);
 
 	if ((tailroom = fm_buffer_tailroom(pkt)) == 0) {
-		fprintf(stderr, "Not enough room in receive packet\n");
+		fm_log_error("Not enough room in receive packet\n");
 		return false;
 	}
 
@@ -404,15 +404,6 @@ rtnetlink_process_newroute(fm_buffer_t *pkt, fm_route_t **ret_p)
 		return false;
 
 	rt = fm_buffer_pull(pkt, sizeof(*rt));
-#if 0
-	printf("af %u type %d dlen %u slen %d flags 0x%x payload %u\n",
-			rt->rtm_family,
-			rt->rtm_type,
-			rt->rtm_dst_len,
-			rt->rtm_src_len,
-			rt->rtm_flags,
-			fm_buffer_available(pkt));
-#endif
 
 	af = rt->rtm_family;
 
@@ -421,12 +412,12 @@ rtnetlink_process_newroute(fm_buffer_t *pkt, fm_route_t **ret_p)
 	route->dst.prefix_len = rt->rtm_dst_len;
 
 	if (!fm_address_mask_from_prefixlen(af, route->src.prefix_len, route->src.raw_mask, sizeof(route->src.raw_mask))) {
-		fprintf(stderr, "invalid prefix len");
+		fm_log_error("invalid prefix len");
 		goto failed;
 	}
 
 	if (!fm_address_mask_from_prefixlen(af, route->dst.prefix_len, route->dst.raw_mask, sizeof(route->dst.raw_mask))) {
-		fprintf(stderr, "invalid prefix len");
+		fm_log_error("invalid prefix len");
 		goto failed;
 	}
 
@@ -436,7 +427,7 @@ rtnetlink_process_newroute(fm_buffer_t *pkt, fm_route_t **ret_p)
 
 		if (!(nla = fm_buffer_peek(pkt, sizeof(*nla)))
 		 || fm_buffer_available(pkt) < nla->nla_len) {
-			fprintf(stderr, "truncated rtnetlink attribute\n");
+			fm_log_error("truncated rtnetlink attribute\n");
 			goto failed;
 		}
 
@@ -477,7 +468,7 @@ rtnetlink_process_newroute(fm_buffer_t *pkt, fm_route_t **ret_p)
 		}
 
 		if (!ok) {
-			fprintf(stderr, "failed to parse netlink attribute %u len %u\n",
+			fm_log_error("failed to parse netlink attribute %u len %u\n",
 					nla->nla_type, nla->nla_len);
 			goto failed;
 		}
@@ -527,7 +518,7 @@ rtnetlink_process_newlink(fm_buffer_t *pkt)
 
 		if (!(nla = fm_buffer_peek(pkt, sizeof(*nla)))
 		 || fm_buffer_available(pkt) < nla->nla_len) {
-			fprintf(stderr, "truncated rtnetlink attribute\n");
+			fm_log_error("truncated rtnetlink attribute\n");
 			goto failed;
 		}
 
@@ -563,7 +554,7 @@ rtnetlink_process_newlink(fm_buffer_t *pkt)
 		}
 
 		if (!ok) {
-			fprintf(stderr, "failed to parse netlink attribute %u len %u\n",
+			fm_log_error("failed to parse netlink attribute %u len %u\n",
 					nla->nla_type, nla->nla_len);
 			goto failed;
 		}
@@ -602,7 +593,7 @@ rtnetlink_process_newaddr(fm_buffer_t *pkt)
 
 		if (!(nla = fm_buffer_peek(pkt, sizeof(*nla)))
 		 || fm_buffer_available(pkt) < nla->nla_len) {
-			fprintf(stderr, "truncated rtnetlink attribute\n");
+			fm_log_error("truncated rtnetlink attribute\n");
 			goto failed;
 		}
 
@@ -647,7 +638,7 @@ rtnetlink_process_newaddr(fm_buffer_t *pkt)
 		}
 
 		if (!ok) {
-			fprintf(stderr, "failed to parse netlink attribute %u len %u\n",
+			fm_log_error("failed to parse netlink attribute %u len %u\n",
 					nla->nla_type, nla->nla_len);
 			goto failed;
 		}
@@ -751,7 +742,7 @@ netlink_process_response(fm_buffer_t *pkt, unsigned int expect_seq, bool *done_p
 
 		/* any other rtnetlink message - how come? */
 		if (nh->nlmsg_seq != expect_seq) {
-			printf("unexpected sequence %u != %u\n", nh->nlmsg_seq, expect_seq);
+			fm_log_warning("unexpected sequence %u != %u\n", nh->nlmsg_seq, expect_seq);
 			fm_buffer_pull(pkt, nh->nlmsg_len);
 			continue;
 		}
