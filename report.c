@@ -119,6 +119,25 @@ fm_report_free(fm_report_t *report)
 	free(report);
 }
 
+static const char *
+fm_report_asset_state(fm_asset_state_t state)
+{
+	switch (state) {
+	case FM_ASSET_STATE_UNDEF:
+		return "undefined";
+
+	case FM_ASSET_STATE_PROBE_SENT:
+		return "noresponse";
+
+	case FM_ASSET_STATE_CLOSED:
+		return "unreachable";
+
+	case FM_ASSET_STATE_OPEN:
+		return "open";
+	}
+	return "BAD";
+}
+
 /*
  * Functions for report sinks
  */
@@ -179,38 +198,45 @@ fm_report_sink_array_destroy(struct fm_report_sink_array *array)
 /*
  * Write target results to some stdio file
  */
+struct fm_file_sink_callback_data {
+	unsigned int num_ports;
+	FILE *fp;
+};
+static bool
+fm_file_sink_port_callback(const fm_host_asset_t *host, const char *proto, unsigned int port, fm_asset_state_t state, void *user_data)
+{
+	struct fm_file_sink_callback_data *data = user_data;
+
+	fprintf(data->fp, "   %s/%u %s\n", proto, port, fm_report_asset_state(state));
+	data->num_ports += 1;
+	return true;
+}
+
 static void
 fm_file_sink_write(fm_report_sink_t *sink, const fm_target_t *target, FILE *fp)
 {
-	unsigned int pos = 0, num_ports = 0;
-	const fm_fact_t *fact;
+	struct fm_file_sink_callback_data callback_data = { 0 };
+	fm_host_asset_t *host;
+	fm_asset_state_t state;
 
-	if ((fact = fm_fact_log_find(&target->log, FM_FACT_HOST_UNREACHABLE)) != NULL) {
-#if 0
-		if (target->explicit_scan_target)
-			fprintf(fp, "   Not reachable\n");
-#endif
+	if ((host = target->host_asset) == NULL) {
+		fprintf(fp, "== %s ==\n", fm_address_format(&target->address));
+		fprintf(fp, "   No assets recorded\n");
 		return;
 	}
 
-	if (target->rtt_estimate) {
-		fprintf(fp, "== %s (%d ms) ==\n", fm_address_format(&target->address), target->rtt_estimate);
-	} else {
-		fprintf(fp, "== %s ==\n", fm_address_format(&target->address));
-	}
+	state = fm_host_asset_get_state(host);
+	if (state == FM_ASSET_STATE_UNDEF)
+		return;
 
-	for (pos = 0; (fact = fm_fact_log_find_iter(&target->log, FM_FACT_PORT_REACHABLE, &pos)) != NULL; ) {
-		fprintf(fp, "   %s\n", fm_fact_render(fact));
-		num_ports += 1;
-	}
+	fprintf(fp, "== %s ==\n", fm_address_format(&target->address));
+	fprintf(fp, "   host: %s\n", fm_report_asset_state(state));
 
-	for (pos = 0; (fact = fm_fact_log_find_iter(&target->log, FM_FACT_PORT_HEISENBERG, &pos)) != NULL; ) {
-		fprintf(fp, "   %s\n", fm_fact_render(fact));
-		num_ports += 1;
-	}
+	callback_data.fp = fp;
+	fm_host_asset_report_ports(host, fm_file_sink_port_callback, &callback_data);
 
-	if (num_ports == 0)
-		fprintf(fp, "   (no scan results)\n");
+	if (callback_data.num_ports == 0)
+		fprintf(fp, "   (no port scan results)\n");
 
 	fprintf(fp, "\n");
 }

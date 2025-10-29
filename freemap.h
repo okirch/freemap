@@ -142,10 +142,14 @@ extern const fm_fact_t *fm_fact_log_find(const fm_fact_log_t *, fm_fact_type_t);
 extern const fm_fact_t *fm_fact_log_find_iter(const fm_fact_log_t *, fm_fact_type_t, unsigned int *);
 
 extern fm_host_asset_t *fm_host_asset_get(const fm_address_t *addr, bool create);
+extern fm_asset_state_t	fm_host_asset_get_state(const fm_host_asset_t *host);
 extern bool		fm_host_asset_update_state(fm_host_asset_t *host, fm_asset_state_t state);;
 extern fm_asset_state_t	fm_host_asset_get_port_state(fm_host_asset_t *host, unsigned int proto_id, unsigned int port, fm_asset_state_t state);
 extern bool		fm_host_asset_update_port_state(fm_host_asset_t *host, unsigned int proto_id, unsigned int port, fm_asset_state_t state);
 extern bool		fm_host_asset_update_state_by_address(const fm_address_t *addr, fm_asset_state_t state);
+extern void		fm_host_asset_report_ports(const fm_host_asset_t *host,
+				bool (*visitor)(const fm_host_asset_t *host, const char *proto_name, unsigned int port, fm_asset_state_t state, void *user_data),
+				void *user_data);
 
 extern void		fm_address_set_ipv4(struct sockaddr_storage *ss, u_int32_t raw_addr);
 extern bool		fm_address_get_ipv4(const fm_address_t *addr, u_int32_t *ip_addr);

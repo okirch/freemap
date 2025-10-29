@@ -220,6 +220,15 @@ fm_host_asset_get_protocol(fm_host_asset_t *host, unsigned int proto_id, bool cr
 	return proto;
 }
 
+/*
+ * host state
+ */
+fm_asset_state_t
+fm_host_asset_get_state(const fm_host_asset_t *host)
+{
+	return host->state;
+}
+
 bool
 fm_host_asset_update_state(fm_host_asset_t *host, fm_asset_state_t state)
 {
@@ -307,4 +316,39 @@ fm_host_asset_update_state_by_address(const fm_address_t *addr, fm_asset_state_t
 	}
 
 	return false;
+}
+
+/*
+ * Iterate over a host asset (for reporting)
+ */
+void
+fm_host_asset_report_ports(const fm_host_asset_t *host,
+			bool (*visitor)(const fm_host_asset_t *host, const char *proto, unsigned int port, fm_asset_state_t state, void *user_data),
+			void *user_data)
+{
+	unsigned int i;
+
+	for (i = 0; i < __FM_PROTO_MAX; ++i) {
+		const fm_protocol_asset_t *proto = host->protocols[i];
+		const char *proto_name;
+		unsigned int word_index;
+
+		if (proto == NULL)
+			continue;
+
+		proto_name = fm_protocol_id_to_string(i);
+
+		for (word_index = 0; word_index < MAX_PORT_PROBE_WORDS; ++word_index) {
+			uint32_t word = proto->ports[word_index];
+			unsigned int port;
+
+			if (word == 0)
+				continue;
+
+			for (port = word_index * 32; word; ++port, word >>= 2) {
+				if (word & 0x03)
+					visitor(host, proto_name, port, word & 0x03, user_data);
+			}
+		}
+	}
 }
