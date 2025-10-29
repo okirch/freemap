@@ -196,6 +196,24 @@ fm_address_get_ipv4(const fm_address_t *addr, u_int32_t *ip_addr)
 	return true;
 }
 
+void
+fm_address_set_ipv6(struct sockaddr_storage *ss, const struct in6_addr *raw_addr)
+{
+	memset(ss, 0, sizeof(*ss));
+	ss->ss_family = AF_INET6;
+	((struct sockaddr_in6 *) ss)->sin6_addr = *raw_addr;
+}
+
+bool
+fm_address_get_ipv6(const fm_address_t *addr, struct in6_addr *raw_addr)
+{
+	if (addr->ss_family != AF_INET6)
+		return false;
+
+	*raw_addr = ((struct sockaddr_in6 *) addr)->sin6_addr;
+	return true;
+}
+
 unsigned int
 fm_addrfamily_sockaddr_size(int family)
 {

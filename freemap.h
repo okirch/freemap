@@ -20,6 +20,7 @@
 
 #include <time.h>
 #include <stdio.h>
+#include <netinet/in.h>
 #include "types.h"
 #include "config.h"
 
@@ -144,6 +145,8 @@ extern void		fm_host_asset_report_ports(const fm_host_asset_t *host,
 
 extern void		fm_address_set_ipv4(struct sockaddr_storage *ss, u_int32_t raw_addr);
 extern bool		fm_address_get_ipv4(const fm_address_t *addr, u_int32_t *ip_addr);
+extern void		fm_address_set_ipv6(struct sockaddr_storage *ss, const struct in6_addr *raw_addr);
+extern bool		fm_address_get_ipv6(const fm_address_t *addr, struct in6_addr *raw_addr);
 extern bool		fm_address_set_port(fm_address_t *address, unsigned short port);
 extern unsigned short	fm_address_get_port(const struct sockaddr_storage *ss);
 extern unsigned int	fm_addrfamily_sockaddr_size(int family);
