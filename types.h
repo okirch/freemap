@@ -44,6 +44,7 @@ typedef struct fm_report fm_report_t;
 typedef struct fm_fact_log fm_fact_log_t;
 typedef const struct fm_wellknown_service fm_wellknown_service_t;
 typedef struct fm_string_array fm_string_array_t;
+typedef struct fm_uint_array fm_uint_array_t;
 typedef struct fm_neighbor fm_neighbor_t;
 typedef struct fm_neighbor_cache fm_neighbor_cache_t;
 typedef struct fm_event_listener fm_event_listener_t;

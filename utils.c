@@ -20,6 +20,36 @@
 #include <ctype.h>
 #include "utils.h"
 
+/*
+ * Arrays of (unsigned) integers
+ */
+void
+fm_uint_array_append(fm_uint_array_t *array, unsigned int value)
+{
+	maybe_realloc_array(array->entries, array->count, 32);
+	array->entries[array->count++] = value;
+}
+
+void
+fm_uint_array_destroy(fm_uint_array_t *array)
+{
+	if (array->entries) {
+		free(array->entries);
+		array->entries = NULL;
+	}
+}
+
+int
+fm_uint_array_get(fm_uint_array_t *array, unsigned int index)
+{
+	if (index >= array->count)
+		return -1;
+	return array->entries[index];
+}
+
+/*
+ * Arrays of strings
+ */
 void
 fm_string_array_append(fm_string_array_t *sarr, const char *s)
 {
