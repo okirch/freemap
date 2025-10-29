@@ -51,7 +51,7 @@ test: $(LIB)
 	make -C tests runall
 
 $(LIB): $(OBJS)
-	$(AR) crv $@ $(OBJS)
+	$(AR) cr $@ $(OBJS)
 
 freemap: $(freemap_OBJS) $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(freemap_OBJS) $(OBJS) -lc_malloc_debug
