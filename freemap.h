@@ -158,7 +158,7 @@ extern bool		fm_socket_poll_all(void);
 extern void		fm_socket_timestamp_update(fm_socket_timestamp_t *);
 extern double		fm_pkt_rtt(const fm_pkt_t *pkt, const fm_socket_timestamp_t *send_ts);
 
-extern fm_socket_t *	fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *driver);
+extern fm_socket_t *	fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *driver, int sotype);
 extern const char *	fm_arp_type_to_string(int hatype);
 extern bool		fm_arp_discover(fm_protocol_t *proto, fm_target_t *target, int retries);
 

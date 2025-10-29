@@ -260,7 +260,7 @@ fm_arp_host_probe_send(fm_probe_t *probe)
 	 * so we need to tell it what protocol we want. */
 	arp->params.src_lladdr.sll_protocol = htons(ETH_P_ARP);
 
-	sock = fm_raw_socket_get((fm_address_t *) &arp->params.src_lladdr, probe->proto);
+	sock = fm_raw_socket_get((fm_address_t *) &arp->params.src_lladdr, probe->proto, SOCK_DGRAM);
 	if (sock == NULL) {
 		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to create ARP socket for %s",
 				fm_address_format(&target->address));

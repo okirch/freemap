@@ -40,6 +40,7 @@ static struct hlist_head	fm_interface_list = { .first = NULL, };
 
 typedef struct fm_raw_socket_cache {
 	struct hlist		link;
+	int			sotype;
 	struct sockaddr_ll	lladdr;
 	fm_socket_t *		sock;
 	fm_protocol_t *		protocol;
@@ -50,28 +51,31 @@ static fm_address_prefix_array_t fm_local_address_prefixes;
 
 
 fm_socket_t *
-fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *driver)
+fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *driver, int sotype)
 {
 	const struct sockaddr_ll *lladdr;
 	hlist_iterator_t it;
 	fm_raw_socket_cache_t *entry;
 	fm_socket_t *sock;
 
-	if (addr->ss_family != AF_PACKET) {
+	if (sotype < 0)
+		sotype = SOCK_DGRAM;
+
+	if (!(lladdr = fm_address_to_link_const(addr))) {
 		fm_log_error("Cannot create raw socket for address %s", fm_address_format(addr));
 		return NULL;
 	}
 
-	lladdr = (const struct sockaddr_ll *) addr;
-
 	hlist_iterator_init(&it, &raw_sock_cache);
 	while ((entry = hlist_iterator_next(&it)) != NULL) {
 		if (entry->protocol == driver
+		 && entry->sotype == sotype
 		 && !memcmp(&entry->lladdr, lladdr, sizeof(*lladdr)))
 			return entry->sock;
 	}
 
-	sock = fm_socket_create(PF_PACKET, SOCK_DGRAM, lladdr->sll_protocol, driver);
+
+	sock = fm_socket_create(PF_PACKET, sotype, lladdr->sll_protocol, driver);
 
 	if (!fm_socket_bind(sock, (const fm_address_t *) lladdr)) {
 		fm_log_error("Cannot bind raw socket to address %s: %m",
