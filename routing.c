@@ -368,7 +368,8 @@ refresh_routing_cache(int af)
 			fm_routing_cache_attach_interfaces(rtcache);
 			fm_routing_cache_sort(rtcache);
 
-			fm_routing_cache_dump(rtcache);
+			if (fm_debug_level > 1)
+				fm_routing_cache_dump(rtcache);
 		} else {
 			fm_log_debug("It seems that we do not have any %s routes",
 					fm_addrfamily_name(af));
