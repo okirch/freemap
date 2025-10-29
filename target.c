@@ -492,9 +492,6 @@ fm_target_inspect_pending(fm_target_t *target)
 
 		if (probe->status != NULL) {
 			fm_log_debug("STATUS %s %s\n", fm_address_format(&target->address), fm_fact_render(probe->status));
-			if (probe->result_callback)
-				probe->result_callback(target, probe->status);
-
 			fm_fact_log_append(&target->log, probe->status);
 			probe->status = NULL;
 

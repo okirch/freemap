@@ -86,8 +86,6 @@ fm_scan_action_get_next_probe(fm_scan_action_t *action, fm_target_t *target, uns
 
 	probe = action->ops->get_next_probe(action, target, index);
 	if (probe != NULL) {
-		probe->result_callback = action->result_callback;
-
 		if (action->barrier && index + 1 >= action->nprobes)
 			probe->blocking = true;
 
@@ -348,13 +346,6 @@ fm_scanner_add_dummy_probe(void)
 /*
  * Reachability probe
  */
-static void
-fm_scanner_host_probe_callback(fm_target_t *target, fm_fact_t *status)
-{
-	if (status->type == FM_FACT_HOST_REACHABLE && status->elapsed != 0)
-		target->rtt_estimate = 1000 * status->elapsed;
-}
-
 fm_scan_action_t *
 fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name, int flags, const fm_string_array_t *args)
 {
@@ -382,7 +373,6 @@ fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name, int 
 	}
 
 	action->flags |= flags;
-	action->result_callback = fm_scanner_host_probe_callback;
 
 	fm_scan_action_array_append(&scanner->requests, action);
 	return action;

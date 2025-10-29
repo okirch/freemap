@@ -88,8 +88,6 @@ struct fm_probe {
 
 	/* for probes that have completed */
 	fm_fact_t *		status;
-
-	void			(*result_callback)(fm_target_t *, fm_fact_t *);
 };
 
 struct fm_probe_list {
@@ -141,9 +139,6 @@ struct fm_target {
 
 	/* Unique ID identifying a network that we scan */
 	fm_network_t *		network;
-
-	/* When doing an initial ICMP probe, this will record the RTT in millisec. */
-	unsigned int		rtt_estimate;
 
 	/* scheduler stores per-target state here: */
 	void *			sched_state;
