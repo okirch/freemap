@@ -34,7 +34,6 @@ struct arp_host_probe_params {
 	unsigned int	retries;
 };
 
-static bool		get_ipv4_address(const fm_address_t *, uint32_t *);
 static bool		get_eth_address(const struct sockaddr_ll *, unsigned char *, unsigned int);
 static fm_extant_t *	fm_arp_locate_probe(uint32_t ipaddr, const unsigned char *eth_addr, struct sockaddr_ll *);
 
@@ -140,16 +139,6 @@ fm_arp_build_params(struct arp_host_probe_params *params, const fm_string_array_
  * Helper functions.
  * We may want to promote them to fm_address_*() one day
  */
-bool
-get_ipv4_address(const fm_address_t *addr, uint32_t *ip_addr)
-{
-	if (addr->ss_family != AF_INET)
-		return false;
-
-	*ip_addr = ((struct sockaddr_in *) addr)->sin_addr.s_addr;
-	return true;
-}
-
 bool
 get_eth_address(const struct sockaddr_ll *lladdr, unsigned char *eth_addr, unsigned int size)
 {
@@ -345,8 +334,8 @@ fm_arp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const struct
 	uint32_t src_ipaddr, dst_ipaddr;
 	struct sockaddr_ll src_lladdr;
 
-	if (!get_ipv4_address(&target->local_bind_address, &src_ipaddr)
-	 || !get_ipv4_address(&target->address, &dst_ipaddr)
+	if (!fm_address_get_ipv4(&target->local_bind_address, &src_ipaddr)
+	 || !fm_address_get_ipv4(&target->address, &dst_ipaddr)
 	 || !fm_interface_get_lladdr(target->local_device, &src_lladdr)) {
 		fm_log_error("%s: cannot create ARP probe: incompatible address family",
 				fm_address_format(&target->address));

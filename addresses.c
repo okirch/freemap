@@ -186,6 +186,16 @@ fm_address_set_ipv4(struct sockaddr_storage *ss, u_int32_t raw_addr)
 	((struct sockaddr_in *) ss)->sin_addr.s_addr = raw_addr;
 }
 
+bool
+fm_address_get_ipv4(const fm_address_t *addr, u_int32_t *ip_addr)
+{
+	if (addr->ss_family != AF_INET)
+		return false;
+
+	*ip_addr = ((struct sockaddr_in *) addr)->sin_addr.s_addr;
+	return true;
+}
+
 unsigned int
 fm_addrfamily_sockaddr_size(int family)
 {
