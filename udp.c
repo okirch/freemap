@@ -137,7 +137,7 @@ fm_udp_expect_response(fm_probe_t *probe, int af, unsigned int port)
 }
 
 static fm_extant_t *
-fm_udp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt)
+fm_udp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt, fm_asset_state_t state)
 {
 	fm_target_t *target;
 	unsigned short port;
@@ -149,6 +149,21 @@ fm_udp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt)
 		return NULL;
 
 	port = fm_address_get_port(&pkt->recv_addr);
+
+	/* update the asset */
+	fm_target_update_port_state(target, FM_PROTO_UDP, port, state);
+
+	/* If this is an ICMP error, we might as well mark the router/end host
+	 * as reachable. */
+	if (pkt->info.offender != NULL) {
+		fm_host_asset_t *host = fm_host_asset_get(pkt->info.offender, true);
+
+		if (host) {
+			fm_host_asset_update_state(host, FM_ASSET_STATE_OPEN);
+
+			/* while we're at it, why don't we update the rtt for this asset? */
+		}
+	}
 
 	fm_extant_iterator_init(&iter, &target->expecting);
 	while ((extant = fm_extant_iterator_match(&iter, pkt->family, IPPROTO_UDP)) != NULL) {
@@ -169,7 +184,7 @@ fm_udp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
 	fm_extant_t *extant;
 
-	extant = fm_udp_locate_probe(proto, pkt);
+	extant = fm_udp_locate_probe(proto, pkt, FM_ASSET_STATE_OPEN);
 	if (extant != NULL) {
 		fm_extant_received_reply(extant, pkt);
 		fm_extant_free(extant);
@@ -183,7 +198,7 @@ fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
 	fm_extant_t *extant;
 
-	extant = fm_udp_locate_probe(proto, pkt);
+	extant = fm_udp_locate_probe(proto, pkt, FM_ASSET_STATE_CLOSED);
 	if (extant != NULL) {
 		fm_extant_received_error(extant, pkt);
 		fm_extant_free(extant);
@@ -256,6 +271,9 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to send UDP packet: %m");
 
 	fm_udp_expect_response(probe, udp->host_address.ss_family, udp->port);
+
+	/* update the asset state */
+	fm_target_update_port_state(probe->target, FM_PROTO_UDP, udp->port, FM_ASSET_STATE_PROBE_SENT);
 
 	return NULL;
 }

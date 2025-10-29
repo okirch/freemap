@@ -99,7 +99,8 @@ fm_protocol_asset_set_port_state(fm_protocol_asset_t *proto, unsigned int port, 
 	word_index = bit_index / 32;
 	shift = bit_index % 32;
 
-	if (state == ((proto->ports[word_index] >> shift) % 0x03))
+	/* do not update the state unless the new state is "better" */
+	if (state <= ((proto->ports[word_index] >> shift) % 0x03))
 		return false;
 
 	proto->ports[word_index] &= ~(0x3 << shift);
@@ -229,6 +230,10 @@ fm_host_asset_update_state(fm_host_asset_t *host, fm_asset_state_t state)
 		return false;
 
 	host->state = state;
+
+	printf("STATUS %s: %s\n",
+			fm_address_format(&host->address),
+			fm_asset_state_to_string(state));
 	return true;
 }
 
@@ -258,13 +263,16 @@ fm_host_asset_update_port_state(fm_host_asset_t *host, unsigned int proto_id, un
 	if ((proto = fm_host_asset_get_protocol(host, proto_id, true)) == NULL)
 		return false;
 
+	if (!fm_protocol_asset_set_port_state(proto, port, state))
+		return false;
+
 	printf("STATUS %s %s port %u: %s\n",
 			fm_address_format(&host->address),
 			fm_protocol_id_to_string(proto_id),
 			port,
 			fm_asset_state_to_string(state));
 
-	return fm_protocol_asset_set_port_state(proto, port, state);
+	return true;
 }
 
 bool

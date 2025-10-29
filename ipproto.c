@@ -97,7 +97,7 @@ fm_ipproto_expect_response(fm_probe_t *probe, int af, unsigned int proto)
 }
 
 static fm_extant_t *
-fm_ipproto_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt)
+fm_ipproto_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt, fm_asset_state_t state)
 {
 	fm_target_t *target;
 	hlist_iterator_t iter;
@@ -109,6 +109,8 @@ fm_ipproto_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt)
 	if (target == NULL)
 		return NULL;
 
+	fm_target_update_host_state(target, FM_PROTO_IP, state);
+
 	fm_extant_iterator_init(&iter, &target->expecting);
 	return fm_extant_iterator_match(&iter, pkt->family, ipproto);
 }
@@ -118,7 +120,7 @@ fm_ipproto_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
 	fm_extant_t *extant;
 
-	extant = fm_ipproto_locate_probe(proto, pkt);
+	extant = fm_ipproto_locate_probe(proto, pkt, FM_ASSET_STATE_CLOSED);
 	if (extant != NULL) {
 		fm_extant_received_error(extant, pkt);
 		fm_extant_free(extant);
@@ -312,6 +314,9 @@ fm_ipproto_port_probe_send(fm_probe_t *probe)
 		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to send IP proto probe: %m");
 
 	fm_ipproto_expect_response(probe, rtinfo->dst.network_address.ss_family, ip->ipproto);
+
+	/* update the asset state */
+	fm_target_update_host_state(probe->target, FM_PROTO_IP, FM_ASSET_STATE_PROBE_SENT);
 
 	probe->timeout = 1000;
 	return NULL;

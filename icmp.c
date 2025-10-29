@@ -205,6 +205,11 @@ fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 		fm_log_debug("%s destination unreachable (code %d)\n",
 				fm_address_format(&pkt->recv_addr), ee->ee_code);
 
+		/* update asset state right away */
+		fm_host_asset_update_state_by_address(&pkt->recv_addr, FM_ASSET_STATE_CLOSED);
+		if (pkt->info.offender != NULL)
+			fm_host_asset_update_state_by_address(pkt->info.offender, FM_ASSET_STATE_OPEN);
+
 		/* The errqueue stuff is a bit non-intuitive at times. When receiving an
 		 * ICMP packet, the "from" address is the IP we originally sent the packet
 		 * to, and the offender is the address of the host that generated the
@@ -594,6 +599,9 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 		probe->timeout = FM_ICMP_RESPONSE_TIMEOUT;
 
 	/* If retries > 0, we let the caller pick a timeout based on the rtt estimate */
+
+	/* Update the asset state */
+	fm_target_update_host_state(target, FM_PROTO_ICMP, FM_ASSET_STATE_PROBE_SENT);
 
 	return NULL;
 }

@@ -212,6 +212,9 @@ fm_arp_locate_probe(uint32_t ipaddr, const unsigned char *eth_addr, struct socka
 		return NULL;
 	}
 
+	/* Update the asset state */
+	fm_target_update_host_state(target, FM_PROTO_ARP, FM_ASSET_STATE_OPEN);
+
 	{
 		struct sockaddr_ll lladdr;
 
@@ -279,6 +282,9 @@ fm_arp_host_probe_send(fm_probe_t *probe)
 
 	if (!fm_socket_send(sock, (fm_address_t *) &eth_bcast, pktbuf, pktlen))
 		return fm_fact_create_error(FM_FACT_SEND_ERROR, "Unable to send ARP packet: %m");
+
+	/* Update the asset state */
+	fm_target_update_host_state(target, FM_PROTO_ARP, FM_ASSET_STATE_PROBE_SENT);
 
 	if (arp->params.retries > 0)
 		arp->params.retries -= 1;

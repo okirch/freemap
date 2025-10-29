@@ -76,7 +76,7 @@ fm_tcp_expect_response(fm_probe_t *probe, int af, unsigned int port)
 }
 
 static fm_extant_t *
-fm_tcp_locate_probe(int af, const fm_address_t *target_addr)
+fm_tcp_locate_probe(int af, const fm_address_t *target_addr, fm_asset_state_t state)
 {
 	fm_target_t *target;
 	unsigned short port;
@@ -88,6 +88,9 @@ fm_tcp_locate_probe(int af, const fm_address_t *target_addr)
 		return NULL;
 
 	port = fm_address_get_port(target_addr);
+
+	/* update the asset */
+	fm_target_update_port_state(target, FM_PROTO_TCP, port, state);
 
 	fm_extant_iterator_init(&iter, &target->expecting);
 	while ((extant = fm_extant_iterator_match(&iter, af, IPPROTO_TCP)) != NULL) {
@@ -108,7 +111,7 @@ fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
 	fm_extant_t *extant;
 
-	extant = fm_tcp_locate_probe(pkt->family, &pkt->recv_addr);
+	extant = fm_tcp_locate_probe(pkt->family, &pkt->recv_addr, FM_ASSET_STATE_OPEN);
 	if (extant != NULL) {
 		fm_extant_received_reply(extant, pkt);
 		fm_extant_free(extant);
@@ -122,7 +125,7 @@ fm_tcp_connecton_established(fm_protocol_t *proto, const fm_address_t *target_ad
 {
 	fm_extant_t *extant;
 
-	extant = fm_tcp_locate_probe(target_addr->ss_family, target_addr);
+	extant = fm_tcp_locate_probe(target_addr->ss_family, target_addr, FM_ASSET_STATE_OPEN);
 	if (extant != NULL) {
 		fm_extant_received_reply(extant, NULL);
 		fm_extant_free(extant);
@@ -136,7 +139,7 @@ fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
 	fm_extant_t *extant;
 
-	extant = fm_tcp_locate_probe(pkt->family, &pkt->recv_addr);
+	extant = fm_tcp_locate_probe(pkt->family, &pkt->recv_addr, FM_ASSET_STATE_CLOSED);
 	if (extant != NULL) {
 		fm_extant_received_error(extant, pkt);
 		fm_extant_free(extant);
@@ -188,6 +191,9 @@ fm_tcp_port_probe_send(fm_probe_t *probe)
 	}
 
 	fm_tcp_expect_response(probe, tcp->host_address.ss_family, tcp->port);
+
+	/* update the asset state */
+	fm_target_update_port_state(probe->target, FM_PROTO_TCP, tcp->port, FM_ASSET_STATE_PROBE_SENT);
 
 	return NULL;
 }
