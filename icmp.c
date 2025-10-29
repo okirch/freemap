@@ -45,12 +45,10 @@ struct icmp_host_probe_params {
 };
 
 static fm_socket_t *	fm_icmp_create_bsd_socket(fm_protocol_t *proto, int ipproto);
-static bool		fm_icmp_process_bsd_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
-static bool		fm_icmp_process_bsd_error(fm_protocol_t *proto, fm_pkt_t *pkt);
+static bool		fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
+static bool		fm_icmp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static fm_socket_t *	fm_icmp_create_raw_socket(fm_protocol_t *proto, int ipproto);
-static fm_socket_t *	fm_icmp_create_raw_shared_socket(fm_protocol_t *proto, fm_target_t *target);
-static bool		fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
-static bool		fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt);
+static fm_socket_t *	fm_icmp_create_shared_raw_socket(fm_protocol_t *proto, fm_target_t *target);
 
 static fm_socket_t *	fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr);
 static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
@@ -63,9 +61,10 @@ static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.id		= FM_PROTO_ICMP,
 
 	.create_socket	= fm_icmp_create_bsd_socket,
+	.process_packet	= fm_icmp_process_packet,
+	.process_error	= fm_icmp_process_error,
+
 	.create_host_probe_action = fm_icmp_create_host_probe_action,
-	.process_packet	= fm_icmp_process_bsd_packet,
-	.process_error	= fm_icmp_process_bsd_error,
 };
 
 static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
@@ -75,9 +74,9 @@ static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
 	.require_raw	= true,
 
 	.create_socket	= fm_icmp_create_raw_socket,
-	.create_host_shared_socket = fm_icmp_create_raw_shared_socket,
-	.process_packet	= fm_icmp_process_raw_packet,
-	.process_error	= fm_icmp_process_raw_error,
+	.create_host_shared_socket = fm_icmp_create_shared_raw_socket,
+	.process_packet	= fm_icmp_process_packet,
+	.process_error	= fm_icmp_process_error,
 
 	.create_host_probe_action = fm_icmp_create_host_probe_action,
 };
@@ -99,18 +98,41 @@ fm_icmp_create_bsd_socket(fm_protocol_t *proto, int af)
 }
 
 static bool
-fm_icmp_process_bsd_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
+fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
 	fm_extant_t *extant = NULL;
+	bool ignore_id = false;
 
 	fm_log_debug("received ICMP reply from %s", fm_address_format(&pkt->recv_addr));
 	/* fm_print_hexdump(pkt->data, pkt->len); */
 
 	fm_host_asset_update_state_by_address(&pkt->recv_addr, FM_ASSET_STATE_OPEN);
 
-	/* When using PF_RAW sockets, the kernel stack seems to insert an ICMP id of its own choosing,
-	 * so we need to ignore the ID when looking for a matching request. */
-	extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, true, true);
+	if (proto->ops == &fm_icmp_bsdsock_ops) {
+		/* When using dgram/icmp sockets, the kernel will overwrite the icmp sequence
+		 * number that we picked. So ignore that in our search for a matching
+		 * probe */
+		ignore_id = true;
+	} else {
+		fm_ip_info_t ip;
+
+		/* PF_RAW sockets will always give us the IP header */
+		if (!fm_pkt_pull_ip_hdr(pkt, &ip)) {
+			fm_log_debug("%s: bad IP header", proto->ops->name);
+			return false;
+		}
+
+		if (!(pkt->family == AF_INET && ip.ipproto == IPPROTO_ICMP) 
+		 && !(pkt->family == AF_INET6 && ip.ipproto == IPPROTO_ICMPV6)) {
+			fm_log_debug("%s: %s -> %s: unexpected protocol %d", __func__,
+					fm_address_format(&ip.src_addr),
+					fm_address_format(&ip.dst_addr),
+					ip.ipproto);
+			return false;
+		}
+	}
+
+	extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, true, ignore_id);
 	if (extant != NULL) {
 		/* Mark the probe as successful, and update the RTT estimate */
 		fm_extant_received_reply(extant, pkt);
@@ -121,12 +143,20 @@ fm_icmp_process_bsd_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 }
 
 bool
-fm_icmp_process_bsd_error(fm_protocol_t *proto, fm_pkt_t *pkt)
+fm_icmp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
 	const struct sock_extended_err *ee;
 	fm_extant_t *extant = NULL;
+	bool ignore_id = false;
 
 	/* fm_print_hexdump(pkt->data, pkt->len); */
+
+	if (proto->ops == &fm_icmp_bsdsock_ops) {
+		/* When using dgram/icmp sockets, the kernel will overwrite the icmp sequence
+		 * number that we picked. So ignore that in our search for a matching
+		 * probe */
+		ignore_id = true;
+	}
 
 	if ((ee = pkt->info.ee) == NULL)
 		return false;
@@ -151,7 +181,7 @@ fm_icmp_process_bsd_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 		 * ICMP packet, the "from" address is the IP we originally sent the packet
 		 * to, and the offender is the address of the host that generated the
 		 * ICMP packet. */
-		extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, false, true);
+		extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, false, ignore_id);
 
 		/* TODO: record the gateway that generated this error code;
 		 * we could build a rough sketch of the network topo and avoid swamping
@@ -185,7 +215,7 @@ fm_icmp_create_raw_socket(fm_protocol_t *proto, int af)
 }
 
 static fm_socket_t *
-fm_icmp_create_raw_shared_socket(fm_protocol_t *proto, fm_target_t *target)
+fm_icmp_create_shared_raw_socket(fm_protocol_t *proto, fm_target_t *target)
 {
 	const fm_address_t *addr = &target->address;
 	fm_socket_t **sharedp;
@@ -201,89 +231,6 @@ fm_icmp_create_raw_shared_socket(fm_protocol_t *proto, fm_target_t *target)
 		*sharedp = fm_icmp_create_connected_socket(proto, addr);
 
 	return *sharedp;
-}
-
-static bool
-fm_icmp_process_raw_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
-{
-	fm_extant_t *extant = NULL;
-	fm_ip_info_t ip;
-
-	/* fm_print_hexdump(pkt->data, pkt->len); */
-
-	if (!fm_pkt_pull_ip_hdr(pkt, &ip)) {
-		fm_log_debug("%s: bad IP header", proto->ops->name);
-		return false;
-	}
-
-	/* update asset state right away */
-	fm_host_asset_update_state_by_address(&pkt->recv_addr, FM_ASSET_STATE_OPEN);
-
-	if (!(pkt->family == AF_INET && ip.ipproto == IPPROTO_ICMP) 
-	 && !(pkt->family == AF_INET6 && ip.ipproto == IPPROTO_ICMPV6)) {
-		fm_log_debug("%s: %s -> %s: unexpected protocol %d", __func__,
-				fm_address_format(&ip.src_addr),
-				fm_address_format(&ip.dst_addr),
-				ip.ipproto);
-		return false;
-	}
-
-	extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, true, false);
-	if (extant != NULL) {
-		/* Mark the probe as successful, and update the RTT estimate */
-		fm_extant_received_reply(extant, pkt);
-		fm_extant_free(extant);
-	}
-
-	return true;
-}
-
-bool
-fm_icmp_process_raw_error(fm_protocol_t *proto, fm_pkt_t *pkt)
-{
-	const struct sock_extended_err *ee;
-	fm_extant_t *extant = NULL;
-
-	/* fm_print_hexdump(pkt->data, pkt->len); */
-
-	if ((ee = pkt->info.ee) == NULL)
-		return false;
-
-	if (pkt->family == AF_INET && ee->ee_origin == SO_EE_ORIGIN_ICMP) {
-		if (ee->ee_type != ICMP_DEST_UNREACH) {
-			fm_log_debug("%s ignoring icmp packet with type %d.%d",
-					fm_address_format(&pkt->recv_addr),
-					ee->ee_type, ee->ee_code);
-			return false;
-		}
-
-		fm_log_debug("%s destination unreachable (code %d)\n",
-				fm_address_format(&pkt->recv_addr), ee->ee_code);
-
-		/* update asset state right away */
-		fm_host_asset_update_state_by_address(&pkt->recv_addr, FM_ASSET_STATE_CLOSED);
-		if (pkt->info.offender != NULL)
-			fm_host_asset_update_state_by_address(pkt->info.offender, FM_ASSET_STATE_OPEN);
-
-		/* The errqueue stuff is a bit non-intuitive at times. When receiving an
-		 * ICMP packet, the "from" address is the IP we originally sent the packet
-		 * to, and the offender is the address of the host that generated the
-		 * ICMP packet. */
-		extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, false, false);
-
-		/* TODO: record the gateway that generated this error code;
-		 * we could build a rough sketch of the network topo and avoid swamping
-		 * the gateway with too many packets (which would result in ICMP errors
-		 * being dropped). */
-	}
-
-	if (extant != NULL) {
-		/* Mark the probe as failed, and update the RTT estimate */
-		fm_extant_received_error(extant, pkt);
-		fm_extant_free(extant);
-	}
-
-	return true;
 }
 
 /*
