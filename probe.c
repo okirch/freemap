@@ -197,9 +197,6 @@ fm_probe_free(fm_probe_t *probe)
 	if (probe->ops->destroy)
 		probe->ops->destroy(probe);
 
-	if (probe->status != NULL)
-		fm_fact_free(probe->status);
-
 	if (probe->target != NULL)
 		fm_target_forget_pending(probe->target, probe);
 
@@ -242,12 +239,7 @@ fm_probe_send(fm_probe_t *probe)
 void
 fm_probe_set_status(fm_probe_t *probe, fm_fact_t *fact)
 {
-	if (probe->status) {
-		fm_fact_free(fact);
-	} else {
-		fact->elapsed = fm_timestamp_since(&probe->sent);
-		probe->status = fact;
-	}
+	/* probe->elapsed = fm_timestamp_since(&probe->sent); */
 	probe->done = true;
 }
 
@@ -281,19 +273,16 @@ fm_probe_render_verdict(fm_probe_t *probe, fm_probe_verdict_t verdict)
 {
 	fm_fact_t *fact;
 
-	if (probe->status != NULL) {
-		fm_log_error("%s: ignoring redundant verdict", probe->name);
-		return;
-	}
-
 	fact = probe->ops->render_verdict(probe, verdict);
 	if (fact == NULL) {
 		fm_log_error("%s: cannot render verdict %d", probe->name, verdict);
 		return;
 	}
 
-	fact->elapsed = fm_timestamp_since(&probe->sent);
-	probe->status = fact;
+	fm_log_debug("verdict: %s", fm_fact_render(fact));
+	fm_fact_free(fact);
+
+	/* fact->elapsed = fm_timestamp_since(&probe->sent); */
 	probe->done = true;
 }
 

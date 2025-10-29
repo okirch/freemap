@@ -87,7 +87,6 @@ struct fm_probe {
 	struct timeval		expires;
 
 	/* for probes that have completed */
-	fm_fact_t *		status;
 	bool			done;
 	fm_error_t		error;
 };

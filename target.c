@@ -489,11 +489,7 @@ fm_target_inspect_pending(fm_target_t *target)
         for (probe = (fm_probe_t *) (target->pending_probes.hlist.first); probe != NULL; probe = next) {
                 next = (fm_probe_t *) probe->link.next;
 
-		if (probe->status != NULL || probe->done) {
-			fm_log_debug("STATUS %s %s\n", fm_address_format(&target->address), fm_fact_render(probe->status));
-			fm_fact_log_append(&target->log, probe->status);
-			probe->status = NULL;
-
+		if (probe->done) {
 			fm_probe_free(probe);
 			rv = true;
 		}
