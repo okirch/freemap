@@ -221,6 +221,15 @@ fm_interface_get_lladdr(const fm_interface_t *nic, struct sockaddr_ll *lladdr)
 	return true;
 }
 
+const char *
+fm_interface_get_name(const fm_interface_t *nic)
+{
+	if (nic == NULL)
+		return NULL;
+
+	return nic->name;
+}
+
 /*
  * Neighbor cache
  */
