@@ -16,6 +16,7 @@
  */
 
 #include <assert.h>
+#include <linux/ipv6.h>
 #include <netinet/ip.h>
 #include "protocols.h"
 #include "target.h"
@@ -361,13 +362,23 @@ fm_pkt_pull_ipv4_hdr(fm_pkt_t *pkt, fm_ip_info_t *info)
 	return true;
 }
 
+/*
+ * IPv6 header analysis
+ */
+static bool
+fm_pkt_pull_ipv6_hdr(fm_pkt_t *pkt, fm_ip_info_t *info)
+{
+	fm_log_error("%s: not yet implemented", __func__);
+	return false;
+}
+
 bool
 fm_pkt_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_info_t *info)
 {
 	if (pkt->family == AF_INET)
 		return fm_pkt_pull_ipv4_hdr(pkt, info);
 	if (pkt->family == AF_INET6)
-		abort();
+		return fm_pkt_pull_ipv6_hdr(pkt, info);
 
 	return false;
 }
