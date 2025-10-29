@@ -119,6 +119,8 @@ extern bool		fm_target_get_local_bind_address(fm_target_t *, fm_address_t *);
 extern fm_fact_t *	fm_probe_send(fm_probe_t *);
 extern void		fm_probe_free(fm_probe_t *);
 
+extern bool		fm_probe_wait_for_event(fm_probe_t *, fm_event_callback_t *, fm_event_t);
+extern void		fm_probe_finish_waiting(fm_probe_t *);
 extern void		fm_event_post(fm_event_t event);
 extern void		fm_event_process_all(void);
 

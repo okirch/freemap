@@ -284,6 +284,12 @@ fm_target_free(fm_target_t *target)
 {
 	fm_probe_t *probe;
 
+	while ((probe = fm_probe_list_get_first(&target->postponed_probes)) != NULL)
+		fm_probe_free(probe);
+
+	while ((probe = fm_probe_list_get_first(&target->ready_probes)) != NULL)
+		fm_probe_free(probe);
+
 	while ((probe = fm_probe_list_get_first(&target->pending_probes)) != NULL)
 		fm_probe_free(probe);
 
@@ -368,7 +374,29 @@ fm_target_is_done(const fm_target_t *target)
 	if (!target->scan_done)
 		return false;
 
-	return fm_probe_list_is_empty(&target->pending_probes);
+	return fm_probe_list_is_empty(&target->postponed_probes)
+	    && fm_probe_list_is_empty(&target->ready_probes)
+	    && fm_probe_list_is_empty(&target->pending_probes);
+}
+
+void
+fm_target_postpone_probe(fm_target_t *target, fm_probe_t *probe)
+{
+	fm_probe_unlink(probe);
+	fm_probe_insert(&target->postponed_probes, probe);
+
+	if (probe->blocking)
+		target->plugged = true;
+
+	fm_log_debug("%s: postponed", probe->name);
+}
+
+void
+fm_target_continue_probe(fm_target_t *target, fm_probe_t *probe)
+{
+	fm_probe_unlink(probe);
+	fm_probe_insert(&target->ready_probes, probe);
+	fm_log_debug("%s: moved to ready", probe->name);
 }
 
 void

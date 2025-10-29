@@ -86,6 +86,13 @@ fm_scheduler_transmit_some(fm_scheduler_t *sched, unsigned int quota)
 fm_probe_t *
 fm_scheduler_get_next_probe(fm_scheduler_t *sched, fm_target_t *target)
 {
+	fm_probe_t *probe;
+
+	if ((probe = fm_probe_list_get_first(&target->ready_probes)) != NULL) {
+		fm_probe_unlink(probe);
+		return probe;
+	}
+
 	return sched->ops->get_next_probe(sched, target);
 }
 
@@ -117,6 +124,12 @@ fm_scheduler_get_next_probe_for_target(fm_scheduler_t *sched, fm_target_t *targe
 	if (probe == NULL) {
 		fm_scheduler_detach_target(sched, target);
 		target->scan_done = true;
+	} else
+	if (probe->event_listener != NULL) {
+		/* FIXME: we should not create hundreds of probes if all of them
+		 * are waiting for the same event. */
+		fm_target_postpone_probe(target, probe);
+		return NULL;
 	}
 
 	return probe;

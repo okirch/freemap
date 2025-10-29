@@ -130,8 +130,10 @@ fm_event_dispatch(fm_event_t event)
 	hlist_iterator_init(&it, &fm_event_listeners);
 	while ((evl = hlist_iterator_next(&it)) != NULL) {
 		if (evl->event == event
-		 && evl->callback(evl->probe, event))
-			fm_event_listener_disable(evl);
+		 && evl->callback(evl->probe, event)) {
+			fm_probe_finish_waiting(evl->probe);
+			assert(evl->probe->event_listener == NULL);
+		}
 	}
 
 	/* Garbage collection.
@@ -335,6 +337,12 @@ fm_probe_finish_waiting(fm_probe_t *probe)
 	if ((evl = probe->event_listener) != NULL) {
 		fm_event_listener_disable(evl);
 		probe->event_listener = NULL;
+	}
+
+	if (probe->target == NULL) {
+		fm_log_warning("%s: probe %s not associated with any target?!", __func__, probe->name);
+	} else {
+		fm_target_continue_probe(probe->target, probe);
 	}
 }
 

@@ -148,6 +148,13 @@ struct fm_target {
 	/* scheduler stores per-target state here: */
 	void *			sched_state;
 
+	/* probes that are waiting for some event before they
+	 * can continue */
+	struct fm_probe_list	postponed_probes;
+
+	/* probes that can continue */
+	struct fm_probe_list	ready_probes;
+
 	/* should be renamed to "active_probes" */
 	struct fm_probe_list	pending_probes;
 
@@ -183,6 +190,9 @@ extern fm_extant_t *	fm_extant_alloc(fm_probe_t *, int af, int ipproto,
 				const void *payload, size_t payload_size);
 extern void		fm_extant_free(fm_extant_t *extant);
 extern void		fm_target_forget_pending(fm_target_t *target, const fm_probe_t *probe);
+
+extern void		fm_target_postpone_probe(fm_target_t *, fm_probe_t *);
+extern void		fm_target_continue_probe(fm_target_t *, fm_probe_t *);
 
 extern void		fm_target_pool_make_active(fm_target_pool_t *);
 extern fm_target_t *	fm_target_pool_find(const fm_address_t *);
