@@ -456,12 +456,9 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, int 
 static bool
 fm_host_reachability_check_validate(fm_scan_action_t *action, fm_target_t *target)
 {
-	bool reachable = true;
+	fm_host_asset_t *host = target->host_asset;
 
-	reachable = fm_fact_log_find(&target->log, FM_FACT_PORT_REACHABLE)
-		 || fm_fact_log_find(&target->log, FM_FACT_HOST_REACHABLE);
-
-	if (!reachable) {
+	if (host == NULL || fm_host_asset_get_state(host) != FM_ASSET_STATE_OPEN) {
 		fm_log_debug("%s does not respond to any probe, skipping all other scan actions\n", fm_address_format(&target->address));
 		fm_scanner_abort_target(target);
 	}
