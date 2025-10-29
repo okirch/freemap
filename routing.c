@@ -143,8 +143,8 @@ fm_routing_cache_attach_interfaces(fm_routing_cache_t *rtcache)
 		fm_route_t *route = rtcache->entries[i];
 
 		if (route->interface == NULL
-		 && (route->interface = fm_interface_by_index(route->oif)) != NULL)
-			fprintf(stderr, "Unable to find NIC for ifindex %d\n", route->oif);
+		 && (route->interface = fm_interface_by_index(route->oif)) == NULL)
+			fm_log_error("Unable to find NIC for ifindex %d\n", route->oif);
 	}
 }
 
