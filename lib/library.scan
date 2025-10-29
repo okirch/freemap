@@ -8,6 +8,13 @@ hosts-scan thorough serialize=strict:
 	host-probe icmp;
 	port-probe tcp 0;
 
+hosts-scan experimental serialize=strict:
+	port-probe ipproto 33 optional;
+	port-probe ipproto 6 optional;
+
+services-scan minimal:
+	port-probe tcp 22 25 80;
+
 services-scan default:
 	port-probe tcp 1-20 21 22 25 53 80 137 138 139;
 	port-probe udp 53 111 2049 5353 137 138 139;

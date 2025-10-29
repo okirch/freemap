@@ -10,6 +10,7 @@ OBJS	= projects.o \
 	  udp.o \
 	  icmp.o \
 	  arp.o \
+	  ipproto.o \
 	  ratelimit.o \
 	  addresses.o \
 	  network.o \
