@@ -27,7 +27,7 @@
 
 
 static void			fm_scanner_map_heisenberg(fm_target_t *);
-static fm_scan_action_t *	fm_scan_action_port_range_scan(fm_protocol_t *proto, unsigned int low_port, unsigned int high_port);
+static fm_scan_action_t *	fm_scan_action_port_scan(fm_protocol_t *proto, unsigned int nranges, const fm_port_range_t *range);
 static fm_scan_action_t *	fm_scan_action_reachability_check(void);
 
 static inline void
@@ -489,17 +489,13 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, int 
 		return NULL;
 	}
 
-	for (i = 0; i < nranges; ++i) {
-		fm_port_range_t *r = ranges + i;
+	if (!(action = fm_scan_action_port_scan(proto, nranges, ranges)))
+		return NULL;
 
-		if (!(action = fm_scan_action_port_range_scan(proto, r->first, r->last)))
-			return NULL;
+	action->flags |= flags;
+	assert(action->nprobes >= 1);
 
-		action->flags |= flags;
-		assert(action->nprobes >= 1);
-
-		fm_scan_action_array_append(&scanner->requests, action);
-	}
+	fm_scan_action_array_append(&scanner->requests, action);
 
 	return action;
 }
@@ -543,20 +539,19 @@ struct fm_simple_port_scan {
 	fm_scan_action_t	base;
 
 	fm_protocol_t *		proto;
-	struct {
-		uint16_t	low, high;
-	} port_range;
+	fm_uint_array_t		ports;
 };
 
 static fm_probe_t *
 fm_simple_port_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *target, unsigned int index)
 {
 	struct fm_simple_port_scan *portscan = (struct fm_simple_port_scan *) action;
+	int port;
 
-	if (index > portscan->port_range.high - portscan->port_range.low)
+	if ((port = fm_uint_array_get(&portscan->ports, index)) < 0)
 		return NULL;
 
-	return fm_protocol_create_port_probe(portscan->proto, target, portscan->port_range.low + index);
+	return fm_protocol_create_port_probe(portscan->proto, target, port);
 }
 
 static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
@@ -565,27 +560,41 @@ static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
 };
 
 fm_scan_action_t *
-fm_scan_action_port_range_scan(fm_protocol_t *proto, unsigned int low_port, unsigned int high_port)
+fm_scan_action_port_scan(fm_protocol_t *proto, unsigned int nranges, const fm_port_range_t *range)
 {
 	struct fm_simple_port_scan *portscan;
+	unsigned int i;
 	char idbuf[128];
 
-	if (low_port == 0 || low_port > high_port || high_port > 65535) {
-		fm_log_error("%s: invalid port range %u-%u", proto, low_port, high_port);
-		return false;
+	if (nranges == 0) {
+		fm_log_error("%s: no port ranges given", proto);
+		return NULL;
 	}
 
-	if (low_port == high_port)
-		snprintf(idbuf, sizeof(idbuf), "%s/%u", proto->ops->name, high_port);
-	else
-		snprintf(idbuf, sizeof(idbuf), "%s/%u-%u", proto->ops->name, low_port, high_port);
+	for (i = 0; i < nranges; ++i) {
+		unsigned int low_port = range[i].first;
+		unsigned int high_port = range[i].last;
+
+		if (low_port == 0 || low_port > high_port || high_port > 65535) {
+			fm_log_error("%s: invalid port range %u-%u", proto, low_port, high_port);
+			return NULL;
+		}
+	}
+
+	snprintf(idbuf, sizeof(idbuf), "portscan/%s", proto->ops->name);
 
 	portscan = (struct fm_simple_port_scan *) fm_scan_action_create(&fm_simple_port_scan_ops, idbuf);
 	portscan->proto = proto;
-	portscan->port_range.low = low_port;
-	portscan->port_range.high = high_port;
 
-	portscan->base.nprobes = high_port - low_port + 1;
+	for (i = 0; i < nranges; ++i) {
+		unsigned int low_port = range[i].first;
+		unsigned int high_port = range[i].last;
+
+		while (low_port <= high_port)
+			fm_uint_array_append(&portscan->ports, low_port++);
+	}
+
+	portscan->base.nprobes = portscan->ports.count;
 
 	return &portscan->base;
 }
