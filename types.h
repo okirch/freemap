@@ -166,6 +166,15 @@ enum {
 };
 
 /*
+ * Internal error codes.
+ * For now, very stupid.
+ */
+typedef enum {
+	FM_SUCCESS = 0,
+	FM_SEND_ERROR = -1,
+} fm_error_t;
+
+/*
  * Representation of errors, and information about a target
  */
 typedef enum {
