@@ -113,17 +113,18 @@ fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 		 * number that we picked. So ignore that in our search for a matching
 		 * probe */
 		ignore_id = true;
-	} else {
+	} else
+	if (pkt->family == AF_INET) {
 		fm_ip_info_t ip;
 
-		/* PF_RAW sockets will always give us the IP header */
+		/* PF_RAW sockets will always give us the IPv4 header.
+		 * Funnily, IPv6 packets always come with the header stripped. */
 		if (!fm_pkt_pull_ip_hdr(pkt, &ip)) {
 			fm_log_debug("%s: bad IP header", proto->ops->name);
 			return false;
 		}
 
-		if (!(pkt->family == AF_INET && ip.ipproto == IPPROTO_ICMP) 
-		 && !(pkt->family == AF_INET6 && ip.ipproto == IPPROTO_ICMPV6)) {
+		if (ip.ipproto != IPPROTO_ICMP)  {
 			fm_log_debug("%s: %s -> %s: unexpected protocol %d", __func__,
 					fm_address_format(&ip.src_addr),
 					fm_address_format(&ip.dst_addr),
