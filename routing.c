@@ -43,6 +43,9 @@
 
 static unsigned int	netlink_seq = 0;
 
+static fm_routing_cache_t *fm_routing_cache_ipv4;
+static fm_routing_cache_t *fm_routing_cache_ipv6;
+
 static void		fm_route_show(fm_route_t *r);
 
 fm_route_t *
@@ -70,6 +73,16 @@ fm_routing_cache_alloc(int af)
 	cache = calloc(1, sizeof(*cache));
 	cache->family = af;
 	return cache;
+}
+
+fm_routing_cache_t *
+fm_routing_cache_for_family(int af)
+{
+	if (af == AF_INET)
+		return fm_routing_cache_ipv4;
+	if (af == AF_INET6)
+		return fm_routing_cache_ipv6;
+	return NULL;
 }
 
 void
@@ -333,11 +346,12 @@ nlattr_get_address(struct nlattr *nla, int af, struct sockaddr_storage *ret)
 }
 
 static bool
-rtnetlink_process_newroute(int af, fm_buffer_t *pkt, fm_route_t **ret_p)
+rtnetlink_process_newroute(fm_buffer_t *pkt, fm_route_t **ret_p)
 {
 	fm_route_t *route;
 	struct nlmsghdr *nh;
 	struct rtmsg *rt;
+	int af;
 
 	*ret_p = NULL;
 
@@ -358,6 +372,8 @@ rtnetlink_process_newroute(int af, fm_buffer_t *pkt, fm_route_t **ret_p)
 			rt->rtm_flags,
 			fm_buffer_available(pkt));
 #endif
+
+	af = rt->rtm_family;
 
 	route = fm_route_alloc(af, rt->rtm_type);
 	route->src.prefix_len = rt->rtm_src_len;
@@ -498,7 +514,9 @@ fm_route_show(fm_route_t *r)
 		printf(" via %s", address_format(&r->gateway));
 	if (r->priority)
 		printf(" priority %u", r->priority);
-	if (r->oif)
+	if (r->interface)
+		printf(" dev %s", fm_interface_get_name(r->interface));
+	else if (r->oif)
 		printf(" oif %u", r->oif);
 	if (r->pref_src_addr.ss_family != AF_UNSPEC)
 		printf(" prefsrc %s", address_format(&r->pref_src_addr));
@@ -506,7 +524,7 @@ fm_route_show(fm_route_t *r)
 }
 
 static bool
-netlink_process_response(fm_routing_cache_t *rtcache, fm_buffer_t *pkt, unsigned int expect_seq, bool *done_p)
+netlink_process_response(fm_buffer_t *pkt, unsigned int expect_seq, bool *done_p)
 {
 	nl_debug("processing netlink response (%u bytes)\n", fm_buffer_available(pkt));
 	while (!*done_p) {
@@ -532,13 +550,20 @@ netlink_process_response(fm_routing_cache_t *rtcache, fm_buffer_t *pkt, unsigned
 		if (nh->nlmsg_type == RTM_NEWROUTE) {
 			fm_route_t *route;
 
-			if (!rtnetlink_process_newroute(rtcache->family, msg, &route)) {
+			if (!rtnetlink_process_newroute(msg, &route)) {
 				fm_buffer_free(msg);
 				return false;
 			}
 
-			if (route != NULL)
-				fm_routing_cache_add(rtcache, route);
+			if (route != NULL) {
+				fm_routing_cache_t *rtcache = NULL;
+
+				rtcache = fm_routing_cache_for_family(route->family);
+				if (rtcache != NULL)
+					fm_routing_cache_add(rtcache, route);
+				else
+					fm_route_free(route);
+			}
 		} else
 		if (nh->nlmsg_type == NLMSG_DONE) {
 			nl_debug("found DONE; done with this request\n");
@@ -561,7 +586,6 @@ netlink_send_dump_request(int fd, int af, int type)
 {
 	fm_buffer_t *pkt;
 	struct nlmsghdr *nh;
-	struct rtmsg *rt;
 	unsigned int seq;
 	bool ok;
 
@@ -569,10 +593,18 @@ netlink_send_dump_request(int fd, int af, int type)
 	memset(pkt->data, 0, pkt->size);
 
 	nh = nlmsg_begin(pkt, type, NLM_F_REQUEST|NLM_F_DUMP);
-	rt = fm_buffer_push(pkt, sizeof(*rt));
-	rt->rtm_family = af;
 
-	nlattr_add_int(pkt, RTA_TABLE, RT_TABLE_MAIN);
+	if (type == RTM_GETROUTE) {
+		struct rtmsg *rt;
+
+		rt = fm_buffer_push(pkt, sizeof(*rt));
+		rt->rtm_family = af;
+
+		nlattr_add_int(pkt, RTA_TABLE, RT_TABLE_MAIN);
+	} else {
+		fm_log_fatal("%s: unsupported rtnetlink request %d", __func__, type);
+	}
+
 	nh->nlmsg_len = fm_buffer_len(pkt, nh);
 
 	/* End with a NUL packet */
@@ -590,15 +622,13 @@ netlink_send_dump_request(int fd, int af, int type)
 }
 
 static bool
-netlink_dump_rt(int fd, fm_routing_cache_t *rtcache)
+netlink_dump(int fd, int type, int af)
 {
 	fm_buffer_t *pkt;
 	bool done = false;
 	unsigned int expect_seq;
 
-	nl_debug("About to dump routes for af=%d\n", rtcache->family);
-
-	expect_seq = netlink_send_dump_request(fd, rtcache->family, RTM_GETROUTE);
+	expect_seq = netlink_send_dump_request(fd, af, type);
 	if (expect_seq == 0)
 		return false;
 
@@ -606,7 +636,7 @@ netlink_dump_rt(int fd, fm_routing_cache_t *rtcache)
 	do {
 		if (!netlink_recv(fd, pkt))
 			break;
-		if (!netlink_process_response(rtcache, pkt, expect_seq, &done))
+		if (!netlink_process_response(pkt, expect_seq, &done))
 			break;
 	} while (!done);
 
@@ -614,55 +644,38 @@ netlink_dump_rt(int fd, fm_routing_cache_t *rtcache)
 	return done;
 }
 
-static fm_routing_cache_t *
-netlink_build_routing_cache(int af)
+static bool
+netlink_dump_rt(int fd, fm_routing_cache_t *rtcache)
 {
-	fm_routing_cache_t *rtcache;
+	nl_debug("About to dump routes for af=%d\n", rtcache->family);
+	return netlink_dump(fd, RTM_GETROUTE, rtcache->family);
+}
+
+static bool
+netlink_build_routing_cache(fm_routing_cache_t *rtcache)
+{
 	bool okay;
 	int fd;
 
 	if ((fd = netlink_open()) < 0)
 		return false;
 
-	rtcache = fm_routing_cache_alloc(af);
-
 	okay = netlink_dump_rt(fd, rtcache);
 	close(fd);
 
-	if (!okay) {
-		fm_routing_cache_free(rtcache);
-		return NULL;
+	if (okay) {
+		fm_routing_cache_attach_interfaces(rtcache);
+		fm_routing_cache_sort(rtcache);
+
+		fm_routing_cache_dump(rtcache);
 	}
 
-	fm_routing_cache_attach_interfaces(rtcache);
-
-	fm_routing_cache_sort(rtcache);
-
-	return rtcache;
+	return okay;
 }
 
-static fm_routing_cache_t *
-fm_routing_cache_for_family(int af)
-{
-	static fm_routing_cache_t *ipv4 = NULL;
-	static fm_routing_cache_t *ipv6 = NULL;
-	fm_routing_cache_t **cache_p;
-
-	if (af == AF_INET)
-		cache_p = &ipv4;
-	else if (af == AF_INET6)
-		cache_p = &ipv6;
-	else
-		return NULL;
-
-	if (*cache_p == NULL) {
-		*cache_p = netlink_build_routing_cache(af);
-		if (*cache_p == NULL)
-			fprintf(stderr, "Error while trying to discover routing table for af %d\n", af);
-	}
-	return *cache_p;
-}
-
+/*
+ * Routing table lookup
+ */
 fm_route_t *
 fm_routing_for_address(const fm_address_t *addr)
 {
@@ -778,8 +791,13 @@ fm_routing_lookup_complete(fm_routing_info_t *rtinfo)
 void
 fm_routing_discover(void)
 {
-	fm_local_discover();
+	if (fm_routing_cache_ipv4 == NULL) {
+		fm_routing_cache_ipv4 = fm_routing_cache_alloc(AF_INET);
+		netlink_build_routing_cache(fm_routing_cache_ipv4);
+	}
 
-	(void) fm_routing_cache_for_family(AF_INET);
-	(void) fm_routing_cache_for_family(AF_INET6);
+	if (fm_routing_cache_ipv6 == NULL) {
+		fm_routing_cache_ipv6 = fm_routing_cache_alloc(AF_INET6);
+		netlink_build_routing_cache(fm_routing_cache_ipv6);
+	}
 }
