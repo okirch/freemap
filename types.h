@@ -134,6 +134,26 @@ typedef struct fm_pkt {
 } fm_pkt_t;
 
 /*
+ * This is used when doing a full routing lookup for PF_PACKET packets.
+ * Fill in dst.network_address and call fm_routing_lookup() to have it
+ * populate everything you need, including link level addresses.
+ *
+ * If neighbor lookup is needed, incomplete_neighbor_entry will be
+ * set. In this case, wait for FM_EVENT_ID_NEIGHBOR_CACHE events and
+ * recheck.
+ */
+typedef struct fm_routing_info {
+	struct {
+		fm_address_t	network_address;
+		fm_address_t	link_address;
+	} src, dst, nh;
+
+	fm_interface_t *	nic;
+
+	fm_neighbor_t *		incomplete_neighbor_entry;
+} fm_routing_info_t;
+
+/*
  * Trivial event mechanism
  */
 enum {
