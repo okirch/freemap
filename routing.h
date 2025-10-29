@@ -64,4 +64,14 @@ typedef struct fm_routing_cache {
 extern fm_interface_t *		fm_interface_alloc(int ifindex, int hatype);
 extern fm_address_prefix_t *	fm_local_address_prefix_create(const fm_address_t *local_address, unsigned int pfxlen, int ifindex);
 
+extern fm_route_t *		fm_route_alloc(int af, int type);
+extern void			fm_route_free(fm_route_t *route);
+extern fm_routing_cache_t *	fm_routing_cache_for_family(int af);
+extern void			fm_routing_cache_add(fm_routing_cache_t *cache, fm_route_t *route);
+
+extern bool			netlink_build_device_cache(void);
+extern bool			netlink_build_address_cache(void);
+extern bool			netlink_build_routing_cache(int af);
+
+
 #endif /* FREEMAP_ROUTING_H */

@@ -1,0 +1,710 @@
+/*
+ * Copyright (C) 2025 Olaf Kirch <okir@suse.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 2.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <unistd.h>
+#include <assert.h>
+
+#include "freemap.h"
+#include "addresses.h"
+#include "routing.h"
+#include "neighbor.h"
+#include "buffer.h"
+#include "utils.h"
+
+#if 0
+# define nl_debug	fm_log_debug
+#else
+# define nl_debug(fmt ...) \
+	do { } while (0)
+#endif
+
+static unsigned int	netlink_seq = 0;
+
+static int
+netlink_open(void)
+{
+	struct sockaddr_nl snl;
+	socklen_t slen;
+	int fd, value;
+
+	fd = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
+	if (fd < 0) {
+		perror("could not create netlink routing socket");
+		return -1;
+	}
+
+	value = 32768;
+	if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &value, 4) < 0) {
+		perror("setsockopt(SO_SNDBUF)");
+		goto failed;
+	}
+
+	value = 1048576;
+	if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &value, 4) < 0) {
+		perror("setsockopt(SO_RCVBUF)");
+		goto failed;
+	}
+
+	value = 1;
+	if (setsockopt(fd, SOL_NETLINK, NETLINK_EXT_ACK, &value, 4) < 0) {
+		perror("setsockopt(NETLINK_EXT_ACK)");
+		goto failed;
+	}
+
+#if 0
+	/* If we set this option, rtnetlink will send us only unicast routes */
+	value = 1;
+	if (setsockopt(fd, SOL_NETLINK, NETLINK_GET_STRICT_CHK, &value, 4) < 0) {
+		perror("setsockopt(NETLINK_GET_STRICT_CHK)");
+		goto failed;
+	}
+#endif
+
+	memset(&snl, 0, sizeof(snl));
+	snl.nl_family = AF_NETLINK;
+	if (bind(fd, (struct sockaddr *) &snl, sizeof(snl)) < 0) {
+		perror("netlink bind");
+		goto failed;
+	}
+
+	slen = sizeof(snl);
+	if (getsockname(fd, (struct sockaddr *) &snl, &slen) < 0) {
+		perror("netlink getsockname");
+		goto failed;
+	}
+
+	while (netlink_seq == 0)
+		netlink_seq = random();
+
+	return fd;
+
+failed:
+	if (fd >= 0)
+		close(fd);
+	return -1;
+}
+
+static bool
+netlink_send(int fd, void *data, size_t len)
+{
+	if (sendto(fd, data, len, 0, NULL, 0) < 0) {
+		perror("netlink sendto failed");
+		return false;
+	}
+	return true;
+}
+
+static bool
+netlink_recv(int fd, fm_buffer_t *pkt)
+{
+	struct sockaddr_nl snl;
+	socklen_t slen = sizeof(snl);
+	unsigned int tailroom;
+	int n;
+
+	/* In case we have some data left from the previous receive */
+	fm_buffer_compact(pkt);
+
+	if ((tailroom = fm_buffer_tailroom(pkt)) == 0) {
+		fm_log_error("Not enough room in receive packet\n");
+		return false;
+	}
+
+	n = recvfrom(fd, pkt->data + pkt->wpos, tailroom, 0, (struct sockaddr *) &snl, &slen);
+	if (n < 0) {
+		perror("recvmsg");
+		return false;
+	}
+
+	pkt->wpos += n;
+
+	assert(pkt->rpos == 0);
+	assert(pkt->wpos == n);
+	return true;
+}
+
+static struct nlmsghdr *
+nlmsg_begin(fm_buffer_t *pkt, int type, int flags)
+{
+	struct nlmsghdr *nh;
+
+	nh = fm_buffer_push(pkt, sizeof(*nh));
+	nh->nlmsg_type = type;
+	nh->nlmsg_flags = flags;
+	nh->nlmsg_seq = netlink_seq++;
+
+	return nh;
+}
+
+static void
+nlattr_add_int(fm_buffer_t *pkt, int type, int value)
+{
+	struct nlattr *nla = fm_buffer_push(pkt, sizeof(*nla) + 4);
+
+	nla->nla_len = sizeof(*nla) + 4;
+	nla->nla_type = type;
+	*(int *) (nla + 1) = value;
+}
+
+static bool
+nlattr_get_byte(struct nlattr *nla, unsigned int *ret)
+{
+	if (nla->nla_len != 5)
+		return false;
+	*ret = *(unsigned char *) (nla + 1);
+	return true;
+}
+
+static bool
+nlattr_get_int(struct nlattr *nla, unsigned int *ret)
+{
+	if (nla->nla_len != 8)
+		return false;
+	*ret = *(int *) (nla + 1);
+	return true;
+}
+
+static bool
+nlattr_get_ipv4(struct nlattr *nla, struct in_addr *ret)
+{
+	if (nla->nla_len != 8)
+		return false;
+	ret->s_addr = *(uint32_t *) (nla + 1);
+	return true;
+}
+
+static bool
+nlattr_get_ipv6(struct nlattr *nla, struct in6_addr *ret)
+{
+	if (nla->nla_len != 20)
+		return false;
+	memcpy(ret, nla + 1, 16);
+	return true;
+}
+
+static bool
+nlattr_get_string(struct nlattr *nla, char **ret)
+{
+	unsigned int len = nla->nla_len - sizeof(*nla);
+	char *value;
+
+	if (len == 0) {
+		*ret = NULL;
+	} else {
+		value = malloc(len + 1);
+		memcpy(value, nla + 1, len);
+		value[len] = '\0';
+	}
+
+	*ret = value;
+	return true;
+}
+
+static bool
+nlattr_get_address(struct nlattr *nla, int af, struct sockaddr_storage *ret)
+{
+	memset(ret, 0, sizeof(*ret));
+	if (af == AF_INET) {
+		struct sockaddr_in *sin = (struct sockaddr_in *) ret;
+
+		sin->sin_family = AF_INET;
+		return nlattr_get_ipv4(nla, &sin->sin_addr);
+	}
+
+	if (af == AF_INET6) {
+		struct sockaddr_in6 *six = (struct sockaddr_in6 *) ret;
+
+		six->sin6_family = AF_INET6;
+		return nlattr_get_ipv6(nla, &six->sin6_addr);
+	}
+
+	return false;
+}
+
+static bool
+nlattr_get_hwaddress(struct nlattr *nla, struct sockaddr_ll *ret)
+{
+	unsigned int alen = nla->nla_len - sizeof(*nla);
+
+	if (alen > sizeof(ret->sll_addr))
+		return false;
+
+	ret->sll_halen = alen;
+	memcpy(ret->sll_addr, (nla + 1), alen);
+
+	return true;
+}
+
+static bool
+rtnetlink_process_newroute(fm_buffer_t *pkt, fm_route_t **ret_p)
+{
+	fm_route_t *route;
+	struct nlmsghdr *nh;
+	struct rtmsg *rt;
+	int af;
+
+	*ret_p = NULL;
+
+	nh = fm_buffer_pull(pkt, sizeof(*nh));
+	if (nh == NULL)
+		return false;
+
+	if (nh->nlmsg_type != RTM_NEWROUTE)
+		return false;
+
+	rt = fm_buffer_pull(pkt, sizeof(*rt));
+
+	af = rt->rtm_family;
+
+	route = fm_route_alloc(af, rt->rtm_type);
+	route->src.prefix_len = rt->rtm_src_len;
+	route->dst.prefix_len = rt->rtm_dst_len;
+
+	if (!fm_address_mask_from_prefixlen(af, route->src.prefix_len, route->src.raw_mask, sizeof(route->src.raw_mask))) {
+		fm_log_error("invalid prefix len");
+		goto failed;
+	}
+
+	if (!fm_address_mask_from_prefixlen(af, route->dst.prefix_len, route->dst.raw_mask, sizeof(route->dst.raw_mask))) {
+		fm_log_error("invalid prefix len");
+		goto failed;
+	}
+
+	while (fm_buffer_available(pkt)) {
+		struct nlattr *nla;
+		bool ok = true;
+
+		if (!(nla = fm_buffer_peek(pkt, sizeof(*nla)))
+		 || fm_buffer_available(pkt) < nla->nla_len) {
+			fm_log_error("truncated rtnetlink attribute\n");
+			goto failed;
+		}
+
+		switch (nla->nla_type) {
+		case RTA_TABLE:
+		case RTA_CACHEINFO:
+		case RTA_PREF:
+			nl_debug("   ignore attr %u len %u\n", nla->nla_type, nla->nla_len);
+			break;
+
+		case RTA_PRIORITY:
+			ok = nlattr_get_int(nla, &route->priority);
+			break;
+
+		case RTA_SRC:
+			ok = nlattr_get_address(nla, af, &route->src.addr);
+			break;
+
+		case RTA_DST:
+			ok = nlattr_get_address(nla, af, &route->dst.addr);
+			break;
+
+		case RTA_OIF:
+			ok = nlattr_get_int(nla, &route->oif);
+			break;
+
+		case RTA_GATEWAY:
+			ok = nlattr_get_address(nla, af, &route->gateway);
+			break;
+
+		case RTA_PREFSRC:
+			ok = nlattr_get_address(nla, af, &route->pref_src_addr);
+			break;
+
+		default:
+			nl_debug("   unexpected attr %u len %u\n", nla->nla_type, nla->nla_len);
+			break;
+		}
+
+		if (!ok) {
+			fm_log_error("failed to parse netlink attribute %u len %u\n",
+					nla->nla_type, nla->nla_len);
+			goto failed;
+		}
+
+		fm_buffer_pull(pkt, (nla->nla_len + 3) & ~3);
+	}
+
+	*ret_p = route;
+	return true;
+
+failed:
+	if (route != NULL)
+		fm_route_free(route);
+	return false;
+}
+
+static bool
+rtnetlink_process_newlink(fm_buffer_t *pkt)
+{
+	struct nlmsghdr *nh;
+	struct ifinfomsg *ifi;
+	fm_interface_t *nic;
+
+	nh = fm_buffer_pull(pkt, sizeof(*nh));
+	if (nh == NULL)
+		return false;
+
+	if (nh->nlmsg_type != RTM_NEWLINK)
+		return false;
+
+	ifi = fm_buffer_pull(pkt, sizeof(*ifi));
+
+	nic = (fm_interface_t *) fm_interface_by_index(ifi->ifi_index);
+	if (true || nic == NULL) {
+		nic = fm_interface_alloc(ifi->ifi_index, ifi->ifi_type);
+		nic->lladdr.sll_family = AF_PACKET;
+		nic->lladdr.sll_hatype = ifi->ifi_type;
+		nic->llbcast.sll_family = AF_PACKET;
+		nic->llbcast.sll_hatype = ifi->ifi_type;
+	}
+
+	nic->ifflags = ifi->ifi_flags;
+
+	while (fm_buffer_available(pkt)) {
+		struct nlattr *nla;
+		bool ok = true;
+
+		if (!(nla = fm_buffer_peek(pkt, sizeof(*nla)))
+		 || fm_buffer_available(pkt) < nla->nla_len) {
+			fm_log_error("truncated rtnetlink attribute\n");
+			goto failed;
+		}
+
+		switch (nla->nla_type) {
+		case IFLA_IFNAME:
+			if (nic->name == NULL)
+				ok = nlattr_get_string(nla, &nic->name);
+			break;
+
+		case IFLA_ADDRESS:
+			ok = nlattr_get_hwaddress(nla, &nic->lladdr);
+			break;
+
+		case IFLA_BROADCAST:
+			ok = nlattr_get_hwaddress(nla, &nic->llbcast);
+			break;
+
+		case IFLA_OPERSTATE:
+			ok = nlattr_get_byte(nla, &nic->operstate);
+			break;
+
+		case IFLA_LINKMODE:
+			ok = nlattr_get_byte(nla, &nic->linkmode);
+			break;
+
+		case IFLA_CARRIER:
+			ok = nlattr_get_byte(nla, &nic->carrier);
+			break;
+
+		default:
+			/* nl_debug("   unexpected attr %u len %u\n", nla->nla_type, nla->nla_len); */
+			break;
+		}
+
+		if (!ok) {
+			fm_log_error("failed to parse netlink attribute %u len %u\n",
+					nla->nla_type, nla->nla_len);
+			goto failed;
+		}
+
+		fm_buffer_pull(pkt, (nla->nla_len + 3) & ~3);
+	}
+
+	return true;
+
+failed:
+	return false;
+}
+
+static bool
+rtnetlink_process_newaddr(fm_buffer_t *pkt)
+{
+	struct nlmsghdr *nh;
+	struct ifaddrmsg *ifa;
+	fm_address_prefix_t *prefix = NULL;
+	int af;
+
+	nh = fm_buffer_pull(pkt, sizeof(*nh));
+	if (nh == NULL)
+		return false;
+
+	if (nh->nlmsg_type != RTM_NEWADDR)
+		return false;
+
+	ifa = fm_buffer_pull(pkt, sizeof(*ifa));
+
+	af = ifa->ifa_family;
+
+	while (fm_buffer_available(pkt)) {
+		struct nlattr *nla;
+		bool ok = true;
+
+		if (!(nla = fm_buffer_peek(pkt, sizeof(*nla)))
+		 || fm_buffer_available(pkt) < nla->nla_len) {
+			fm_log_error("truncated rtnetlink attribute\n");
+			goto failed;
+		}
+
+		if (prefix == NULL && nla->nla_type == IFA_ADDRESS) {
+			fm_address_t address;
+
+			if (!nlattr_get_address(nla, af, &address)) {
+				fm_log_error("cannot extract IFA_ADDRESS");
+				goto failed;
+			}
+
+			prefix = fm_local_address_prefix_create(&address, ifa->ifa_prefixlen, ifa->ifa_index);
+			continue;
+		}
+
+		if (prefix == NULL) {
+			fm_log_error("Expected IFA_ADDRESS as first attribute");
+			goto failed;
+		}
+
+		switch (nla->nla_type) {
+		case IFA_ADDRESS:
+			break;
+
+		case IFA_LOCAL:
+			ok = nlattr_get_address(nla, af, &prefix->source_addr);
+			break;
+
+		case IFA_LABEL:
+			/* ok = nlattr_get_string(nla, &prefix->ifname); */
+			break;
+
+		case IFA_CACHEINFO:
+		case IFA_FLAGS:
+		case IFA_BROADCAST:
+		case IFA_PROTO: /* what is this for?! */
+			break;
+
+		default:
+			nl_debug("   unexpected attr %u len %u\n", nla->nla_type, nla->nla_len);
+			break;
+		}
+
+		if (!ok) {
+			fm_log_error("failed to parse netlink attribute %u len %u\n",
+					nla->nla_type, nla->nla_len);
+			goto failed;
+		}
+
+		fm_buffer_pull(pkt, (nla->nla_len + 3) & ~3);
+	}
+
+	if (prefix != NULL) {
+		fm_log_debug("  %-8s  %s/%u\n",
+				prefix->device? fm_interface_get_name(prefix->device) : prefix->ifname,
+				fm_address_format(&prefix->source_addr), prefix->pfxlen);
+	}
+
+	return true;
+
+failed:
+	return false;
+}
+
+static bool
+netlink_process_response(fm_buffer_t *pkt, unsigned int expect_seq, bool *done_p)
+{
+	nl_debug("processing netlink response (%u bytes)\n", fm_buffer_available(pkt));
+	while (!*done_p) {
+		struct nlmsghdr *nh;
+		fm_buffer_t *msg;
+
+		nh = fm_buffer_peek(pkt, sizeof(*nh));
+		if (nh == NULL || nh->nlmsg_len > fm_buffer_available(pkt))
+			break;
+
+		/* any other rtnetlink message - how come? */
+		if (nh->nlmsg_seq != expect_seq) {
+			fm_log_warning("unexpected sequence %u != %u\n", nh->nlmsg_seq, expect_seq);
+			fm_buffer_pull(pkt, nh->nlmsg_len);
+			continue;
+		}
+
+		nl_debug("nlmsg type=%d len=%u flags=%x\n", nh->nlmsg_type, nh->nlmsg_len, nh->nlmsg_flags);
+
+		/* Create a copy of this nlmsg */
+		msg = fm_buffer_pull_packet(pkt, nh->nlmsg_len);
+
+		if (nh->nlmsg_type == RTM_NEWROUTE) {
+			fm_route_t *route;
+
+			if (!rtnetlink_process_newroute(msg, &route)) {
+				fm_buffer_free(msg);
+				return false;
+			}
+
+			if (route != NULL) {
+				fm_routing_cache_t *rtcache = NULL;
+
+				rtcache = fm_routing_cache_for_family(route->family);
+				if (rtcache != NULL)
+					fm_routing_cache_add(rtcache, route);
+				else
+					fm_route_free(route);
+			}
+		} else
+		if (nh->nlmsg_type == RTM_NEWLINK) {
+			if (!rtnetlink_process_newlink(msg)) {
+				fm_buffer_free(msg);
+				return false;
+			}
+		} else
+		if (nh->nlmsg_type == RTM_NEWADDR) {
+			if (!rtnetlink_process_newaddr(msg)) {
+				fm_buffer_free(msg);
+				return false;
+			}
+		} else
+		if (nh->nlmsg_type == NLMSG_DONE) {
+			nl_debug("found DONE; done with this request\n");
+			*done_p = true;
+		}
+
+		if (!(nh->nlmsg_flags & NLM_F_MULTI)) {
+			nl_debug("one-shot reply; done with this request\n");
+			*done_p = true;
+		}
+
+		fm_buffer_free(msg);
+	}
+
+	return true;
+}
+
+static unsigned int
+netlink_send_dump_request(int fd, int af, int type)
+{
+	fm_buffer_t *pkt;
+	struct nlmsghdr *nh;
+	unsigned int seq;
+	bool ok;
+
+	pkt = fm_buffer_alloc(256);
+	memset(pkt->data, 0, pkt->size);
+
+	nh = nlmsg_begin(pkt, type, NLM_F_REQUEST|NLM_F_DUMP);
+
+	if (type == RTM_GETROUTE) {
+		struct rtmsg *rt;
+
+		rt = fm_buffer_push(pkt, sizeof(*rt));
+		rt->rtm_family = af;
+
+		nlattr_add_int(pkt, RTA_TABLE, RT_TABLE_MAIN);
+	} else
+	if (type == RTM_GETLINK) {
+		struct ifinfomsg *ifi;
+
+		ifi = fm_buffer_push(pkt, sizeof(*ifi));
+		ifi->ifi_family = af;
+
+		nlattr_add_int(pkt, IFLA_EXT_MASK, 9);
+	} else
+	if (type == RTM_GETADDR) {
+		struct ifaddrmsg *ifa;
+
+		ifa = fm_buffer_push(pkt, sizeof(*ifa));
+		ifa->ifa_family = af;
+	} else {
+		fm_log_fatal("%s: unsupported rtnetlink request %d", __func__, type);
+	}
+
+	nh->nlmsg_len = fm_buffer_len(pkt, nh);
+
+	/* End with a NUL packet */
+	nlmsg_begin(pkt, 0, 0);
+
+	ok = netlink_send(fd, pkt->data, pkt->wpos);
+	seq = nh->nlmsg_seq;
+
+	fm_buffer_free(pkt);
+
+	if (!ok)
+		return 0;
+
+	return seq;
+}
+
+static bool
+netlink_dump(int fd, int type, int af)
+{
+	fm_buffer_t *pkt;
+	bool done = false;
+	unsigned int expect_seq;
+
+	expect_seq = netlink_send_dump_request(fd, af, type);
+	if (expect_seq == 0)
+		return false;
+
+	pkt = fm_buffer_alloc(65536);
+	do {
+		if (!netlink_recv(fd, pkt))
+			break;
+		if (!netlink_process_response(pkt, expect_seq, &done))
+			break;
+	} while (!done);
+
+	fm_buffer_free(pkt);
+	return done;
+}
+
+static bool
+netlink_dump_work(int type, int af)
+{
+	bool okay = false;
+	int fd;
+
+	if ((fd = netlink_open()) >= 0) {
+		okay = netlink_dump(fd, type, af);
+		close(fd);
+	}
+
+	return okay;
+}
+
+bool
+netlink_build_device_cache(void)
+{
+	return netlink_dump_work(RTM_GETLINK, AF_UNSPEC);
+}
+
+bool
+netlink_build_address_cache(void)
+{
+	return netlink_dump_work(RTM_GETADDR, AF_UNSPEC);
+}
+
+bool
+netlink_build_routing_cache(int af)
+{
+	return netlink_dump_work(RTM_GETROUTE, af);
+}
