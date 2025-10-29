@@ -356,6 +356,23 @@ fm_arp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const struct
 	return &probe->base;
 }
 
+bool
+fm_arp_discover(fm_protocol_t *proto, fm_target_t *target, int retries)
+{
+	struct arp_host_probe_params params;
+	fm_probe_t *probe;
+
+	memset(&params, 0, sizeof(params));
+	params.retries = retries? : FM_ARP_PROBE_RETRIES;
+
+	probe = fm_arp_create_host_probe(proto, target, &params);
+	if (probe == NULL)
+		return false;
+
+	fm_target_send_probe(target, probe);
+	return true;
+}
+
 int
 fm_arp_probe_original_ifindex(const fm_probe_t *probe)
 {

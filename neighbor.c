@@ -25,6 +25,8 @@
 
 #include "freemap.h"
 #include "neighbor.h"
+#include "protocols.h"
+#include "target.h" /* for fm_target_pool_find */
 #include "utils.h"
 
 typedef struct fm_completion	fm_completion_t;
@@ -62,6 +64,16 @@ fm_neighbor_create(const fm_address_t *net_addr)
 	neigh->state = FM_NEIGHBOR_LARVAL;
 	neigh->network_address = *net_addr;
 	return neigh;
+}
+
+bool
+fm_neighbor_get_link_address(const fm_neighbor_t *neigh, fm_address_t *link_address)
+{
+	if (neigh->state == FM_NEIGHBOR_LARVAL)
+		return false;
+
+	*link_address = neigh->link_address;
+	return true;
 }
 
 fm_neighbor_cache_t *
@@ -117,8 +129,68 @@ fm_neighbor_cache_update(fm_neighbor_cache_t *cache, const fm_address_t *network
 	} else if (neigh->state == FM_NEIGHBOR_LARVAL)
 		neigh->state = FM_NEIGHBOR_INVALID;
 
-	/* TBD: inform any probes that were waiting for this to be resolved */
+	/* inform any probes that were waiting for this to be resolved */
+	fm_event_post(FM_EVENT_ID_NEIGHBOR_CACHE);
 
 	return true;
 }
 
+/*
+ * Neighbor discovery
+ */
+static bool
+fm_neighbor_initiate_arp(const fm_address_t *network_address)
+{
+	fm_protocol_engine_t *engine;
+	fm_target_t *target;
+	fm_protocol_t *proto;
+
+	target = fm_target_pool_find(network_address);
+	if (target == NULL) {
+		/* We need to handle the case of local routers which may not be a scan target */
+		fm_log_error("%s: not a scan target", fm_address_format(network_address));
+		return false;
+	}
+
+	engine = fm_protocol_engine_create_default();
+	assert(engine != NULL);
+
+	proto = fm_protocol_engine_get_protocol(engine, "arp");
+	if (proto == NULL) {
+		fm_log_error("ARP protocol not available (possibly due to insufficient privilege)");
+		return false;
+	}
+
+	if (!fm_arp_discover(proto, target, 0)) {
+		fm_log_error("%s: unable to create ARP probe", fm_address_format(network_address));
+		return false;
+	}
+
+	return true;
+}
+
+static bool
+fm_neighbor_initiate_ipv6_ndisc(const fm_address_t *network_address)
+{
+	fm_log_error("%s: not yet implemented", __func__);
+	return false;
+}
+
+bool
+fm_neighbor_initiate_discovery(fm_neighbor_t *neigh)
+{
+	/* Why did you call me? Now you have to go the long way round... */
+	if (neigh->state == FM_NEIGHBOR_VALID) {
+		fm_log_warning("A fool is searching for gold.");
+		fm_event_post(FM_EVENT_ID_NEIGHBOR_CACHE);
+		return true;
+	}
+
+	if (neigh->network_address.ss_family == AF_INET)
+		return fm_neighbor_initiate_arp(&neigh->network_address);
+
+	if (neigh->network_address.ss_family == AF_INET6)
+		return fm_neighbor_initiate_ipv6_ndisc(&neigh->network_address);
+
+	return false;
+}
