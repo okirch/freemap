@@ -321,7 +321,7 @@ fm_protocol_create_socket(fm_protocol_t *proto, int ipproto)
 		return NULL;
 	sock = proto->ops->create_socket(proto, ipproto);
 
-	if (sock->proto == NULL) {
+	if (sock && sock->proto == NULL) {
 		fm_log_warning("protocol driver %s forgot to attach itself to new socket", proto->ops->name);
 		fm_socket_attach_protocol(sock, proto);
 	}
