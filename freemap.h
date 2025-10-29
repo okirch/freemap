@@ -43,7 +43,6 @@ extern void		fm_address_enumerator_destroy(fm_address_enumerator_t *);
 extern const char *	fm_address_format(const fm_address_t *);
 extern bool		fm_address_equal(const fm_address_t *, const fm_address_t *, bool with_port);
 
-extern void		fm_local_discover(void);
 extern void		fm_routing_discover(void);
 extern fm_network_t *	fm_network_for_host(const fm_address_t *);
 extern bool		fm_routing_lookup(fm_routing_info_t *);

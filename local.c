@@ -17,7 +17,6 @@
 
 #include <sys/socket.h>
 #include <net/if.h>
-#include <ifaddrs.h>
 #include <linux/if_packet.h>
 #include <netinet/in.h>
 #include <string.h>
@@ -298,39 +297,8 @@ fm_address_prefix_array_append(fm_address_prefix_array_t *array, const fm_addres
 }
 
 /*
- * Discovery of local addresses
+ * Handling of local address prefixes
  */
-/* should probably go to address.c */
-unsigned int
-fm_address_mask_to_prefixlen(const struct sockaddr *mask)
-{
-	const unsigned char *raw_mask;
-	unsigned int pfxlen = 0, addr_bits;
-
-	if (mask == NULL)
-		return 0;
-
-	raw_mask = fm_address_get_raw_addr((struct sockaddr_storage *) mask, &addr_bits);
-	if (raw_mask == 0)
-		return 0;
-
-	for (pfxlen = 0; pfxlen < addr_bits; pfxlen += 8) {
-		unsigned char octet = *raw_mask++;
-
-		if (octet == 0xFF)
-			continue;
-
-		while (octet & 0x80) {
-			octet <<= 1;
-			pfxlen++;
-		}
-		break;
-	}
-
-	return pfxlen;
-}
-
-/* should probably go to address.c */
 bool
 fm_address_mask_from_prefixlen(int af, unsigned int pfxlen, unsigned char *mask, unsigned int size)
 {
@@ -382,72 +350,4 @@ fm_local_address_prefix_create(const fm_address_t *local_address, unsigned int p
 	}
 
 	return entry;
-}
-
-void
-fm_local_discover(void)
-{
-	static bool initialized = false;
-	struct ifaddrs *head, *ifa;
-	unsigned int i;
-
-	if (initialized)
-		return;
-	initialized = true;
-
-	if (getifaddrs(&head) < 0)
-		fm_log_fatal("getifaddrs: %m");
-
-	fm_log_debug("Discovering local interfaces and addresses");
-
-	for (ifa = head; ifa; ifa = ifa->ifa_next) {
-		fm_address_prefix_t *entry;
-		const char *state = "down";
-		unsigned int pfxlen = 0;
-
-		if (ifa->ifa_flags & IFF_LOOPBACK)
-			state = "loop";
-		else
-		if (ifa->ifa_flags & IFF_UP)
-			state = "up";
-
-		if (ifa->ifa_flags & IFF_POINTOPOINT) {
-			/* skip for now */
-			continue;
-		}
-
-		if (ifa->ifa_netmask) {
-			pfxlen = fm_address_mask_to_prefixlen(ifa->ifa_netmask);
-
-			/* The loopback "network" is really just a single address */
-			if (ifa->ifa_flags & IFF_LOOPBACK)
-				pfxlen = fm_addrfamily_max_addrbits(ifa->ifa_addr->sa_family);
-
-			fm_log_debug("  %-8s %4s %s/%u\n", ifa->ifa_name, state,
-					fm_address_format((fm_address_t *) ifa->ifa_addr), pfxlen);
-		} else {
-			fm_log_debug("  %-8s %4s %s\n", ifa->ifa_name, state,
-					fm_address_format((fm_address_t *) ifa->ifa_addr));
-		}
-
-		if (ifa->ifa_addr->sa_family == AF_PACKET) {
-			fm_interface_add(ifa->ifa_name,
-						(const struct sockaddr_ll *) ifa->ifa_addr);
-		} else {
-			entry = fm_local_address_prefix_create((fm_address_t *) ifa->ifa_addr, pfxlen, 0);
-			entry->ifname = strdup(ifa->ifa_name);
-		}
-	}
-
-	freeifaddrs(head);
-
-	for (i = 0; i < fm_local_address_prefixes.count; ++i) {
-		fm_address_prefix_t *entry = &fm_local_address_prefixes.elements[i];
-
-		if (entry->ifname == NULL)
-			continue;
-
-		entry->device = fm_interface_by_name(entry->ifname);
-		entry->ifindex = entry->device->ifindex;
-	}
 }
