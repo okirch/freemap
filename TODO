@@ -1,4 +1,3 @@
- * replace getifaddrs with netlink
  * reduce the zoo of types (exec steps vs actions vs probe). The current
    implementation is too complex, and many settings are evaluated too late for
    timely error reporting.
@@ -7,7 +6,6 @@
  * have a "local" address enumerator that loops through all local networks
  * improve on the netid idea
  * use traceroute probes to detect network topo and seed RTT estimates?
- * implement PF_RAW sockets
  * perform send rate limiting based on class C networks so that we're
    not running into gateway ICMP rate limit problems with unreachable
    hosts.
