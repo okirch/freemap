@@ -98,7 +98,7 @@ extern fm_protocol_t *	fm_protocol_engine_get_protocol(fm_protocol_engine_t *, c
 extern fm_protocol_t *	fm_protocol_create(const struct fm_protocol_ops *ops);
 extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);
 extern fm_probe_t *	fm_protocol_create_host_probe(fm_protocol_t *, fm_target_t *, unsigned int);
-extern fm_probe_t *	fm_protocol_create_port_probe(fm_protocol_t *, fm_target_t *, uint16_t);
+extern fm_probe_t *	fm_protocol_create_port_probe(fm_protocol_t *, fm_target_t *, uint16_t, const fm_probe_params_t *);
 extern fm_socket_t *	fm_protocol_create_host_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 
 #define FM_PROTOCOL_REGISTER(ops) \

@@ -284,12 +284,16 @@ fm_protocol_attach_rtt_estimator(fm_protocol_t *proto, fm_target_t *target, fm_p
  * Create host/port probes
  */
 fm_probe_t *
-fm_protocol_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port)
+fm_protocol_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t port, const fm_probe_params_t *caller_params)
 {
 	fm_probe_t *probe = NULL;
 
 	if (proto->ops->create_parameterized_probe != NULL) {
-		fm_probe_params_t params = { .port = port };
+		fm_probe_params_t params;
+
+		if (caller_params != NULL)
+			params = *caller_params;
+		params.port = port;
 
 		if (!fm_protocol_supports_param(proto, FM_PARAM_TYPE_PORT)) {
 			fm_log_error("%s probe does not support port parameter", proto->ops->name);
@@ -299,6 +303,10 @@ fm_protocol_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_
 		probe = proto->ops->create_parameterized_probe(proto, target, &params);
 	} else
 	if (proto->ops->create_port_probe != NULL) {
+		if (caller_params != NULL) {
+			fm_log_error("create_port_probe() does not support params");
+			return NULL;
+		}
 		probe = proto->ops->create_port_probe(proto, target, port);
 	} else {
 		fm_log_error("protocol %s cannot create a port probe\n", proto->ops->name);

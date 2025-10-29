@@ -26,7 +26,8 @@
 #include "utils.h"
 
 
-static fm_scan_action_t *	fm_scan_action_port_scan(fm_protocol_t *proto, unsigned int nranges, const fm_port_range_t *range, bool randomize);
+static fm_scan_action_t *	fm_scan_action_port_scan(fm_protocol_t *proto, const fm_probe_params_t *,
+					unsigned int nranges, const fm_port_range_t *range, bool randomize);
 static fm_scan_action_t *	fm_scan_action_reachability_check(void);
 
 static inline void
@@ -402,11 +403,18 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, int 
 	fm_string_array_t proto_args;
 	fm_protocol_t *proto;
 	bool randomize = false;
+	fm_probe_params_t params;
 
 	memset(&proto_args, 0, sizeof(proto_args));
 
+	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
+		fm_log_error("No protocol engine for protocol id %s port scan\n", protocol_name);
+		return NULL;
+	}
+
 	for (i = 0; i < args->count; ++i) {
 		const char *arg = args->entries[i];
+		fm_param_type_t param_type = FM_PARAM_TYPE_NONE;
 
 		if (isdigit(*arg)) {
 			fm_port_range_t *r;
@@ -422,22 +430,29 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, int 
                                 fm_log_error("Unable to parse port range \"%s\"", arg);
                                 return NULL;
                         }
+		} else if (fm_parse_numeric_argument(arg, "retries", &params.retries)) {
+			param_type = FM_PARAM_TYPE_RETRIES;
+		} else if (fm_parse_numeric_argument(arg, "ttl", &params.ttl)) {
+			param_type = FM_PARAM_TYPE_TTL;
+		} else if (fm_parse_numeric_argument(arg, "tos", &params.tos)) {
+			param_type = FM_PARAM_TYPE_TOS;
 		} else if (!strcmp(arg, "random")) {
 			randomize = true;
 		} else {
 			fm_string_array_append(&proto_args, arg);
+		}
+
+		if (param_type != FM_PARAM_TYPE_NONE
+		 && !fm_protocol_supports_param(proto, param_type)) {
+			fm_log_error("protocol %s does not support parameter %s", proto->ops->name, arg);
+			return NULL;
 		}
 	}
 
 	if (nranges == 0)
 		fm_log_error("Port scan call does not specify any ports to scan");
 
-	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
-		fm_log_error("No protocol engine for protocol id %s port scan\n", protocol_name);
-		return NULL;
-	}
-
-	if (!(action = fm_scan_action_port_scan(proto, nranges, ranges, randomize)))
+	if (!(action = fm_scan_action_port_scan(proto, &params, nranges, ranges, randomize)))
 		return NULL;
 
 	action->flags |= flags;
@@ -485,6 +500,7 @@ struct fm_simple_port_scan {
 
 	fm_protocol_t *		proto;
 	fm_uint_array_t		ports;
+	fm_probe_params_t	params;
 };
 
 static fm_probe_t *
@@ -496,7 +512,7 @@ fm_simple_port_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *
 	if ((port = fm_uint_array_get(&portscan->ports, index)) < 0)
 		return NULL;
 
-	return fm_protocol_create_port_probe(portscan->proto, target, port);
+	return fm_protocol_create_port_probe(portscan->proto, target, port, &portscan->params);
 }
 
 static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
@@ -505,7 +521,7 @@ static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
 };
 
 fm_scan_action_t *
-fm_scan_action_port_scan(fm_protocol_t *proto, unsigned int nranges, const fm_port_range_t *range, bool randomize)
+fm_scan_action_port_scan(fm_protocol_t *proto, const fm_probe_params_t *params, unsigned int nranges, const fm_port_range_t *range, bool randomize)
 {
 	struct fm_simple_port_scan *portscan;
 	unsigned int i;
@@ -530,6 +546,7 @@ fm_scan_action_port_scan(fm_protocol_t *proto, unsigned int nranges, const fm_po
 
 	portscan = (struct fm_simple_port_scan *) fm_scan_action_create(&fm_simple_port_scan_ops, idbuf);
 	portscan->proto = proto;
+	portscan->params = *params;
 
 	for (i = 0; i < nranges; ++i) {
 		unsigned int low_port = range[i].first;
