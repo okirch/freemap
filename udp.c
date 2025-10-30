@@ -40,9 +40,10 @@ static struct fm_protocol_ops	fm_udp_bsdsock_ops = {
 	.name		= "udp",
 	.id		= FM_PROTO_UDP,
 
-	.supported_parameters = 
+	.supported_parameters =
 			  FM_PROBE_PARAM_MASK(PORT) |
-//			  FM_PROBE_PARAM_MASK(TTL) |
+			  FM_PROBE_PARAM_MASK(TTL) |
+			  FM_PROBE_PARAM_MASK(TOS) |
 			  FM_PROBE_PARAM_MASK(RETRIES),
 
 	.create_socket	= fm_udp_create_bsd_socket,
@@ -247,20 +248,25 @@ fm_udp_port_probe_destroy(fm_probe_t *probe)
 	}
 }
 
-static fm_buffer_t *
-fm_udp_build_packet(unsigned int port)
+static fm_pkt_t *
+fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port)
 {
 	fm_wellknown_service_t *wks;
-	fm_buffer_t *bp;
+	fm_pkt_t *pkt;
+
+	pkt = fm_pkt_alloc(dstaddr->ss_family, 0);
+	pkt->peer_addr = *dstaddr;
 
 	/* Check if we can guess a well-known service */
-	if ((wks = fm_wellknown_service_for_port("udp", port)) != NULL)
-		return fm_wellknown_service_build_packet(wks);
+	if ((wks = fm_wellknown_service_for_port("udp", port)) != NULL) {
+		pkt->payload = fm_wellknown_service_build_packet(wks);
+	} else {
+		/* If we can't guess the UDP service, send a single NUL byte as payload. */
+		pkt->payload = fm_buffer_alloc(16);
+		fm_buffer_append(pkt->payload, "", 1);
+	}
 
-	/* If we can't guess the UDP service, send a single NUL byte as payload. */
-	bp = fm_buffer_alloc(16);
-	fm_buffer_append(bp, "", 1);
-	return bp;
+	return pkt;
 }
 
 static fm_error_t
@@ -268,7 +274,7 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 {
 	struct fm_udp_port_probe *udp = (struct fm_udp_port_probe *) probe;
 	fm_socket_t *sock;
-	fm_buffer_t *bp;
+	fm_pkt_t *pkt;
 
 	if (udp->use_connected_socket) {
 		udp->sock = fm_udp_create_connected_socket(probe->proto, &udp->host_address);
@@ -283,15 +289,15 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 		return FM_SEND_ERROR;
 	}
 
-	bp = fm_udp_build_packet(udp->params.port);
+	pkt = fm_udp_build_packet(&udp->host_address, udp->params.port);
 
-	if (!fm_socket_send_buffer(sock, &udp->host_address, bp)) {
+	/* apply ttl, tos etc */
+	fm_pkt_apply_probe_params(pkt, &udp->params, probe->proto->ops->supported_parameters);
+
+	if (!fm_socket_send_pkt_and_burn(sock, pkt)) {
 		fm_log_error("Unable to send UDP packet: %m");
-		fm_buffer_free(bp);
 		return FM_SEND_ERROR;
 	}
-
-	fm_buffer_free(bp);
 
 	fm_udp_expect_response(probe, udp->host_address.ss_family, udp->params.port);
 
