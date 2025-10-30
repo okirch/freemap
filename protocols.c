@@ -318,16 +318,20 @@ fm_protocol_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_
 }
 
 fm_probe_t *
-fm_protocol_create_host_probe(fm_protocol_t *proto, fm_target_t *target, unsigned int retries)
+fm_protocol_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params)
 {
-	fm_probe_t *probe;
+	fm_probe_t *probe = NULL;
 
-	if (proto->ops->create_host_probe == NULL) {
-		fprintf(stderr, "Error: protocol %s cannot create a host probe\n", proto->ops->name);
-		return NULL;
+	if (proto->ops->create_parameterized_probe != NULL) {
+		probe = proto->ops->create_parameterized_probe(proto, target, params);
+	} else
+	if (proto->ops->create_host_probe != NULL) {
+		probe = proto->ops->create_host_probe(proto, target, params? params->retries : 0);
+	} else {
+		fm_log_error("Error: protocol %s cannot create a host probe\n", proto->ops->name);
 	}
 
-	if ((probe = proto->ops->create_host_probe(proto, target, retries)) != NULL)
+	if (probe != NULL)
 		fm_protocol_attach_rtt_estimator(proto, target, probe);
 	return probe;
 }

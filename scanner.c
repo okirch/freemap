@@ -26,6 +26,7 @@
 #include "utils.h"
 
 
+static fm_scan_action_t *	fm_host_scan_action_create(fm_protocol_t *proto, const fm_probe_params_t *params);
 static fm_scan_action_t *	fm_scan_action_port_scan(fm_protocol_t *proto, const fm_probe_params_t *,
 					unsigned int nranges, const fm_port_range_t *range, bool randomize);
 static fm_scan_action_t *	fm_scan_action_reachability_check(void);
@@ -328,7 +329,7 @@ fm_dummy_probe_validate(fm_scan_action_t *action, fm_target_t *target)
 	return false;
 }
 
-static const struct fm_scan_action_ops	fm_arp_host_scan_ops = {
+static const struct fm_scan_action_ops	fm_dummy_host_scan_ops = {
 	.obj_size	= sizeof(fm_scan_action_t),
 	.validate	= fm_dummy_probe_validate,
 };
@@ -338,7 +339,7 @@ fm_scanner_add_dummy_probe(void)
 {
 	fm_scan_action_t *action;
 
-	action = fm_scan_action_create(&fm_arp_host_scan_ops, "dummy");
+	action = fm_scan_action_create(&fm_dummy_host_scan_ops, "dummy");
 	action->nprobes = 0;
 	return action;
 }
@@ -346,6 +347,62 @@ fm_scanner_add_dummy_probe(void)
 /*
  * Reachability probe
  */
+static fm_scan_action_t *
+fm_scanner_create_host_probe(fm_scanner_t *scanner, fm_protocol_t *proto, const fm_string_array_t *args)
+{
+	fm_scan_action_t *action;
+	fm_probe_params_t params;
+	fm_string_array_t proto_args;
+	unsigned int i;
+
+	memset(&params, 0, sizeof(params));
+	memset(&proto_args, 0, sizeof(proto_args));
+
+	/* If the protocol wants to handle all options itself, let it. */
+	if (proto->ops->create_host_probe_action != NULL)
+		return proto->ops->create_host_probe_action(proto, args);
+
+	for (i = 0; i < args->count; ++i) {
+		const char *arg = args->entries[i];
+		fm_param_type_t param_type = FM_PARAM_TYPE_NONE;
+
+		if (fm_parse_numeric_argument(arg, "retries", &params.retries)) {
+			param_type = FM_PARAM_TYPE_RETRIES;
+		} else if (fm_parse_numeric_argument(arg, "ttl", &params.ttl)) {
+			param_type = FM_PARAM_TYPE_TTL;
+		} else if (fm_parse_numeric_argument(arg, "tos", &params.tos)) {
+			param_type = FM_PARAM_TYPE_TOS;
+		} else {
+			fm_string_array_append(&proto_args, arg);
+		}
+
+		if (param_type != FM_PARAM_TYPE_NONE
+		 && !fm_protocol_supports_param(proto, param_type)) {
+			fm_log_error("protocol %s does not support parameter %s", proto->ops->name, arg);
+			return NULL;
+		}
+	}
+
+	action = fm_host_scan_action_create(proto, &params);
+
+	if (proto->ops->finalize_action != NULL) {
+		if (!proto->ops->finalize_action(proto, action, &proto_args)) {
+			/* FIXME: memory leak: we should free action */
+			return NULL;
+		}
+	} else
+	if (proto_args.count != 0) {
+		fm_log_error("found %u unrecognized parameters in host probe for %s", proto_args.count, proto->ops->name);
+		fm_string_array_destroy(&proto_args);
+		/* FIXME: memory leak: we should free action */
+		return NULL;
+	}
+
+	assert(action->nprobes >= 1);
+
+	return action;
+}
+
 fm_scan_action_t *
 fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name, int flags, const fm_string_array_t *args)
 {
@@ -361,20 +418,15 @@ fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name, int 
 		fm_log_debug("Ignoring optional %s host probe - creating dummy action", protocol_name);
 		action = fm_scanner_add_dummy_probe();
 	} else {
-		if (proto->ops->create_host_probe_action == NULL) {
-			fm_log_error("Cannot create host probe: protocol driver %s does not support host probes\n", protocol_name);
-			return NULL;
-		}
-
-		if (!(action = proto->ops->create_host_probe_action(proto, args)))
-			return NULL;
-
-		assert(action->nprobes >= 1);
+		action = fm_scanner_create_host_probe(scanner, proto, args);
 	}
 
-	action->flags |= flags;
+	if (action != NULL) {
+		action->flags |= flags;
 
-	fm_scan_action_array_append(&scanner->requests, action);
+		fm_scan_action_array_append(&scanner->requests, action);
+	}
+
 	return action;
 }
 
@@ -406,6 +458,7 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, int 
 	fm_probe_params_t params;
 
 	memset(&proto_args, 0, sizeof(proto_args));
+	memset(&params, 0, sizeof(proto_args));
 
 	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
 		fm_log_error("No protocol engine for protocol id %s port scan\n", protocol_name);
@@ -562,4 +615,38 @@ fm_scan_action_port_scan(fm_protocol_t *proto, const fm_probe_params_t *params, 
 	portscan->base.nprobes = portscan->ports.count;
 
 	return &portscan->base;
+}
+
+/*
+ * Host reachability probe
+ */
+static fm_probe_t *
+fm_host_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *target, unsigned int index)
+{
+	if (index != 0)
+		return NULL;
+
+	return fm_protocol_create_host_probe(action->proto, target, &action->probe_params);
+}
+
+static const struct fm_scan_action_ops	fm_host_scan_ops = {
+	.obj_size	= sizeof(fm_scan_action_t),
+	.get_next_probe	= fm_host_scan_get_next_probe,
+};
+
+fm_scan_action_t *
+fm_host_scan_action_create(fm_protocol_t *proto, const fm_probe_params_t *params)
+{
+	fm_scan_action_t *action;
+	char idbuf[128];
+
+	snprintf(idbuf, sizeof(idbuf), "hostscan/%s", proto->ops->name);
+
+	action = fm_scan_action_create(&fm_host_scan_ops, idbuf);
+	action->proto = proto;
+	action->probe_params = *params;
+
+	action->nprobes = 1;
+
+	return action;
 }

@@ -53,6 +53,11 @@ struct fm_scan_action {
 		bool		(*validate)(fm_scan_action_t *, fm_target_t *);
 		fm_probe_t *	(*get_next_probe)(const fm_scan_action_t *, fm_target_t *, unsigned int);
 	} *ops;
+
+	/* The following bits are protocol specific. */
+	fm_protocol_t *		proto;
+	fm_probe_params_t	probe_params;
+	void *			extra_params;
 };
 
 typedef struct fm_scan_action_array {
