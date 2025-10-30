@@ -143,8 +143,9 @@ typedef struct fm_socket_timestamp {
 } fm_socket_timestamp_t;
 
 typedef struct fm_pkt_info {
-	fm_socket_timestamp_t	recv_time;
-	int			recv_ttl;
+	fm_socket_timestamp_t	timestamp;
+	int			ttl;
+	int			tos;
 
 	int			error_class;
 

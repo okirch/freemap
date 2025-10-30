@@ -381,7 +381,7 @@ fm_extant_free(fm_extant_t *extant)
 
 /*
  * Process the verdict on an extant packet.
- * If the kernel did not give us a timestamp via SO_TIMESTAMP, recv_time will be
+ * If the kernel did not give us a timestamp via SO_TIMESTAMP, the packet's timetstamp will be
  * unset. In this case, fm_timestamp_delta() will just use the current wall time
  * instead.
  */

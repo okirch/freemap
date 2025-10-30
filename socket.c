@@ -194,7 +194,7 @@ fm_pkt_rtt(const fm_pkt_t *pkt, const fm_socket_timestamp_t *send_ts)
 		return -1;
 
 	if (pkt != NULL)
-		recv = &pkt->info.recv_time.when;
+		recv = &pkt->info.timestamp.when;
 
 	if (!recv || !timerisset(recv)) {
 		gettimeofday(&now, NULL);
@@ -408,11 +408,11 @@ fm_process_cmsg(struct fm_recv_data *rd, fm_pkt_info_t *info)
 		void *ptr = CMSG_DATA(cm);
 
 		if (cm->cmsg_level == SOL_SOCKET && cm->cmsg_type == SO_TIMESTAMP) {
-			info->recv_time.when = *(struct timeval *) ptr;
+			info->timestamp.when = *(struct timeval *) ptr;
 		} else
 		if ((cm->cmsg_level == SOL_IP && cm->cmsg_type == IP_TTL)
 		 || (cm->cmsg_level == SOL_IPV6 && cm->cmsg_type == IPV6_HOPLIMIT)) {
-			info->recv_ttl = *((int *) ptr);
+			info->ttl = *((int *) ptr);
 		} else
 		if ((cm->cmsg_level == SOL_IP && cm->cmsg_type == IP_RECVERR)
 		 || (cm->cmsg_level == SOL_IPV6 && cm->cmsg_type == IPV6_RECVERR)) {
