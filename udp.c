@@ -196,9 +196,10 @@ struct udp_extant_info {
 };
 
 static bool
-fm_udp_expect_response(fm_probe_t *probe, int af, unsigned int port)
+fm_udp_expect_response(const fm_udp_request_t *udp, fm_probe_t *probe)
 {
-	struct udp_extant_info info = { .port = port };
+	struct udp_extant_info info = { .port = udp->params.port };
+	int af = udp->host_address.ss_family;
 
 	fm_extant_alloc(probe, af, IPPROTO_UDP, &info, sizeof(info));
 	return true;
@@ -278,17 +279,6 @@ fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 /*
  * UDP port probes using standard BSD sockets
  */
-static void
-fm_udp_port_probe_destroy(fm_probe_t *probe)
-{
-	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
-
-	if (udp != NULL) {
-		fm_udp_request_free(udp);
-		fm_udp_probe_set_request(probe, NULL);
-	}
-}
-
 static fm_pkt_t *
 fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port)
 {
@@ -310,10 +300,13 @@ fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port)
 	return pkt;
 }
 
+/*
+ * Send the udp request.
+ * The probe argument is only here because we need to notify it when done.
+ */
 static fm_error_t
-fm_udp_port_probe_send(fm_probe_t *probe)
+fm_udp_request_send(fm_udp_request_t *udp, fm_probe_t *probe)
 {
-	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
 	fm_socket_t *sock;
 	fm_pkt_t *pkt;
 
@@ -340,12 +333,37 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 		return FM_SEND_ERROR;
 	}
 
-	fm_udp_expect_response(probe, udp->host_address.ss_family, udp->params.port);
+	fm_udp_expect_response(udp, probe);
 
 	/* update the asset state */
-	fm_target_update_port_state(probe->target, FM_PROTO_UDP, udp->params.port, FM_ASSET_STATE_PROBE_SENT);
+	fm_target_update_port_state(udp->target, FM_PROTO_UDP, udp->params.port, FM_ASSET_STATE_PROBE_SENT);
 
 	return 0;
+}
+
+/*
+ * Probe destructor
+ */
+static void
+fm_udp_port_probe_destroy(fm_probe_t *probe)
+{
+	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
+
+	if (udp != NULL) {
+		fm_udp_request_free(udp);
+		fm_udp_probe_set_request(probe, NULL);
+	}
+}
+
+/*
+ * Send the probe.
+ */
+static fm_error_t
+fm_udp_port_probe_send(fm_probe_t *probe)
+{
+	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
+
+	return fm_udp_request_send(udp, probe);
 }
 
 /*
