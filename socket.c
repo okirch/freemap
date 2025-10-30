@@ -387,6 +387,7 @@ fm_sendmsg_prepare(const fm_address_t *dest_addr, fm_buffer_t *payload, int flag
 
 	rd = calloc(1, sizeof(*rd));
 	if (dest_addr && dest_addr->ss_family != AF_UNSPEC) {
+		rd->peer_addr = *dest_addr;
 		rd->msg.msg_name = &rd->peer_addr;
 		rd->msg.msg_namelen = sizeof(rd->peer_addr);
 	}
