@@ -34,6 +34,7 @@ typedef struct fm_udp_request {
 	fm_target_t *		target;
 	fm_socket_t *		sock;
 
+	int			family;
 	fm_address_t		host_address;
 	fm_probe_params_t	params;
 
@@ -42,6 +43,10 @@ typedef struct fm_udp_request {
 	 */
 	bool			use_connected_socket;
 } fm_udp_request_t;
+
+typedef struct fm_udp_extant_info {
+	unsigned int		port;
+} fm_udp_extant_info_t;
 
 static fm_socket_t *	fm_udp_create_bsd_socket(fm_protocol_t *proto, int af);
 static fm_socket_t *	fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);
@@ -170,12 +175,12 @@ fm_udp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_p
 		return NULL;
 	}
 
-
 	udp = calloc(1, sizeof(*udp));
 	udp->proto = proto;
 	udp->target = target;
 	udp->params = *params;
 
+	udp->family = target->address.ss_family;
 	udp->host_address = target->address;
 	if (!fm_address_set_port(&udp->host_address, params->port)) {
 		fm_udp_request_free(udp);
@@ -191,18 +196,10 @@ fm_udp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_p
  * record the fact that we *did* send to a specific port.
  * We do not even distinguish by the source port used on our end.
  */
-struct udp_extant_info {
-	unsigned int		port;
-};
-
-static bool
-fm_udp_expect_response(const fm_udp_request_t *udp, fm_probe_t *probe)
+static void
+fm_udp_extant_info_build(const fm_udp_request_t *udp, fm_udp_extant_info_t *extant_info)
 {
-	struct udp_extant_info info = { .port = udp->params.port };
-	int af = udp->host_address.ss_family;
-
-	fm_extant_alloc(probe, af, IPPROTO_UDP, &info, sizeof(info));
-	return true;
+	extant_info->port = udp->params.port;
 }
 
 static fm_extant_t *
@@ -236,7 +233,7 @@ fm_udp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt, fm_asset_state_t state)
 
 	fm_extant_iterator_init(&iter, &target->expecting);
 	while ((extant = fm_extant_iterator_match(&iter, pkt->family, IPPROTO_UDP)) != NULL) {
-		const struct udp_extant_info *info = (struct udp_extant_info *) (extant + 1);
+		const fm_udp_extant_info_t *info = (fm_udp_extant_info_t *) (extant + 1);
 
 		if (info->port == port)
 			return extant;
@@ -305,16 +302,16 @@ fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port)
  * The probe argument is only here because we need to notify it when done.
  */
 static fm_error_t
-fm_udp_request_send(fm_udp_request_t *udp, fm_probe_t *probe)
+fm_udp_request_send(fm_udp_request_t *udp, fm_udp_extant_info_t *extant_info)
 {
 	fm_socket_t *sock;
 	fm_pkt_t *pkt;
 
 	if (udp->use_connected_socket) {
-		udp->sock = fm_udp_create_connected_socket(probe->proto, &udp->host_address);
+		udp->sock = fm_udp_create_connected_socket(udp->proto, &udp->host_address);
 		sock = udp->sock;
 	} else {
-		sock = fm_protocol_create_host_shared_socket(probe->proto, probe->target);
+		sock = fm_protocol_create_host_shared_socket(udp->proto, udp->target);
 	}
 
 	if (sock == NULL) {
@@ -326,14 +323,14 @@ fm_udp_request_send(fm_udp_request_t *udp, fm_probe_t *probe)
 	pkt = fm_udp_build_packet(&udp->host_address, udp->params.port);
 
 	/* apply ttl, tos etc */
-	fm_pkt_apply_probe_params(pkt, &udp->params, probe->proto->ops->supported_parameters);
+	fm_pkt_apply_probe_params(pkt, &udp->params, udp->proto->ops->supported_parameters);
 
 	if (!fm_socket_send_pkt_and_burn(sock, pkt)) {
 		fm_log_error("Unable to send UDP packet: %m");
 		return FM_SEND_ERROR;
 	}
 
-	fm_udp_expect_response(udp, probe);
+	fm_udp_extant_info_build(udp, extant_info);
 
 	/* update the asset state */
 	fm_target_update_port_state(udp->target, FM_PROTO_UDP, udp->params.port, FM_ASSET_STATE_PROBE_SENT);
@@ -362,8 +359,14 @@ static fm_error_t
 fm_udp_port_probe_send(fm_probe_t *probe)
 {
 	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
+	fm_udp_extant_info_t extant_info;
+	fm_error_t error;
 
-	return fm_udp_request_send(udp, probe);
+	error = fm_udp_request_send(udp, &extant_info);
+	if (error == 0)
+		fm_extant_alloc(probe, udp->family, IPPROTO_UDP, &extant_info, sizeof(extant_info));
+
+	return error;
 }
 
 /*
@@ -417,6 +420,8 @@ fm_udp_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, con
 	char name[32];
 
 	udp = fm_udp_request_alloc(proto, target, params);
+	if (udp == NULL)
+		return NULL;
 
 	snprintf(name, sizeof(name), "udp/%u", params->port);
 	probe = fm_probe_alloc(name, &fm_udp_port_probe_ops, proto, target);
