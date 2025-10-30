@@ -97,9 +97,11 @@ fm_interface_alloc(int ifindex, int hatype)
 	nic->ifindex = ifindex;
 
 	nic->lladdr.sll_family = AF_PACKET;
+	nic->lladdr.sll_ifindex = ifindex;
 	nic->lladdr.sll_hatype = hatype;
 	nic->llbcast.sll_family = AF_PACKET;
 	nic->llbcast.sll_hatype = hatype;
+	nic->llbcast.sll_ifindex = ifindex;
 
 	nic->neighbor_cache = fm_neighbor_cache_create(nic->ifindex);
 
