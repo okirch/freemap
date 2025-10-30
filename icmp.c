@@ -61,6 +61,11 @@ static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.name		= "icmp",
 	.id		= FM_PROTO_ICMP,
 
+	.supported_parameters =
+			  FM_PROBE_PARAM_MASK(TTL) |
+			  FM_PROBE_PARAM_MASK(TOS) |
+			  FM_PROBE_PARAM_MASK(RETRIES),
+
 	.create_socket	= fm_icmp_create_bsd_socket,
 	.process_packet	= fm_icmp_process_packet,
 	.process_error	= fm_icmp_process_error,
@@ -74,6 +79,11 @@ static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
 	.name		= "icmp-raw",
 	.id		= FM_PROTO_ICMP,
 	.require_raw	= true,
+
+	.supported_parameters =
+			  FM_PROBE_PARAM_MASK(TTL) |
+			  FM_PROBE_PARAM_MASK(TOS) |
+			  FM_PROBE_PARAM_MASK(RETRIES),
 
 	.create_socket	= fm_icmp_create_raw_socket,
 	.create_host_shared_socket = fm_icmp_create_shared_raw_socket,
@@ -597,6 +607,9 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 		fm_log_error("Don't know how to build ICMP packet for address family %d", af);
 		return FM_SEND_ERROR;
 	}
+
+	/* apply ttl and tos */
+	fm_pkt_apply_probe_params(pkt, &icmp->probe_params, probe->proto->ops->supported_parameters);
 
 	/* inform the ICMP response matching code that we're waiting for a response to this packet */
 	fm_icmp_expect_response(pkt, probe);
