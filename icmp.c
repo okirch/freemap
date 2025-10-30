@@ -62,9 +62,9 @@ static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.id		= FM_PROTO_ICMP,
 
 	.supported_parameters =
-			  FM_PROBE_PARAM_MASK(TTL) |
-			  FM_PROBE_PARAM_MASK(TOS) |
-			  FM_PROBE_PARAM_MASK(RETRIES),
+			  FM_PARAM_TYPE_TTL_MASK |
+			  FM_PARAM_TYPE_TOS_MASK |
+			  FM_PARAM_TYPE_RETRIES_MASK,
 
 	.create_socket	= fm_icmp_create_bsd_socket,
 	.process_packet	= fm_icmp_process_packet,
@@ -81,9 +81,9 @@ static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
 	.require_raw	= true,
 
 	.supported_parameters =
-			  FM_PROBE_PARAM_MASK(TTL) |
-			  FM_PROBE_PARAM_MASK(TOS) |
-			  FM_PROBE_PARAM_MASK(RETRIES),
+			  FM_PARAM_TYPE_TTL_MASK |
+			  FM_PARAM_TYPE_TOS_MASK |
+			  FM_PARAM_TYPE_RETRIES_MASK,
 
 	.create_socket	= fm_icmp_create_raw_socket,
 	.create_host_shared_socket = fm_icmp_create_shared_raw_socket,

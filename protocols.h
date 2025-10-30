@@ -54,7 +54,10 @@ struct fm_protocol_ops {
 	fm_probe_t *	(*create_parameterized_probe)(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 };
 
-#define FM_PROBE_PARAM_MASK(N)	(1 << (FM_PARAM_TYPE_##N))
+#define FM_PARAM_TYPE_RETRIES_MASK	(1 << FM_PARAM_TYPE_RETRIES)
+#define FM_PARAM_TYPE_PORT_MASK		(1 << FM_PARAM_TYPE_PORT)
+#define FM_PARAM_TYPE_TTL_MASK		(1 << FM_PARAM_TYPE_TTL)
+#define FM_PARAM_TYPE_TOS_MASK		(1 << FM_PARAM_TYPE_TOS)
 
 #define FM_PROTOCOL_ENGINE_MAX	256
 struct fm_protocol_engine {

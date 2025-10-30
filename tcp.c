@@ -41,9 +41,8 @@ static struct fm_protocol_ops	fm_tcp_bsdsock_ops = {
 	.id		= FM_PROTO_TCP,
 
 	.supported_parameters = 
-			  FM_PROBE_PARAM_MASK(PORT) |
-//			  FM_PROBE_PARAM_MASK(TTL) |
-			  FM_PROBE_PARAM_MASK(RETRIES),
+			  FM_PARAM_TYPE_PORT_MASK |
+			  FM_PARAM_TYPE_RETRIES_MASK,
 
 	.create_socket	= fm_tcp_create_bsd_socket,
 	.process_packet = fm_tcp_process_packet,

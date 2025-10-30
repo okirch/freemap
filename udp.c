@@ -41,10 +41,10 @@ static struct fm_protocol_ops	fm_udp_bsdsock_ops = {
 	.id		= FM_PROTO_UDP,
 
 	.supported_parameters =
-			  FM_PROBE_PARAM_MASK(PORT) |
-			  FM_PROBE_PARAM_MASK(TTL) |
-			  FM_PROBE_PARAM_MASK(TOS) |
-			  FM_PROBE_PARAM_MASK(RETRIES),
+			  FM_PARAM_TYPE_PORT_MASK |
+			  FM_PARAM_TYPE_TTL_MASK |
+			  FM_PARAM_TYPE_TOS_MASK |
+			  FM_PARAM_TYPE_RETRIES_MASK,
 
 	.create_socket	= fm_udp_create_bsd_socket,
 	.create_host_shared_socket = fm_udp_create_shared_socket,

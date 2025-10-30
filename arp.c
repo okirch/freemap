@@ -50,7 +50,7 @@ static struct fm_protocol_ops	fm_arp_ops = {
 	.id		= FM_PROTO_ARP,
 	.require_raw	= true,
 
-	.supported_parameters = FM_PROBE_PARAM_MASK(RETRIES),
+	.supported_parameters = FM_PARAM_TYPE_RETRIES_MASK,
 
 	.create_socket	= fm_arp_create_socket,
 
