@@ -357,7 +357,7 @@ fm_icmp_host_probe_destroy(fm_probe_t *probe)
 }
 
 static fm_pkt_t *
-fm_icmp_build_echo_request(int af, const struct icmp_host_probe_params *params)
+fm_icmp_build_echo_request(int af, struct icmp_host_probe_params *params)
 {
 	fm_pkt_t *pkt = fm_pkt_alloc(af, 64);
 	fm_buffer_t *bp = pkt->payload;
@@ -386,6 +386,8 @@ fm_icmp_build_echo_request(int af, const struct icmp_host_probe_params *params)
 		/* Kernel takes care of checksums */
         }
 
+
+	params->seq += 1;
 	return pkt;
 }
 
@@ -608,8 +610,6 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 
 	/* inform the ICMP response matching code that we're waiting for a response to this packet */
 	fm_icmp_expect_response(pkt, probe);
-
-	icmp->params.seq += 1;
 
 	if (!fm_socket_send_pkt_and_burn(sock, pkt)) {
 		fm_log_error("Unable to send ICMP packet: %m");
