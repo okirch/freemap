@@ -35,7 +35,6 @@
 
 struct icmp_params {
 	fm_address_t	host_address;
-	unsigned int	retries;
 	int		ipproto;
 	int		icmp_type;
 	int		icmp6_type;
@@ -266,20 +265,14 @@ fm_icmp_build_params(struct icmp_params *params, const fm_string_array_t *args)
 
 	for (i = 0; i < args->count; ++i) {
 		const char *arg = args->entries[i];
-		unsigned int value;
 
-		if (fm_parse_numeric_argument(arg, "retries", &value)) {
-			params->retries = value;
-		} else if (fm_parse_string_argument(arg, "type", &params->type_name)) {
+		if (fm_parse_string_argument(arg, "type", &params->type_name)) {
 			/* pass */
 		} else {
 			fm_log_error("Cannot create ICMP host probe: invalid argument \"%s\"", arg);
 			return false;
 		}
 	}
-
-	if (params->retries == 0)
-		params->retries = FM_ICMP_PROBE_RETRIES;
 
 	if (params->type_name == NULL)
 		params->type_name = "echo";
@@ -337,6 +330,7 @@ fm_icmp_protocol_for_family(int af)
 struct fm_icmp_host_probe {
 	fm_probe_t		base;
 
+	fm_probe_params_t	probe_params;
 	struct icmp_params	icmp_params;
 	fm_socket_t *		sock;
 };
@@ -612,12 +606,12 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 		return FM_SEND_ERROR;
 	}
 
-	if (icmp->icmp_params.retries > 0)
-		icmp->icmp_params.retries -= 1;
+	if (icmp->probe_params.retries > 0)
+		icmp->probe_params.retries -= 1;
 
 	/* We send several packets in rapid succession, and then we wait for a bit longer.
 	 * The actual values are set in create_rtt_estimator */
-	if (icmp->icmp_params.retries == 0)
+	if (icmp->probe_params.retries == 0)
 		probe->timeout = FM_ICMP_RESPONSE_TIMEOUT;
 
 	/* If retries > 0, we let the caller pick a timeout based on the rtt estimate */
@@ -634,7 +628,7 @@ fm_icmp_host_probe_should_resend(fm_probe_t *probe)
 	const struct fm_icmp_host_probe *icmp = (struct fm_icmp_host_probe *) probe;
 
 	/* This is overly aggressive - icmp/echo may be just one of several reachability probes */
-	if (icmp->icmp_params.retries == 0) {
+	if (icmp->probe_params.retries == 0) {
 		fm_probe_timed_out(probe);
 		return false;
 	}
@@ -664,8 +658,9 @@ fm_icmp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_pr
 	probe->sock = NULL;
 	probe->icmp_params = *icmp_args;
 
-	/* FIXME: fm_probe should have a member for storing the standard params */
-	probe->icmp_params.retries = params->retries;
+	probe->probe_params = *params;
+	if (probe->probe_params.retries == 0)
+		probe->probe_params.retries = FM_ICMP_PROBE_RETRIES;
 
 	if (!fm_icmp_instantiate_params(&probe->icmp_params, target))
 		return NULL;
