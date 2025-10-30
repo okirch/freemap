@@ -306,10 +306,6 @@ fm_icmp_instantiate_params(struct icmp_params *params, fm_target_t *target)
 {
 	params->host_address = target->address;
 
-	/* allocate a block of sequence numbers from the target's pool */
-	params->seq = target->host_probe_seq;
-	target->host_probe_seq += params->retries;
-
 	params->ipproto = fm_icmp_protocol_for_family(target->address.ss_family);
 	if (params->ipproto < 0) {
 		fm_log_error("Cannot create ICMP probe for %s", fm_address_format(&target->address));
@@ -357,7 +353,7 @@ fm_icmp_host_probe_destroy(fm_probe_t *probe)
 }
 
 static fm_pkt_t *
-fm_icmp_build_echo_request(int af, struct icmp_params *params)
+fm_icmp_build_echo_request(int af, const struct icmp_params *params)
 {
 	fm_pkt_t *pkt = fm_pkt_alloc(af, 64);
 	fm_buffer_t *bp = pkt->payload;
@@ -386,8 +382,6 @@ fm_icmp_build_echo_request(int af, struct icmp_params *params)
 		/* Kernel takes care of checksums */
         }
 
-
-	params->seq += 1;
 	return pkt;
 }
 
@@ -601,6 +595,8 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 
 		sock = icmp->sock;
 	}
+
+	icmp->icmp_params.seq = target->host_probe_seq++;
 
 	pkt = fm_icmp_build_echo_request(af, &icmp->icmp_params);
 	if (pkt == NULL) {
