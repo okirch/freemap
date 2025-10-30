@@ -138,6 +138,12 @@ fm_socket_create(int family, int type, int protocol, fm_protocol_t *driver)
 	return sock;
 }
 
+static inline const char *
+fm_socket_family_name(const fm_socket_t *sock)
+{
+	return fm_addrfamily_name(sock->family);
+}
+
 void
 fm_socket_attach_protocol(fm_socket_t *sock, fm_protocol_t *proto)
 {
@@ -159,24 +165,34 @@ fm_socket_attach_protocol(fm_socket_t *sock, fm_protocol_t *proto)
 }
 
 /*
- * Socket time stamping
+ * Change a boolean setsockopt
  */
-bool
-fm_socket_enable_timestamp(fm_socket_t *sock)
+static bool
+fm_socket_option_set(fm_socket_t *sock, const char *name, int level, int type, bool value)
 {
-	int optval = 1;
+	int optval = value? 1 : 0;
 
 	if (sock->fd < 0)
 		return false;
 
-	if (setsockopt(sock->fd, SOL_SOCKET, SO_TIMESTAMP, &optval, sizeof(optval)) < 0) {
-		fm_log_error("Cannot set socket's SO_TIMESTAMP option: %m");
+	if (setsockopt(sock->fd, level, type, &optval, sizeof(optval)) < 0) {
+		fm_log_error("Cannot set %s socket's %s option: %m",
+				fm_socket_family_name(sock), name);
 		return false;
 	}
 
 	return true;
 }
 
+bool
+fm_socket_enable_timestamp(fm_socket_t *sock)
+{
+	return fm_socket_option_set(sock, "SO_TIMESTAMP", SOL_SOCKET, SO_TIMESTAMP, true);
+}
+
+/*
+ * Socket time stamping
+ */
 void
 fm_socket_timestamp_update(fm_socket_timestamp_t *ts)
 {
@@ -211,17 +227,7 @@ fm_pkt_rtt(const fm_pkt_t *pkt, const fm_socket_timestamp_t *send_ts)
 bool
 fm_socket_enable_hdrincl(fm_socket_t *sock)
 {
-	int optval = 1;
-
-	if (sock->fd < 0)
-		return false;
-
-	if (setsockopt(sock->fd, SOL_IP, IP_HDRINCL, &optval, sizeof (optval)) < 0) {
-		fm_log_error("Cannot set IP socket's IP_HDRINCL option: %m");
-		return false;
-	}
-
-	return true;
+	return fm_socket_option_set(sock, "IP_HDRINCL", SOL_IP, IP_HDRINCL, true);
 }
 
 /*
@@ -230,27 +236,13 @@ fm_socket_enable_hdrincl(fm_socket_t *sock)
 bool
 fm_socket_enable_recverr(fm_socket_t *sock)
 {
-	int optval = 1;
+	if (sock->family == AF_INET)
+		return fm_socket_option_set(sock, "IP_RECVERR", SOL_IP, IP_RECVERR, true);
 
-	if (sock->fd < 0)
-		return false;
+	if (sock->family == AF_INET6)
+		return fm_socket_option_set(sock, "IPV6_RECVERR", SOL_IPV6, IPV6_RECVERR, true);
 
-	switch (sock->family) {
-	case AF_INET:
-		if (setsockopt(sock->fd, SOL_IP, IP_RECVERR, &optval, sizeof (optval)) < 0) {
-			fm_log_error("Cannot set IPv4 socket's IP_RECVERR option: %m");
-			return false;
-		}
-		break;
-
-	case AF_INET6:
-		if (setsockopt(sock->fd, SOL_IPV6, IPV6_RECVERR, &optval, sizeof (optval)) < 0) {
-			fm_log_error("Cannot set IPv6 socket's IPV6_RECVERR option: %m");
-			return false;
-		}
-		break;
-        }
-
+	fm_log_error("Cannot set RECVERR socket option on %s sockets", fm_socket_family_name(sock));
 	return true;
 }
 
