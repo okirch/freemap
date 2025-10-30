@@ -368,6 +368,70 @@ fm_socket_get_local_address(const fm_socket_t *sock, fm_address_t *addr)
 	return true;
 }
 
+/*
+ * sendmsg convenience functions
+ */
+static struct fm_msghdr *
+fm_sendmsg_prepare(const fm_address_t *dest_addr, fm_buffer_t *payload, int flags)
+{
+	struct fm_msghdr *rd;
+
+	rd = calloc(1, sizeof(*rd));
+	if (dest_addr && dest_addr->ss_family != AF_UNSPEC) {
+		rd->msg.msg_name = &rd->peer_addr;
+		rd->msg.msg_namelen = sizeof(rd->peer_addr);
+	}
+
+	rd->iov.iov_base = (void *) fm_buffer_head(payload);
+	rd->iov.iov_len = fm_buffer_available(payload);
+	rd->msg.msg_iov = &rd->iov;
+	rd->msg.msg_iovlen = 1;
+	rd->msg.msg_flags = flags;
+
+	return rd;
+}
+
+static bool
+fm_sendmsg_add_cmsg(struct fm_msghdr *rd, int level, int type, const void *value, size_t count)
+{
+	unsigned int max_size = sizeof(rd->control);
+	unsigned int left;
+	struct cmsghdr *cmsg;
+
+	/* fm_log_debug("%s: level=%d type=%d len=%d\n", __func__, level, type, count); */
+	if (rd->msg.msg_control == NULL) {
+		rd->msg.msg_control = rd->control;
+		rd->cmsg = (struct cmsghdr *) rd->control;
+	}
+
+	left = max_size - rd->msg.msg_controllen;
+	if (left < CMSG_SPACE(count)) {
+		fm_log_error("%s: control buffer overflow", __func__);
+		return false;
+	}
+
+	cmsg = (struct cmsghdr *) (rd->control + rd->msg.msg_controllen);
+	memcpy(CMSG_DATA(cmsg), value, count);
+	cmsg->cmsg_level = level;
+	cmsg->cmsg_type = type;
+	cmsg->cmsg_len = CMSG_LEN(count);
+
+	rd->msg.msg_controllen += CMSG_SPACE(count);
+	assert(rd->msg.msg_controllen <= max_size);
+
+	return true;
+}
+
+static bool
+fm_sendmsg_add_cmsg_int(struct fm_msghdr *rd, int level, int type, int value)
+{
+	return fm_sendmsg_add_cmsg(rd, level, type, &value, sizeof(value));
+}
+
+
+/*
+ * Send data
+ */
 bool
 fm_socket_send(fm_socket_t *sock, const fm_address_t *dstaddr, const void *pkt, size_t len)
 {
@@ -403,8 +467,57 @@ fm_socket_send_buffer(fm_socket_t *sock, const fm_address_t *dstaddr, fm_buffer_
 	return fm_socket_send(sock, dstaddr, fm_buffer_head(data), fm_buffer_available(data));
 }
 
+bool
+fm_socket_send_pkt(fm_socket_t *sock, fm_pkt_t *pkt)
+{
+	struct fm_msghdr *rd;
+	int r;
+
+	if (sock->fd < 0)
+		return false;
+
+	rd = fm_sendmsg_prepare(&pkt->peer_addr, pkt->payload, 0);
+	if (sock->family == AF_INET) {
+		if (pkt->info.ttl != 0)
+			fm_sendmsg_add_cmsg_int(rd, SOL_IP, IP_TTL, pkt->info.ttl);
+		if (pkt->info.tos != 0)
+			fm_sendmsg_add_cmsg_int(rd, SOL_IP, IP_TOS, pkt->info.tos);
+	} else
+	if (sock->family == AF_INET6) {
+		if (pkt->info.ttl != 0)
+			fm_sendmsg_add_cmsg_int(rd, SOL_IPV6, IPV6_HOPLIMIT, pkt->info.ttl);
+		if (pkt->info.tos != 0)
+			fm_sendmsg_add_cmsg_int(rd, SOL_IPV6, IPV6_TCLASS, pkt->info.tos);
+	}
+
+	r = sendmsg(sock->fd, &rd->msg, rd->msg.msg_flags);
+	if (r < 0) {
+		/* have the caller receive the error */
+		if (errno == EMSGSIZE || errno == EHOSTUNREACH || errno == ECONNREFUSED)
+			return true;
+
+		if (errno == ENOBUFS || errno == EAGAIN)
+			return false;
+
+		fm_log_error("failed to send: %m (errno %d)", errno);
+		return false;
+	}
+
+	return true;
+}
+
+bool
+fm_socket_send_pkt_and_burn(fm_socket_t *sock, fm_pkt_t *pkt)
+{
+	bool rv;
+
+	rv = fm_socket_send_pkt(sock, pkt);
+	fm_pkt_free(pkt);
+	return rv;
+}
+
 /*
- * recvmsg convenience functions
+ * recvmsg/sendmsg convenience functions
  */
 static struct fm_msghdr *
 fm_recvmsg_prepare(void *buffer, size_t bufsize, int flags)
