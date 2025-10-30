@@ -29,11 +29,28 @@
 #include "socket.h"
 #include "buffer.h"
 
+typedef struct fm_udp_request {
+	fm_protocol_t *		proto;
+	fm_target_t *		target;
+	fm_socket_t *		sock;
+
+	fm_address_t		host_address;
+	fm_probe_params_t	params;
+
+	/* This should be configurable at the probe level, but
+	 * we're not handling that yet.
+	 */
+	bool			use_connected_socket;
+} fm_udp_request_t;
+
 static fm_socket_t *	fm_udp_create_bsd_socket(fm_protocol_t *proto, int af);
 static fm_socket_t *	fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 static bool		fm_udp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static fm_probe_t *	fm_udp_create_parameterized_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
+
+static fm_udp_request_t *fm_udp_probe_get_request(const fm_probe_t *probe);
+static void		fm_udp_probe_set_request(fm_probe_t *probe, fm_udp_request_t *udp);
 
 static struct fm_protocol_ops	fm_udp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -131,6 +148,44 @@ fm_udp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr)
 }
 
 /*
+ * UDP action
+ */
+static void
+fm_udp_request_free(fm_udp_request_t *udp)
+{
+	if (udp->sock != NULL) {
+		fm_socket_free(udp->sock);
+		udp->sock = NULL;
+	}
+	free(udp);
+}
+
+static fm_udp_request_t *
+fm_udp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params)
+{
+	fm_udp_request_t *udp;
+
+	if (params->port == 0) {
+		fm_log_error("%s: trying to create a udp request without destination port");
+		return NULL;
+	}
+
+
+	udp = calloc(1, sizeof(*udp));
+	udp->proto = proto;
+	udp->target = target;
+	udp->params = *params;
+
+	udp->host_address = target->address;
+	if (!fm_address_set_port(&udp->host_address, params->port)) {
+		fm_udp_request_free(udp);
+		return NULL;
+	}
+
+	return udp;
+}
+
+/*
  * Track extant UDP requests.
  * We currently do not track individual packets and their response(s), we just
  * record the fact that we *did* send to a specific port.
@@ -223,28 +278,14 @@ fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 /*
  * UDP port probes using standard BSD sockets
  */
-struct fm_udp_port_probe {
-	fm_probe_t	base;
-
-	/* This should be configurable at the probe level, but
-	 * we're not handling that yet.
-	 */
-	bool		use_connected_socket;
-
-	fm_address_t	host_address;
-	fm_socket_t *	sock;
-
-	fm_probe_params_t params;
-};
-
 static void
 fm_udp_port_probe_destroy(fm_probe_t *probe)
 {
-	struct fm_udp_port_probe *udp = (struct fm_udp_port_probe *) probe;
+	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
 
-	if (udp->sock != NULL) {
-		fm_socket_free(udp->sock);
-		udp->sock = NULL;
+	if (udp != NULL) {
+		fm_udp_request_free(udp);
+		fm_udp_probe_set_request(probe, NULL);
 	}
 }
 
@@ -272,7 +313,7 @@ fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port)
 static fm_error_t
 fm_udp_port_probe_send(fm_probe_t *probe)
 {
-	struct fm_udp_port_probe *udp = (struct fm_udp_port_probe *) probe;
+	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
 	fm_socket_t *sock;
 	fm_pkt_t *pkt;
 
@@ -324,6 +365,11 @@ fm_udp_port_probe_should_resend(fm_probe_t *probe)
 	return false;
 }
 
+struct fm_udp_port_probe {
+	fm_probe_t		base;
+	fm_udp_request_t *	udp;
+};
+
 static struct fm_probe_ops fm_udp_port_probe_ops = {
 	.obj_size	= sizeof(struct fm_udp_port_probe),
 	.name 		= "udp",
@@ -333,32 +379,35 @@ static struct fm_probe_ops fm_udp_port_probe_ops = {
 	.should_resend	= fm_udp_port_probe_should_resend,
 };
 
+static fm_udp_request_t *
+fm_udp_probe_get_request(const fm_probe_t *probe)
+{
+	return ((struct fm_udp_port_probe *) probe)->udp;
+}
+
+static void
+fm_udp_probe_set_request(fm_probe_t *probe, fm_udp_request_t *udp)
+{
+	((struct fm_udp_port_probe *) probe)->udp = udp;
+}
+
 static fm_probe_t *
 fm_udp_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
-	struct sockaddr_storage tmp_address = target->address;
-	struct fm_udp_port_probe *probe;
+	fm_udp_request_t *udp;
+	fm_probe_t *probe;
 	char name[32];
 
-	if (params->port == 0) {
-		fm_log_error("%s: parameterized probe requires destination port", proto->ops->name);
-		return NULL;
-	}
-
-	if (!fm_address_set_port(&tmp_address, params->port))
-		return NULL;
+	udp = fm_udp_request_alloc(proto, target, params);
 
 	snprintf(name, sizeof(name), "udp/%u", params->port);
+	probe = fm_probe_alloc(name, &fm_udp_port_probe_ops, proto, target);
 
-	probe = (struct fm_udp_port_probe *) fm_probe_alloc(name, &fm_udp_port_probe_ops, proto, target);
-
-	probe->params = *params;
-	probe->host_address = tmp_address;
-	probe->sock = NULL;
+	fm_udp_probe_set_request(probe, udp);
 
 	/* UDP services may take up to .5 sec for the queued TCP connection to be accepted. */
-	probe->base.rtt_application_bias = fm_global.udp.application_delay;
+	probe->rtt_application_bias = fm_global.udp.application_delay;
 
-	fm_log_debug("Created UDP socket probe for %s\n", fm_address_format(&probe->host_address));
-	return &probe->base;
+	fm_log_debug("Created UDP socket probe for %s\n", fm_address_format(&udp->host_address));
+	return probe;
 }
