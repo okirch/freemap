@@ -325,9 +325,6 @@ fm_protocol_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const f
 
 	if (proto->ops->create_parameterized_probe != NULL) {
 		probe = proto->ops->create_parameterized_probe(proto, target, params, extra_params);
-	} else
-	if (proto->ops->create_host_probe != NULL) {
-		probe = proto->ops->create_host_probe(proto, target, params? params->retries : 0);
 	} else {
 		fm_log_error("Error: protocol %s cannot create a host probe\n", proto->ops->name);
 	}

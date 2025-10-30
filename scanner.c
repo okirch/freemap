@@ -358,10 +358,6 @@ fm_scanner_create_host_probe(fm_scanner_t *scanner, fm_protocol_t *proto, const 
 	memset(&params, 0, sizeof(params));
 	memset(&proto_args, 0, sizeof(proto_args));
 
-	/* If the protocol wants to handle all options itself, let it. */
-	if (proto->ops->create_host_probe_action != NULL)
-		return proto->ops->create_host_probe_action(proto, args);
-
 	for (i = 0; i < args->count; ++i) {
 		const char *arg = args->entries[i];
 		fm_param_type_t param_type = FM_PARAM_TYPE_NONE;
