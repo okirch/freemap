@@ -611,13 +611,10 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 
 	icmp->params.seq += 1;
 
-	if (!fm_socket_send_buffer(sock, NULL, pkt->payload)) {
+	if (!fm_socket_send_pkt_and_burn(sock, pkt)) {
 		fm_log_error("Unable to send ICMP packet: %m");
-		fm_pkt_free(pkt);
 		return FM_SEND_ERROR;
 	}
-
-	fm_pkt_free(pkt);
 
 	if (icmp->params.retries > 0)
 		icmp->params.retries -= 1;
