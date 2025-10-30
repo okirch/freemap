@@ -1,7 +1,7 @@
 
 hosts-scan default serialize=strict:
 	host-probe arp optional;
-	host-probe icmp;
+	host-probe icmp ttl=128;
 
 hosts-scan thorough serialize=strict:
 	host-probe arp optional;
