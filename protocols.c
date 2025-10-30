@@ -302,13 +302,6 @@ fm_protocol_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_
 
 		/* FIXME: pass the extra_params */
 		probe = proto->ops->create_parameterized_probe(proto, target, &params, NULL);
-	} else
-	if (proto->ops->create_port_probe != NULL) {
-		if (caller_params != NULL) {
-			fm_log_error("create_port_probe() does not support params");
-			return NULL;
-		}
-		probe = proto->ops->create_port_probe(proto, target, port);
 	} else {
 		fm_log_error("protocol %s cannot create a port probe\n", proto->ops->name);
 	}
