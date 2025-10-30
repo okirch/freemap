@@ -37,7 +37,7 @@
 
 static fm_socket_t *	fm_ipproto_create_socket(fm_protocol_t *proto, int ipproto);
 static bool		fm_ipproto_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
-static fm_probe_t *	fm_ipproto_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t ipproto);
+static fm_probe_t *	fm_ipproto_create_parameterized_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 
 static struct fm_protocol_ops	fm_ipproto_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -48,7 +48,7 @@ static struct fm_protocol_ops	fm_ipproto_ops = {
 	/* We do not expect to receive a response, so no response handler for now */
 	.process_error	= fm_ipproto_process_error,
 
-	.create_port_probe = fm_ipproto_create_port_probe,
+	.create_parameterized_probe = fm_ipproto_create_parameterized_probe,
 };
 
 FM_PROTOCOL_REGISTER(fm_ipproto_ops);
@@ -370,11 +370,12 @@ static struct fm_probe_ops fm_ipproto_port_probe_ops = {
 };
 
 static fm_probe_t *
-fm_ipproto_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_t ipproto)
+fm_ipproto_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
 	struct fm_ipproto_port_probe *probe;
 	fm_routing_info_t rtinfo;
 	fm_event_t wait_event = FM_EVENT_ID_NONE;
+	unsigned int ipproto = params->port;
 	char name[32];
 
 	if (target->address.ss_family != AF_INET) {
