@@ -33,7 +33,7 @@
 #include "buffer.h"
 #include "utils.h"
 
-struct icmp_host_probe_params {
+struct icmp_params {
 	fm_address_t	host_address;
 	unsigned int	retries;
 	int		ipproto;
@@ -258,7 +258,7 @@ fm_icmp_create_shared_raw_socket(fm_protocol_t *proto, fm_target_t *target)
  * blanks.
  */
 static inline bool
-fm_icmp_build_params(struct icmp_host_probe_params *params, const fm_string_array_t *args)
+fm_icmp_build_params(struct icmp_params *params, const fm_string_array_t *args)
 {
 	unsigned int i;
 
@@ -302,7 +302,7 @@ fm_icmp_build_params(struct icmp_host_probe_params *params, const fm_string_arra
 }
 
 static inline bool
-fm_icmp_instantiate_params(struct icmp_host_probe_params *params, fm_target_t *target)
+fm_icmp_instantiate_params(struct icmp_params *params, fm_target_t *target)
 {
 	params->host_address = target->address;
 
@@ -339,10 +339,10 @@ fm_icmp_protocol_for_family(int af)
  * ICMP probes using standard BSD sockets
  */
 struct fm_icmp_host_probe {
-	fm_probe_t	base;
+	fm_probe_t		base;
 
-	struct icmp_host_probe_params params;
-	fm_socket_t *	sock;
+	struct icmp_params	icmp_params;
+	fm_socket_t *		sock;
 };
 
 static void
@@ -357,7 +357,7 @@ fm_icmp_host_probe_destroy(fm_probe_t *probe)
 }
 
 static fm_pkt_t *
-fm_icmp_build_echo_request(int af, struct icmp_host_probe_params *params)
+fm_icmp_build_echo_request(int af, struct icmp_params *params)
 {
 	fm_pkt_t *pkt = fm_pkt_alloc(af, 64);
 	fm_buffer_t *bp = pkt->payload;
@@ -583,7 +583,7 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 	fm_target_t *target = probe->target;
 	fm_socket_t *sock;
 	struct fm_icmp_host_probe *icmp = (struct fm_icmp_host_probe *) probe;
-	int af = icmp->params.host_address.ss_family;
+	int af = icmp->icmp_params.host_address.ss_family;
 	fm_pkt_t *pkt;
 
 	/* When using raw sockets, create a single ICMP socket per target host */
@@ -602,7 +602,7 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 		sock = icmp->sock;
 	}
 
-	pkt = fm_icmp_build_echo_request(af, &icmp->params);
+	pkt = fm_icmp_build_echo_request(af, &icmp->icmp_params);
 	if (pkt == NULL) {
 		fm_log_error("Don't know how to build ICMP packet for address family %d", af);
 		return FM_SEND_ERROR;
@@ -616,12 +616,12 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 		return FM_SEND_ERROR;
 	}
 
-	if (icmp->params.retries > 0)
-		icmp->params.retries -= 1;
+	if (icmp->icmp_params.retries > 0)
+		icmp->icmp_params.retries -= 1;
 
 	/* We send several packets in rapid succession, and then we wait for a bit longer.
 	 * The actual values are set in create_rtt_estimator */
-	if (icmp->params.retries == 0)
+	if (icmp->icmp_params.retries == 0)
 		probe->timeout = FM_ICMP_RESPONSE_TIMEOUT;
 
 	/* If retries > 0, we let the caller pick a timeout based on the rtt estimate */
@@ -638,7 +638,7 @@ fm_icmp_host_probe_should_resend(fm_probe_t *probe)
 	const struct fm_icmp_host_probe *icmp = (struct fm_icmp_host_probe *) probe;
 
 	/* This is overly aggressive - icmp/echo may be just one of several reachability probes */
-	if (icmp->params.retries == 0) {
+	if (icmp->icmp_params.retries == 0) {
 		fm_probe_timed_out(probe);
 		return false;
 	}
@@ -660,21 +660,21 @@ static struct fm_probe_ops fm_icmp_host_probe_ops = {
 static fm_probe_t *
 fm_icmp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
-	const struct icmp_host_probe_params *icmp_args = extra_params;
+	const struct icmp_params *icmp_args = extra_params;
 	struct fm_icmp_host_probe *probe;
 
 	probe = (struct fm_icmp_host_probe *) fm_probe_alloc("icmp/echo", &fm_icmp_host_probe_ops, proto, target);
 
 	probe->sock = NULL;
-	probe->params = *icmp_args;
+	probe->icmp_params = *icmp_args;
 
 	/* FIXME: fm_probe should have a member for storing the standard params */
-	probe->params.retries = params->retries;
+	probe->icmp_params.retries = params->retries;
 
-	if (!fm_icmp_instantiate_params(&probe->params, target))
+	if (!fm_icmp_instantiate_params(&probe->icmp_params, target))
 		return NULL;
 
-	fm_log_debug("Created ICMP socket probe for %s\n", fm_address_format(&probe->params.host_address));
+	fm_log_debug("Created ICMP socket probe for %s\n", fm_address_format(&probe->icmp_params.host_address));
 	return &probe->base;
 }
 
@@ -684,7 +684,7 @@ fm_icmp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_pr
 static bool
 fm_icmp_finalize_action(fm_protocol_t *proto, fm_scan_action_t *action, const fm_string_array_t *extra_args)
 {
-	struct icmp_host_probe_params *icmp_params;
+	struct icmp_params *icmp_params;
 
 	icmp_params = calloc(1, sizeof(*icmp_params));
 	if (!fm_icmp_build_params(icmp_params, extra_args)) {
