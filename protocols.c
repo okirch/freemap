@@ -22,6 +22,7 @@
 #include "target.h"
 #include "socket.h"
 #include "network.h"
+#include "buffer.h"
 
 static unsigned int	fm_protocol_directory_count;
 static struct fm_protocol_ops *fm_protocol_directory[256];
@@ -357,13 +358,13 @@ fm_protocol_create_host_shared_socket(fm_protocol_t *proto, fm_target_t *target)
  * IPv4 header analysis
  */
 static bool
-fm_pkt_pull_ipv4_hdr(fm_pkt_t *pkt, fm_ip_info_t *info)
+fm_pkt_pull_ipv4_hdr(fm_buffer_t *bp, fm_ip_info_t *info)
 {
-	const struct iphdr *ip = (const struct iphdr *) fm_pkt_peek(pkt, sizeof(struct iphdr));
+	const struct iphdr *ip = (const struct iphdr *) fm_buffer_peek(bp, sizeof(struct iphdr));
 	unsigned int hlen;
 
 	hlen = ip->ihl << 2;
-	if (hlen < 20 || !fm_pkt_pull(pkt, hlen))
+	if (hlen < 20 || !fm_buffer_pull(bp, hlen))
 		return false;
 
 	if (ip->version != 4)
@@ -380,7 +381,7 @@ fm_pkt_pull_ipv4_hdr(fm_pkt_t *pkt, fm_ip_info_t *info)
  * IPv6 header analysis
  */
 static bool
-fm_pkt_pull_ipv6_hdr(fm_pkt_t *pkt, fm_ip_info_t *info)
+fm_pkt_pull_ipv6_hdr(fm_buffer_t *bp, fm_ip_info_t *info)
 {
 	fm_log_error("%s: not yet implemented", __func__);
 	return false;
@@ -390,9 +391,9 @@ bool
 fm_pkt_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_info_t *info)
 {
 	if (pkt->family == AF_INET)
-		return fm_pkt_pull_ipv4_hdr(pkt, info);
+		return fm_pkt_pull_ipv4_hdr(pkt->payload, info);
 	if (pkt->family == AF_INET6)
-		return fm_pkt_pull_ipv6_hdr(pkt, info);
+		return fm_pkt_pull_ipv6_hdr(pkt->payload, info);
 
 	return false;
 }

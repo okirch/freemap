@@ -121,25 +121,7 @@ in_csum(const void *data, size_t noctets)
 /*
  * Utility functions for packet parsing
  */
-static inline const void *
-fm_pkt_peek(const fm_pkt_t *pkt, unsigned int wanted)
-{
-	unsigned int avail = pkt->len - pkt->rpos;
-
-	if (avail < wanted)
-		return NULL;
-	return pkt->data + pkt->rpos;
-}
-
-static inline const void *
-fm_pkt_pull(fm_pkt_t *pkt, unsigned int wanted)
-{
-	const void *p;
-
-	if ((p = fm_pkt_peek(pkt, wanted)) != NULL)
-		pkt->rpos += wanted;
-	return p;
-}
+extern const void *	fm_pkt_pull(fm_pkt_t *pkt, unsigned int wanted);
 
 /*
  * IP header information

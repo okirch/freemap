@@ -33,8 +33,40 @@
 
 #include "socket.h"
 #include "protocols.h"
+#include "buffer.h"
 
 static struct fm_socket_list	socket_list;
+
+/*
+ * Socket level representation of a packet
+ */
+fm_pkt_t *
+fm_pkt_alloc(int family, unsigned int size)
+{
+	fm_pkt_t *pkt;
+
+	pkt = calloc(1, sizeof(*pkt));
+	pkt->family = family;
+
+	if (size != 0)
+		pkt->payload = fm_buffer_alloc(size);
+	return pkt;
+}
+
+void
+fm_pkt_free(fm_pkt_t *pkt)
+{
+	fm_buffer_free(pkt->payload);
+	free(pkt);
+}
+
+const void *
+fm_pkt_pull(fm_pkt_t *pkt, unsigned int wanted)
+{
+	if (pkt->payload == NULL)
+		return NULL;
+	return fm_buffer_pull(pkt->payload, wanted);
+}
 
 static fm_socket_t *
 fm_socket_allocate(int fd, int family, int type, socklen_t len)
@@ -243,7 +275,7 @@ fm_socket_build_error_packet(const fm_address_t *addr, int err)
 	fm_pkt_t *pkt;
 	struct sock_extended_err *ee;
 
-	pkt = calloc(1, sizeof(*pkt));
+	pkt = fm_pkt_alloc(addr->ss_family, 0);
 	pkt->recv_addr = *addr;
 
 	ee = (struct sock_extended_err *) pkt->info.eebuf;
@@ -452,18 +484,19 @@ fm_socket_recv_packet(fm_socket_t *sock, int flags)
 {
 	const unsigned int MAX_PAYLOAD = 512;
 	fm_pkt_t *pkt;
+	fm_buffer_t *bp;
 	int n;
 
-	pkt = calloc(1, sizeof(*pkt) + MAX_PAYLOAD);
-	pkt->family = sock->family;
+	pkt = fm_pkt_alloc(sock->family, MAX_PAYLOAD);
+	bp = pkt->payload;
 
-	n = fm_socket_recv(sock, &pkt->recv_addr, pkt->data, MAX_PAYLOAD, &pkt->info, flags);
+	n = fm_socket_recv(sock, &pkt->recv_addr, bp->data, bp->size, &pkt->info, flags);
 	if (n < 0) {
-		free(pkt);
+		fm_pkt_free(pkt);
 		return NULL;
 	}
 
-	pkt->len = n;
+	bp->wpos = n;
 
 	return pkt;
 }
@@ -723,7 +756,7 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		pkt = fm_socket_recv_packet(sock, MSG_ERRQUEUE);
 		if (pkt != NULL) {
 			proto->ops->process_error(proto, pkt);
-			free(pkt);
+			fm_pkt_free(pkt);
 		} else if (errno != EAGAIN) {
 			fm_log_error("socket %d: POLLERR set but recvmsg failed: %m", sock->fd);
 		}
@@ -739,11 +772,11 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		 && proto->ops->process_error != NULL) {
 			pkt = fm_socket_build_error_packet(&sock->peer_address, errno);
 			proto->ops->process_error(proto, pkt);
-			free(pkt);
+			fm_pkt_free(pkt);
 		} else
 		if (pkt != NULL) {
 			proto->ops->process_packet(proto, pkt);
-			free(pkt);
+			fm_pkt_free(pkt);
 		} else if (errno != EAGAIN) {
 			fm_log_error("socket %d: POLLIN set but recvmsg failed: %m", sock->fd);
 		}
@@ -759,7 +792,7 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 			/* fm_log_debug("  connect error sock %d: %m", sock->fd); */
 			pkt = fm_socket_build_error_packet(&sock->peer_address, errno);
 			proto->ops->process_error(proto, pkt);
-			free(pkt);
+			fm_pkt_free(pkt);
 		} else {
 			proto->ops->connection_established(proto, &sock->peer_address);
 		}
