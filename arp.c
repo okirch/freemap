@@ -26,13 +26,12 @@
 #include "scanner.h"
 #include "utils.h"
 
-struct arp_host_probe_params {
-	uint32_t	src_ipaddr;
-	uint32_t	dst_ipaddr;
-	struct sockaddr_ll src_lladdr;
-	struct sockaddr_ll dst_lladdr;
-	unsigned int	retries;
-};
+typedef struct fm_arp_params {
+	uint32_t		src_ipaddr;
+	uint32_t		dst_ipaddr;
+	struct sockaddr_ll	src_lladdr;
+	struct sockaddr_ll	dst_lladdr;
+} fm_arp_params_t;
 
 static bool		get_eth_address(const struct sockaddr_ll *, unsigned char *, unsigned int);
 static fm_extant_t *	fm_arp_locate_probe(uint32_t ipaddr, const unsigned char *eth_addr, struct sockaddr_ll *);
@@ -43,6 +42,9 @@ static bool		fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static int		fm_arp_probe_original_ifindex(const fm_probe_t *);
 static bool		fm_arp_finalize_action(fm_protocol_t *proto, fm_scan_action_t *action, const fm_string_array_t *extra_args);
 static fm_probe_t *	fm_arp_create_host_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
+
+static fm_arp_request_t *fm_arp_probe_get_request(const fm_probe_t *probe);
+static void		fm_arp_probe_set_request(fm_probe_t *probe, fm_arp_request_t *udp);
 
 static struct fm_protocol_ops	fm_arp_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -135,7 +137,7 @@ get_eth_address(const struct sockaddr_ll *lladdr, unsigned char *eth_addr, unsig
  * For now, we only do ethernet
  */
 static unsigned int
-fm_arp_build_request(const struct arp_host_probe_params *params, unsigned char *buf, size_t bufsz)
+fm_arp_build_request(const fm_arp_params_t *params, unsigned char *buf, size_t bufsz)
 {
 	struct arphdr *arp;
 	unsigned char *ap;
@@ -224,7 +226,7 @@ fm_arp_locate_probe(uint32_t ipaddr, const unsigned char *eth_addr, struct socka
 struct fm_arp_host_probe {
 	fm_probe_t	base;
 
-	struct arp_host_probe_params params;
+	fm_arp_params_t params;
 };
 
 static fm_error_t
