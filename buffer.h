@@ -25,10 +25,22 @@ extern void		fm_buffer_free(fm_buffer_t *pkt);
 extern void		fm_buffer_compact(fm_buffer_t *pkt);
 extern fm_buffer_t *	fm_buffer_pull_packet(fm_buffer_t *pkt, unsigned int count);
 
+static inline const void *
+fm_buffer_head(const fm_buffer_t *pkt)
+{
+	return pkt->data + pkt->rpos;
+}
+
 static inline unsigned int
 fm_buffer_available(fm_buffer_t *pkt)
 {
 	return pkt->wpos - pkt->rpos;
+}
+
+static inline const void *
+fm_buffer_tail(fm_buffer_t *pkt)
+{
+	return pkt->data + pkt->wpos;
 }
 
 static inline unsigned int
