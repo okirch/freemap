@@ -56,7 +56,7 @@ struct fm_protocol_ops {
 	fm_probe_t *	(*create_host_probe)(fm_protocol_t *, fm_target_t *, unsigned int retries);
 	fm_probe_t *	(*create_port_probe)(fm_protocol_t *, fm_target_t *, uint16_t);
 
-	fm_probe_t *	(*create_parameterized_probe)(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params);
+	fm_probe_t *	(*create_parameterized_probe)(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 };
 
 #define FM_PROBE_PARAM_MASK(N)	(1 << (FM_PARAM_TYPE_##N))
@@ -81,7 +81,7 @@ extern fm_protocol_t *	fm_protocol_engine_get_protocol(fm_protocol_engine_t *, c
 
 extern fm_protocol_t *	fm_protocol_create(const struct fm_protocol_ops *ops);
 extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);
-extern fm_probe_t *	fm_protocol_create_host_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *);
+extern fm_probe_t *	fm_protocol_create_host_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *, const void *extra_params);
 extern fm_probe_t *	fm_protocol_create_port_probe(fm_protocol_t *, fm_target_t *, uint16_t, const fm_probe_params_t *);
 extern fm_socket_t *	fm_protocol_create_host_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 

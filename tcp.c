@@ -33,7 +33,7 @@ static fm_socket_t *	fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af);
 static bool		fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_connecton_established(fm_protocol_t *proto, const fm_address_t *);
-static fm_probe_t *	fm_tcp_create_parameterized_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params);
+static fm_probe_t *	fm_tcp_create_parameterized_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 
 static struct fm_protocol_ops	fm_tcp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -214,7 +214,7 @@ static struct fm_probe_ops fm_tcp_port_probe_ops = {
 };
 
 static fm_probe_t *
-fm_tcp_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params)
+fm_tcp_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
 	struct sockaddr_storage tmp_address = target->address;
 	struct fm_tcp_port_probe *probe;

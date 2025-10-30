@@ -626,7 +626,7 @@ fm_host_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *target,
 	if (index != 0)
 		return NULL;
 
-	return fm_protocol_create_host_probe(action->proto, target, &action->probe_params);
+	return fm_protocol_create_host_probe(action->proto, target, &action->probe_params, action->extra_params);
 }
 
 static const struct fm_scan_action_ops	fm_host_scan_ops = {

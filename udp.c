@@ -33,7 +33,7 @@ static fm_socket_t *	fm_udp_create_bsd_socket(fm_protocol_t *proto, int af);
 static fm_socket_t *	fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 static bool		fm_udp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
-static fm_probe_t *	fm_udp_create_parameterized_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params);
+static fm_probe_t *	fm_udp_create_parameterized_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 
 static struct fm_protocol_ops	fm_udp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -313,7 +313,7 @@ static struct fm_probe_ops fm_udp_port_probe_ops = {
 };
 
 static fm_probe_t *
-fm_udp_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params)
+fm_udp_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
 	struct sockaddr_storage tmp_address = target->address;
 	struct fm_udp_port_probe *probe;

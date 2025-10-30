@@ -300,7 +300,8 @@ fm_protocol_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_
 			return NULL;
 		}
 
-		probe = proto->ops->create_parameterized_probe(proto, target, &params);
+		/* FIXME: pass the extra_params */
+		probe = proto->ops->create_parameterized_probe(proto, target, &params, NULL);
 	} else
 	if (proto->ops->create_port_probe != NULL) {
 		if (caller_params != NULL) {
@@ -318,12 +319,12 @@ fm_protocol_create_port_probe(fm_protocol_t *proto, fm_target_t *target, uint16_
 }
 
 fm_probe_t *
-fm_protocol_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params)
+fm_protocol_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
 	fm_probe_t *probe = NULL;
 
 	if (proto->ops->create_parameterized_probe != NULL) {
-		probe = proto->ops->create_parameterized_probe(proto, target, params);
+		probe = proto->ops->create_parameterized_probe(proto, target, params, extra_params);
 	} else
 	if (proto->ops->create_host_probe != NULL) {
 		probe = proto->ops->create_host_probe(proto, target, params? params->retries : 0);
