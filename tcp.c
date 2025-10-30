@@ -29,11 +29,34 @@
 #include "target.h" /* for fm_probe_t */
 #include "socket.h" /* for fm_probe_t */
 
+typedef struct fm_tcp_request {
+	fm_protocol_t *		proto;
+	fm_target_t *		target;
+	fm_socket_t *		sock;
+
+	int			family;
+	fm_address_t		host_address;
+	fm_probe_params_t	params;
+
+	/* This should be configurable at the probe level, but
+	 * we're not handling that yet.
+	 */
+	bool			use_connected_socket;
+} fm_tcp_request_t;
+
+typedef struct tcp_extant_info {
+	unsigned int		port;
+} fm_tcp_extant_info_t;
+
+
 static fm_socket_t *	fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af);
 static bool		fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_connecton_established(fm_protocol_t *proto, const fm_address_t *);
 static fm_probe_t *	fm_tcp_create_parameterized_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
+
+static fm_tcp_request_t *fm_tcp_probe_get_request(const fm_probe_t *probe);
+static void		fm_tcp_probe_set_request(fm_probe_t *probe, fm_tcp_request_t *tcp);
 
 static struct fm_protocol_ops	fm_tcp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -61,22 +84,54 @@ fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af)
 }
 
 /*
+ * TCP action
+ */
+static void
+fm_tcp_request_free(fm_tcp_request_t *tcp)
+{
+	if (tcp->sock != NULL) {
+		fm_socket_free(tcp->sock);
+		tcp->sock = NULL;
+	}
+	free(tcp);
+}
+
+static fm_tcp_request_t *
+fm_tcp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params)
+{
+	fm_tcp_request_t *tcp;
+
+	if (params->port == 0) {
+		fm_log_error("%s: trying to create a tcp request without destination port");
+		return NULL;
+	}
+
+
+	tcp = calloc(1, sizeof(*tcp));
+	tcp->proto = proto;
+	tcp->target = target;
+	tcp->params = *params;
+
+	tcp->family = target->address.ss_family;
+	tcp->host_address = target->address;
+	if (!fm_address_set_port(&tcp->host_address, params->port)) {
+		fm_tcp_request_free(tcp);
+		return NULL;
+	}
+
+	return tcp;
+}
+
+/*
  * Track extant TCP requests.
  * We currently do not track individual packets and their response(s), we just
  * record the fact that we *did* send to a specific port.
  * We do not even distinguish by the source port used on our end.
  */
-struct tcp_extant_info {
-	unsigned int		port;
-};
-
-static bool
-fm_tcp_expect_response(fm_probe_t *probe, int af, unsigned int port)
+static void
+fm_tcp_extant_info_build(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
 {
-	struct tcp_extant_info info = { .port = port };
-
-	fm_extant_alloc(probe, af, IPPROTO_TCP, &info, sizeof(info));
-	return true;
+	extant_info->port = tcp->params.port;
 }
 
 static fm_extant_t *
@@ -152,35 +207,11 @@ fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 	return true;
 }
 
-/*
- * TCP port probes using standard BSD sockets
- */
-struct fm_tcp_port_probe {
-	fm_probe_t	base;
-
-	fm_probe_params_t params;
-	fm_address_t	host_address;
-	fm_socket_t *	sock;
-};
-
-static void
-fm_tcp_port_probe_destroy(fm_probe_t *probe)
-{
-	struct fm_tcp_port_probe *tcp = (struct fm_tcp_port_probe *) probe;
-
-	if (tcp->sock != NULL) {
-		fm_socket_free(tcp->sock);
-		tcp->sock = NULL;
-	}
-}
-
 static fm_error_t
-fm_tcp_port_probe_send(fm_probe_t *probe)
+fm_tcp_request_send(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
 {
-	struct fm_tcp_port_probe *tcp = (struct fm_tcp_port_probe *) probe;
-
 	if (tcp->sock == NULL) {
-		tcp->sock = fm_protocol_create_socket(probe->proto, tcp->host_address.ss_family);
+		tcp->sock = fm_protocol_create_socket(tcp->proto, tcp->host_address.ss_family);
 		if (tcp->sock == NULL) {
 			fm_log_error("Unable to create TCP socket for %s: %m",
 					fm_address_format(&tcp->host_address));
@@ -196,12 +227,45 @@ fm_tcp_port_probe_send(fm_probe_t *probe)
 		}
 	}
 
-	fm_tcp_expect_response(probe, tcp->host_address.ss_family, tcp->params.port);
+	fm_tcp_extant_info_build(tcp, extant_info);
 
 	/* update the asset state */
-	fm_target_update_port_state(probe->target, FM_PROTO_TCP, tcp->params.port, FM_ASSET_STATE_PROBE_SENT);
+	fm_target_update_port_state(tcp->target, FM_PROTO_TCP, tcp->params.port, FM_ASSET_STATE_PROBE_SENT);
 
 	return 0;
+}
+
+/*
+ * TCP port probes using standard BSD sockets
+ */
+struct fm_tcp_port_probe {
+	fm_probe_t		base;
+	fm_tcp_request_t *	tcp;
+};
+
+static void
+fm_tcp_port_probe_destroy(fm_probe_t *probe)
+{
+	fm_tcp_request_t *tcp = fm_tcp_probe_get_request(probe);
+
+	if (tcp != NULL) {
+		fm_tcp_request_free(tcp);
+		fm_tcp_probe_set_request(probe, NULL);
+	}
+}
+
+static fm_error_t
+fm_tcp_port_probe_send(fm_probe_t *probe)
+{
+	fm_tcp_request_t *tcp = fm_tcp_probe_get_request(probe);
+	fm_tcp_extant_info_t extant_info;
+	fm_error_t error;
+
+	error = fm_tcp_request_send(tcp, &extant_info);
+	if (error == 0)
+		fm_extant_alloc(probe, tcp->family, IPPROTO_TCP, &extant_info, sizeof(extant_info));
+
+	return error;
 }
 
 static struct fm_probe_ops fm_tcp_port_probe_ops = {
@@ -212,32 +276,36 @@ static struct fm_probe_ops fm_tcp_port_probe_ops = {
 	.send		= fm_tcp_port_probe_send,
 };
 
+static fm_tcp_request_t *
+fm_tcp_probe_get_request(const fm_probe_t *probe)
+{
+	return ((struct fm_tcp_port_probe *) probe)->tcp;
+}
+
+static void
+fm_tcp_probe_set_request(fm_probe_t *probe, fm_tcp_request_t *tcp)
+{
+	((struct fm_tcp_port_probe *) probe)->tcp = tcp;
+}
+
 static fm_probe_t *
 fm_tcp_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
-	struct sockaddr_storage tmp_address = target->address;
-	struct fm_tcp_port_probe *probe;
+	fm_tcp_request_t *tcp;
+	fm_probe_t *probe;
 	char name[32];
 
-	if (params->port == 0) {
-		fm_log_error("%s: parameterized probe requires destination port", proto->ops->name);
-		return NULL;
-	}
-
-	if (!fm_address_set_port(&tmp_address, params->port))
+	if (!(tcp = fm_tcp_request_alloc(proto, target, params)))
 		return NULL;
 
 	snprintf(name, sizeof(name), "tcp/%u", params->port);
+	probe = fm_probe_alloc(name, &fm_tcp_port_probe_ops, proto, target);
 
-	probe = (struct fm_tcp_port_probe *) fm_probe_alloc(name, &fm_tcp_port_probe_ops, proto, target);
-
-	probe->params = *params;
-	probe->host_address = tmp_address;
-	probe->sock = NULL;
+	fm_tcp_probe_set_request(probe, tcp);
 
 	/* TCP services may take up to .5 sec for the queued TCP connection to be accepted. */
-	probe->base.rtt_application_bias = fm_global.tcp.application_delay;
+	probe->rtt_application_bias = fm_global.tcp.application_delay;
 
-	fm_log_debug("Created TCP socket probe for %s\n", fm_address_format(&probe->host_address));
-	return &probe->base;
+	fm_log_debug("Created TCP socket probe for %s\n", fm_address_format(&tcp->host_address));
+	return probe;
 }
