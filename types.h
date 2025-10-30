@@ -74,6 +74,26 @@ enum {
 };
 
 /*
+ * Parameters that can be passed to a protocol when creating probes.
+ */
+typedef enum fm_param_type {
+	FM_PARAM_TYPE_NONE = 0,
+	FM_PARAM_TYPE_RETRIES,
+	FM_PARAM_TYPE_PORT,
+	FM_PARAM_TYPE_TTL,
+	FM_PARAM_TYPE_TOS,
+
+	__FM_PARAM_TYPE_MAX,
+} fm_param_type_t;
+
+typedef struct fm_probe_params {
+	unsigned int	retries;
+	unsigned int	port;
+	unsigned int	ttl;
+	unsigned int	tos;
+} fm_probe_params_t;
+
+/*
  * Network stats. For now, we use it to build a reasonable RTT estimate
  */
 typedef struct fm_rtt_stats {
