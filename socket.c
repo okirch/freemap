@@ -37,6 +37,15 @@
 
 static struct fm_socket_list	socket_list;
 
+struct fm_msghdr {
+	struct sockaddr_storage peer_addr;
+	struct msghdr msg;
+	struct iovec iov;
+	char control[1024];
+
+	struct cmsghdr *cmsg;
+};
+
 /*
  * Socket level representation of a packet
  */
@@ -397,17 +406,10 @@ fm_socket_send_buffer(fm_socket_t *sock, const fm_address_t *dstaddr, fm_buffer_
 /*
  * recvmsg convenience functions
  */
-struct fm_recv_data {
-	struct sockaddr_storage peer_addr;
-	struct msghdr msg;
-	struct iovec iov;
-	char control[1024];
-};
-
-static struct fm_recv_data *
+static struct fm_msghdr *
 fm_recvmsg_prepare(void *buffer, size_t bufsize, int flags)
 {
-	struct fm_recv_data *rd;
+	struct fm_msghdr *rd;
 
 	rd = calloc(1, sizeof(*rd));
 
@@ -425,7 +427,7 @@ fm_recvmsg_prepare(void *buffer, size_t bufsize, int flags)
 }
 
 static bool
-fm_process_cmsg(struct fm_recv_data *rd, fm_pkt_info_t *info)
+fm_process_cmsg(struct fm_msghdr *rd, fm_pkt_info_t *info)
 {
 	struct cmsghdr *cm;
 
@@ -468,7 +470,7 @@ fm_process_cmsg(struct fm_recv_data *rd, fm_pkt_info_t *info)
 bool
 fm_socket_recverr(fm_socket_t *sock, fm_pkt_info_t *info)
 {
-	struct fm_recv_data *rd;
+	struct fm_msghdr *rd;
 	unsigned char dummy_buf[1];
 	int n;
 
@@ -490,7 +492,7 @@ fm_socket_recverr(fm_socket_t *sock, fm_pkt_info_t *info)
 static int
 fm_socket_recv(fm_socket_t *sock, struct sockaddr_storage *peer_addr, void *buffer, size_t size, fm_pkt_info_t *info, int flags)
 {
-	struct fm_recv_data *rd;
+	struct fm_msghdr *rd;
 	int n;
 
 	if (sock->fd < 0)
