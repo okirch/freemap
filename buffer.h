@@ -18,11 +18,7 @@
 #ifndef FREEMAP_BUFFER_H
 #define FREEMAP_BUFFER_H
 
-typedef struct nlpkt {
-	unsigned int	rpos, wpos, size;
-	unsigned char	data[0];
-} fm_buffer_t;
-
+#include "types.h"
 
 extern fm_buffer_t *	fm_buffer_alloc(size_t payload);
 extern void		fm_buffer_free(fm_buffer_t *pkt);

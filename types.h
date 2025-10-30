@@ -125,6 +125,15 @@ typedef struct fm_port_range {
 } fm_port_range_t;
 
 /*
+ * Buffer for building and dissecting packets
+ */
+typedef struct fm_buffer {
+	unsigned int	rpos, wpos, size;
+	unsigned char	data[0];
+} fm_buffer_t;
+
+
+/*
  * Information about a packet received from somewhere
  */
 typedef struct fm_socket_timestamp {
