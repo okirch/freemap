@@ -38,6 +38,7 @@ struct fm_wellknown_service {
 	fm_probe_packet_t *	probe_packet;
 };
 
+extern fm_buffer_t *		fm_wellknown_service_build_packet(fm_wellknown_service_t *wks);
 
 extern fm_wellknown_service_t	unknown_rpc_service;
 extern fm_wellknown_service_t	portmap_rpc_service;

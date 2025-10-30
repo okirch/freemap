@@ -21,13 +21,13 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <poll.h>
 
 #include "scanner.h"
 #include "protocols.h"
 #include "wellknown.h"
 #include "target.h" /* for fm_probe_t */
 #include "socket.h"
+#include "buffer.h"
 
 static fm_socket_t *	fm_udp_create_bsd_socket(fm_protocol_t *proto, int af);
 static fm_socket_t *	fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);
@@ -247,13 +247,28 @@ fm_udp_port_probe_destroy(fm_probe_t *probe)
 	}
 }
 
+static fm_buffer_t *
+fm_udp_build_packet(unsigned int port)
+{
+	fm_wellknown_service_t *wks;
+	fm_buffer_t *bp;
+
+	/* Check if we can guess a well-known service */
+	if ((wks = fm_wellknown_service_for_port("udp", port)) != NULL)
+		return fm_wellknown_service_build_packet(wks);
+
+	/* If we can't guess the UDP service, send a single NUL byte as payload. */
+	bp = fm_buffer_alloc(16);
+	fm_buffer_append(bp, "", 1);
+	return bp;
+}
+
 static fm_error_t
 fm_udp_port_probe_send(fm_probe_t *probe)
 {
 	struct fm_udp_port_probe *udp = (struct fm_udp_port_probe *) probe;
-	fm_wellknown_service_t *wks;
-	const fm_probe_packet_t *pkt;
 	fm_socket_t *sock;
+	fm_buffer_t *bp;
 
 	if (udp->use_connected_socket) {
 		udp->sock = fm_udp_create_connected_socket(probe->proto, &udp->host_address);
@@ -268,22 +283,15 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 		return FM_SEND_ERROR;
 	}
 
-	/* Check if we can guess a well-known service */
-	if ((wks = fm_wellknown_service_for_port("udp", udp->params.port)) == NULL) {
-		/* If we can't guess the UDP service, send a single NUL byte as payload. */
-		static fm_probe_packet_t dummy_packet = { "", 1 };
-		static fm_wellknown_service_t dummy_udp = {
-			.id = "udp", .probe_packet = &dummy_packet
-		};
+	bp = fm_udp_build_packet(udp->params.port);
 
-		wks = &dummy_udp;
-	}
-
-	pkt = wks->probe_packet;
-	if (!fm_socket_send(sock, &udp->host_address, pkt->data, pkt->len)) {
+	if (!fm_socket_send_buffer(sock, &udp->host_address, bp)) {
 		fm_log_error("Unable to send UDP packet: %m");
+		fm_buffer_free(bp);
 		return FM_SEND_ERROR;
 	}
+
+	fm_buffer_free(bp);
 
 	fm_udp_expect_response(probe, udp->host_address.ss_family, udp->params.port);
 

@@ -18,6 +18,8 @@
 #ifndef FREEMAP_BUFFER_H
 #define FREEMAP_BUFFER_H
 
+#include <assert.h>
+#include <string.h>
 #include "types.h"
 
 extern fm_buffer_t *	fm_buffer_alloc(size_t payload);
@@ -57,6 +59,17 @@ fm_buffer_push(fm_buffer_t *pkt, size_t count)
 	assert(pkt->size - pkt->wpos >= count);
 	pkt->wpos += count;
 	return ret;
+}
+
+static inline bool
+fm_buffer_append(fm_buffer_t *bp, const void *data, size_t len)
+{
+	void *tail = fm_buffer_push(bp, len);
+
+	if (tail == NULL)
+		return false;
+	memcpy(tail, data, len);
+	return true;
 }
 
 static inline void *

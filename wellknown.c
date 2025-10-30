@@ -21,10 +21,10 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <poll.h>
 
 #include "freemap.h"
 #include "wellknown.h"
+#include "buffer.h"
 
 fm_wellknown_service_t *
 fm_wellknown_service_for_port(const char *protocol_id, unsigned int port)
@@ -45,4 +45,17 @@ fm_wellknown_service_for_port(const char *protocol_id, unsigned int port)
 	}
 
 	return NULL;
+}
+
+fm_buffer_t *
+fm_wellknown_service_build_packet(fm_wellknown_service_t *wks)
+{
+	fm_probe_packet_t *wpkt = wks->probe_packet;
+	fm_buffer_t *bp;
+
+	bp = fm_buffer_alloc(wpkt->len);
+	if (!fm_buffer_append(bp, wpkt->data, wpkt->len))
+		fm_log_fatal("%s: something spooky is happening", __func__);
+
+	return bp;
 }
