@@ -51,7 +51,8 @@ static fm_socket_t *	fm_icmp_create_raw_socket(fm_protocol_t *proto, int ipproto
 static fm_socket_t *	fm_icmp_create_shared_raw_socket(fm_protocol_t *proto, fm_target_t *target);
 
 static fm_socket_t *	fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr);
-static fm_scan_action_t *fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
+static bool		fm_icmp_finalize_action(fm_protocol_t *, fm_scan_action_t *, const fm_string_array_t *);
+static fm_probe_t *	fm_icmp_create_host_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 static int		fm_icmp_protocol_for_family(int af);
 static fm_extant_t *	fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response, bool ignore_id);
 
@@ -64,7 +65,8 @@ static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.process_packet	= fm_icmp_process_packet,
 	.process_error	= fm_icmp_process_error,
 
-	.create_host_probe_action = fm_icmp_create_host_probe_action,
+	.finalize_action = fm_icmp_finalize_action,
+	.create_parameterized_probe = fm_icmp_create_host_probe,
 };
 
 static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
@@ -78,7 +80,8 @@ static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
 	.process_packet	= fm_icmp_process_packet,
 	.process_error	= fm_icmp_process_error,
 
-	.create_host_probe_action = fm_icmp_create_host_probe_action,
+	.finalize_action = fm_icmp_finalize_action,
+	.create_parameterized_probe = fm_icmp_create_host_probe,
 };
 
 FM_PROTOCOL_REGISTER(fm_icmp_bsdsock_ops);
@@ -641,14 +644,18 @@ static struct fm_probe_ops fm_icmp_host_probe_ops = {
 };
 
 static fm_probe_t *
-fm_icmp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const struct icmp_host_probe_params *icmp_args)
+fm_icmp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
+	const struct icmp_host_probe_params *icmp_args = extra_params;
 	struct fm_icmp_host_probe *probe;
 
 	probe = (struct fm_icmp_host_probe *) fm_probe_alloc("icmp/echo", &fm_icmp_host_probe_ops, proto, target);
 
 	probe->sock = NULL;
 	probe->params = *icmp_args;
+
+	/* FIXME: fm_probe should have a member for storing the standard params */
+	probe->params.retries = params->retries;
 
 	if (!fm_icmp_instantiate_params(&probe->params, target))
 		return NULL;
@@ -658,48 +665,19 @@ fm_icmp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const struc
 }
 
 /*
- * This provides the template for later probes.
+ * After we've created a generic hostscan action, come here for some polishing
  */
-struct fm_icmp_host_scan {
-	fm_scan_action_t	base;
-
-	fm_protocol_t *		proto;
-	struct icmp_host_probe_params params;
-};
-
-static fm_probe_t *
-fm_icmp_host_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *target, unsigned int index)
+static bool
+fm_icmp_finalize_action(fm_protocol_t *proto, fm_scan_action_t *action, const fm_string_array_t *extra_args)
 {
-	struct fm_icmp_host_scan *hostscan = (struct fm_icmp_host_scan *) action;
+	struct icmp_host_probe_params *icmp_params;
 
-	if (index != 0)
-		return NULL;
-
-	return fm_icmp_create_host_probe(hostscan->proto, target, &hostscan->params);
-}
-
-static const struct fm_scan_action_ops	fm_icmp_host_scan_ops = {
-	.obj_size	= sizeof(struct fm_icmp_host_scan),
-	.get_next_probe	= fm_icmp_host_scan_get_next_probe,
-};
-
-fm_scan_action_t *
-fm_icmp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args)
-{
-	struct fm_icmp_host_scan *hostscan;
-	struct icmp_host_probe_params icmp_args;
-	char id[64];
-
-	if (!fm_icmp_build_params(&icmp_args, args))
+	icmp_params = calloc(1, sizeof(*icmp_params));
+	if (!fm_icmp_build_params(icmp_params, extra_args)) {
+		free(icmp_params);
 		return false;
+	}
 
-	snprintf(id, sizeof(id), "icmp/%s", icmp_args.type_name);
-
-	hostscan = (struct fm_icmp_host_scan *) fm_scan_action_create(&fm_icmp_host_scan_ops, id);
-	hostscan->proto = proto;
-	hostscan->params = icmp_args;
-
-	hostscan->base.nprobes = 1;
-
-	return &hostscan->base;
+	action->extra_params = icmp_params;
+	return true;
 }

@@ -41,7 +41,8 @@ static fm_socket_t *	fm_arp_create_socket(fm_protocol_t *proto, int ipproto);
 static bool		fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 
 static int		fm_arp_probe_original_ifindex(const fm_probe_t *);
-static fm_scan_action_t *fm_arp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args);
+static bool		fm_arp_finalize_action(fm_protocol_t *proto, fm_scan_action_t *action, const fm_string_array_t *extra_args);
+static fm_probe_t *	fm_arp_create_host_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 
 static struct fm_protocol_ops	fm_arp_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -49,8 +50,13 @@ static struct fm_protocol_ops	fm_arp_ops = {
 	.id		= FM_PROTO_ARP,
 	.require_raw	= true,
 
+	.supported_parameters = FM_PROBE_PARAM_MASK(RETRIES),
+
 	.create_socket	= fm_arp_create_socket,
-	.create_host_probe_action = fm_arp_create_host_probe_action,
+
+	.finalize_action = fm_arp_finalize_action,
+	.create_parameterized_probe = fm_arp_create_host_probe,
+
 	.process_packet	= fm_arp_process_packet,
 };
 
@@ -105,34 +111,6 @@ fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 
 		fm_extant_free(extant);
 	}
-
-	return true;
-}
-
-/*
- * ARP param block.
- */
-static inline bool
-fm_arp_build_params(struct arp_host_probe_params *params, const fm_string_array_t *args)
-{
-	unsigned int i;
-
-	memset(params, 0, sizeof(*params));
-
-	for (i = 0; i < args->count; ++i) {
-		const char *arg = args->entries[i];
-		unsigned int value;
-
-		if (fm_parse_numeric_argument(arg, "retries", &value)) {
-			params->retries = value;
-		} else {
-			fm_log_error("Cannot create ARP host probe: invalid argument \"%s\"", arg);
-			return false;
-		}
-	}
-
-	if (params->retries == 0)
-		params->retries = FM_ARP_PROBE_RETRIES;
 
 	return true;
 }
@@ -322,7 +300,7 @@ static struct fm_probe_ops fm_arp_host_probe_ops = {
 };
 
 static fm_probe_t *
-fm_arp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const struct arp_host_probe_params *arp_args)
+fm_arp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
 	struct fm_arp_host_probe *probe;
 	uint32_t src_ipaddr, dst_ipaddr;
@@ -336,9 +314,16 @@ fm_arp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const struct
 		return NULL;
 	}
 
+	if (src_lladdr.sll_ifindex == 0) {
+		fm_log_error("Cannot create ARP probe on %s: NIC address lacks ifindex: %s",
+				fm_interface_get_name(target->local_device),
+				fm_address_format((fm_address_t *) &src_lladdr));
+		return NULL;
+	}
+
 	probe = (struct fm_arp_host_probe *) fm_probe_alloc("arp", &fm_arp_host_probe_ops, proto, target);
 
-	probe->params = *arp_args;
+	probe->params.retries = params->retries? : FM_ARP_PROBE_RETRIES;
 
 	probe->params.dst_ipaddr = dst_ipaddr;
 	probe->params.src_ipaddr = src_ipaddr;
@@ -351,13 +336,13 @@ fm_arp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const struct
 bool
 fm_arp_discover(fm_protocol_t *proto, fm_target_t *target, int retries)
 {
-	struct arp_host_probe_params params;
+	fm_probe_params_t params;
 	fm_probe_t *probe;
 
 	memset(&params, 0, sizeof(params));
 	params.retries = retries? : FM_ARP_PROBE_RETRIES;
 
-	probe = fm_arp_create_host_probe(proto, target, &params);
+	probe = fm_arp_create_host_probe(proto, target, &params, NULL);
 	if (probe == NULL)
 		return false;
 
@@ -378,49 +363,22 @@ fm_arp_probe_original_ifindex(const fm_probe_t *probe)
 }
 
 /*
- * ARP host probe
+ * After we've created a generic hostscan action, come here for some polishing
  */
-struct fm_arp_host_scan {
-	fm_scan_action_t	base;
-
-	fm_protocol_t *		proto;
-	struct arp_host_probe_params params;
-};
-
-static fm_probe_t *
-fm_arp_host_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *target, unsigned int index)
+static bool
+fm_arp_finalize_action(fm_protocol_t *proto, fm_scan_action_t *action, const fm_string_array_t *extra_args)
 {
-	struct fm_arp_host_scan *hostscan = (struct fm_arp_host_scan *) action;
+	if (extra_args && extra_args->count != 0) {
+		/* FIXME: we should have a generic function that handles this sort of complaint
+		 * and produces a reasonable error message. */
+		fm_log_error("ARP: unrecognized extra parameters...");
+                return false;
+        }
 
-	if (index != 0)
-		return NULL;
-
-	return fm_arp_create_host_probe(hostscan->proto, target, &hostscan->params);
-}
-
-static const struct fm_scan_action_ops	fm_arp_host_scan_ops = {
-	.obj_size	= sizeof(struct fm_arp_host_scan),
-	.get_next_probe	= fm_arp_host_scan_get_next_probe,
-};
-
-
-fm_scan_action_t *
-fm_arp_create_host_probe_action(fm_protocol_t *proto, const fm_string_array_t *args)
-{
-	struct fm_arp_host_scan *hostscan;
-	struct arp_host_probe_params arp_args;
-
-	if (!fm_arp_build_params(&arp_args, args))
-		return false;
-
-	hostscan = (struct fm_arp_host_scan *) fm_scan_action_create(&fm_arp_host_scan_ops, "arp");
-	hostscan->proto = proto;
-	hostscan->params = arp_args;
-
-	hostscan->base.flags = FM_SCAN_ACTION_FLAG_LOCAL_ONLY;
-	hostscan->base.nprobes = 1;
-
-	return &hostscan->base;
+	action->flags = FM_SCAN_ACTION_FLAG_LOCAL_ONLY;
+	if (action->probe_params.retries == 0)
+		action->probe_params.retries = FM_ARP_PROBE_RETRIES;
+	return true;
 }
 
 /*
