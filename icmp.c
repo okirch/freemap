@@ -30,6 +30,7 @@
 #include "scanner.h"
 #include "protocols.h"
 #include "target.h" /* for fm_probe_t */
+#include "buffer.h"
 #include "utils.h"
 
 struct icmp_host_probe_params {
@@ -355,17 +356,16 @@ fm_icmp_host_probe_destroy(fm_probe_t *probe)
 	}
 }
 
-static unsigned int
-fm_icmp_build_echo_request(int af, const struct icmp_host_probe_params *params, unsigned char *buf, size_t bufsz)
+static fm_pkt_t *
+fm_icmp_build_echo_request(int af, const struct icmp_host_probe_params *params)
 {
-	unsigned int rsize = 0;
+	fm_pkt_t *pkt = fm_pkt_alloc(af, 64);
+	fm_buffer_t *bp = pkt->payload;
 
 	if (af == AF_INET) {
-		struct icmp *icmp = (struct icmp *) buf;
+		struct icmp *icmp;
 
-		if (bufsz < sizeof(*icmp))
-			return 0;
-
+		icmp = fm_buffer_push(bp, sizeof(*icmp));
 		icmp->icmp_type = params->icmp_type;
 		icmp->icmp_code = 0;
 		icmp->icmp_cksum = 0;
@@ -373,10 +373,10 @@ fm_icmp_build_echo_request(int af, const struct icmp_host_probe_params *params, 
 		icmp->icmp_seq = htons(params->seq);
 
 		icmp->icmp_cksum = in_csum(icmp, sizeof(*icmp));
-		rsize = sizeof(*icmp);
         } else if (af == AF_INET6) {
-		struct icmp6_hdr *icmp6 = (struct icmp6_hdr *) buf;
+		struct icmp6_hdr *icmp6;
 
+		icmp6 = fm_buffer_push(bp, sizeof(*icmp6));
 		icmp6->icmp6_type = params->icmp6_type;
 		icmp6->icmp6_code = 0;
 		icmp6->icmp6_cksum = 0;
@@ -384,10 +384,9 @@ fm_icmp_build_echo_request(int af, const struct icmp_host_probe_params *params, 
 		icmp6->icmp6_seq = htons(params->seq);
 
 		/* Kernel takes care of checksums */
-		rsize = sizeof(*icmp6);
         }
 
-	return rsize;
+	return pkt;
 }
 
 /*
@@ -470,11 +469,15 @@ fm_icmp6_expect_response(const void *sent_data, unsigned int sent_len, fm_probe_
 }
 
 static bool
-fm_icmp_expect_response(int af, const void *sent_data, unsigned int sent_len, fm_probe_t *probe)
+fm_icmp_expect_response(const fm_pkt_t *pkt, fm_probe_t *probe)
 {
-	if (af == AF_INET) {
+	fm_buffer_t *bp = pkt->payload;
+	unsigned int sent_len = fm_buffer_available(bp);
+	const void *sent_data = fm_buffer_head(bp);
+
+	if (pkt->family == AF_INET) {
 		return fm_icmp4_expect_response(sent_data, sent_len, probe);
-	} else if (af == AF_INET6) {
+	} else if (pkt->family == AF_INET6) {
 		return fm_icmp6_expect_response(sent_data, sent_len, probe);
 	}
 
@@ -579,8 +582,7 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 	fm_socket_t *sock;
 	struct fm_icmp_host_probe *icmp = (struct fm_icmp_host_probe *) probe;
 	int af = icmp->params.host_address.ss_family;
-	unsigned char pktbuf[128];
-	size_t pktlen;
+	fm_pkt_t *pkt;
 
 	/* When using raw sockets, create a single ICMP socket per target host */
 	sock = fm_protocol_create_host_shared_socket(probe->proto, probe->target);
@@ -598,21 +600,24 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 		sock = icmp->sock;
 	}
 
-	pktlen = fm_icmp_build_echo_request(af, &icmp->params, pktbuf, sizeof(pktbuf));
-	if (pktlen == 0) {
+	pkt = fm_icmp_build_echo_request(af, &icmp->params);
+	if (pkt == NULL) {
 		fm_log_error("Don't know how to build ICMP packet for address family %d", af);
 		return FM_SEND_ERROR;
 	}
 
 	/* inform the ICMP response matching code that we're waiting for a response to this packet */
-	fm_icmp_expect_response(af, pktbuf, pktlen, probe);
+	fm_icmp_expect_response(pkt, probe);
 
 	icmp->params.seq += 1;
 
-	if (!fm_socket_send(sock, NULL, pktbuf, pktlen)) {
+	if (!fm_socket_send_buffer(sock, NULL, pkt->payload)) {
 		fm_log_error("Unable to send ICMP packet: %m");
+		fm_pkt_free(pkt);
 		return FM_SEND_ERROR;
 	}
+
+	fm_pkt_free(pkt);
 
 	if (icmp->params.retries > 0)
 		icmp->params.retries -= 1;
