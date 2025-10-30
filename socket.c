@@ -227,7 +227,36 @@ fm_pkt_rtt(const fm_pkt_t *pkt, const fm_socket_timestamp_t *send_ts)
 bool
 fm_socket_enable_hdrincl(fm_socket_t *sock)
 {
-	return fm_socket_option_set(sock, "IP_HDRINCL", SOL_IP, IP_HDRINCL, true);
+	if (sock->family == AF_INET)
+		return fm_socket_option_set(sock, "IP_HDRINCL", SOL_IP, IP_HDRINCL, true);
+	fm_log_error("Cannot set HDRINCL socket option on %s sockets", fm_socket_family_name(sock));
+	return true;
+}
+
+bool
+fm_socket_enable_ttl(fm_socket_t *sock)
+{
+	if (sock->family == AF_INET)
+		return fm_socket_option_set(sock, "IP_RECVTTL", SOL_IP, IP_RECVTTL, true);
+
+	if (sock->family == AF_INET6)
+		return fm_socket_option_set(sock, "IPV6_RECVHOPLIMIT", SOL_IPV6, IPV6_RECVHOPLIMIT, true);
+
+	fm_log_error("Cannot set RECVTTL socket option on %s sockets", fm_socket_family_name(sock));
+	return true;
+}
+
+bool
+fm_socket_enable_tos(fm_socket_t *sock)
+{
+	if (sock->family == AF_INET)
+		return fm_socket_option_set(sock, "IP_RECVTOS", SOL_IP, IP_RECVTOS, true);
+
+	if (sock->family == AF_INET6)
+		return fm_socket_option_set(sock, "IPV6_RECVTCLASS", SOL_IPV6, IPV6_RECVTCLASS, true);
+
+	fm_log_error("Cannot set RECVTOS socket option on %s sockets", fm_socket_family_name(sock));
+	return true;
 }
 
 /*
@@ -405,6 +434,10 @@ fm_process_cmsg(struct fm_recv_data *rd, fm_pkt_info_t *info)
 		if ((cm->cmsg_level == SOL_IP && cm->cmsg_type == IP_TTL)
 		 || (cm->cmsg_level == SOL_IPV6 && cm->cmsg_type == IPV6_HOPLIMIT)) {
 			info->ttl = *((int *) ptr);
+		} else
+		if ((cm->cmsg_level == SOL_IP && cm->cmsg_type == IP_TOS)
+		 || (cm->cmsg_level == SOL_IPV6 && cm->cmsg_type == IPV6_TCLASS)) {
+			info->tos = *((int *) ptr);
 		} else
 		if ((cm->cmsg_level == SOL_IP && cm->cmsg_type == IP_RECVERR)
 		 || (cm->cmsg_level == SOL_IPV6 && cm->cmsg_type == IPV6_RECVERR)) {

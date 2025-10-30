@@ -90,6 +90,7 @@ FM_PROTOCOL_REGISTER(fm_icmp_rawsock_ops);
 static fm_socket_t *
 fm_icmp_create_bsd_socket(fm_protocol_t *proto, int af)
 {
+	fm_socket_t *sock;
 	int ipproto;
 
 	/* This should not fail; the caller should have taken care of this check already */
@@ -97,7 +98,12 @@ fm_icmp_create_bsd_socket(fm_protocol_t *proto, int af)
 	if (ipproto < 0)
 		return NULL;
 
-	return fm_socket_create(af, SOCK_DGRAM, ipproto, proto);
+	sock = fm_socket_create(af, SOCK_DGRAM, ipproto, proto);
+	if (sock != NULL) {
+		fm_socket_enable_ttl(sock);
+		fm_socket_enable_tos(sock);
+	}
+	return sock;
 }
 
 static bool
@@ -208,6 +214,7 @@ fm_icmp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 static fm_socket_t *
 fm_icmp_create_raw_socket(fm_protocol_t *proto, int af)
 {
+	fm_socket_t *sock;
 	int ipproto;
 
 	/* This should not fail; the caller should have taken care of this check already */
@@ -215,7 +222,12 @@ fm_icmp_create_raw_socket(fm_protocol_t *proto, int af)
 	if (ipproto < 0)
 		return NULL;
 
-	return fm_socket_create(af, SOCK_RAW, ipproto, proto);
+	sock = fm_socket_create(af, SOCK_RAW, ipproto, proto);
+	if (sock != NULL) {
+		fm_socket_enable_ttl(sock);
+		fm_socket_enable_tos(sock);
+	}
+	return sock;
 }
 
 static fm_socket_t *

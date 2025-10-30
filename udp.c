@@ -58,7 +58,14 @@ FM_PROTOCOL_REGISTER(fm_udp_bsdsock_ops);
 static fm_socket_t *
 fm_udp_create_bsd_socket(fm_protocol_t *proto, int af)
 {
-	return fm_socket_create(af, SOCK_DGRAM, 0, proto);
+	fm_socket_t *sock;
+
+	sock = fm_socket_create(af, SOCK_DGRAM, 0, proto);
+	if (sock) {
+		fm_socket_enable_ttl(sock);
+		fm_socket_enable_tos(sock);
+	}
+	return sock;
 }
 
 static fm_socket_t *

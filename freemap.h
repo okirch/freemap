@@ -159,6 +159,8 @@ extern bool		fm_socket_bind(fm_socket_t *, const fm_address_t *);
 extern bool		fm_socket_get_local_address(const fm_socket_t *, fm_address_t *);
 extern bool		fm_socket_enable_recverr(fm_socket_t *);
 extern bool		fm_socket_enable_hdrincl(fm_socket_t *sock);
+extern bool		fm_socket_enable_ttl(fm_socket_t *sock);
+extern bool		fm_socket_enable_tos(fm_socket_t *sock);
 extern bool		fm_socket_enable_timestamp(fm_socket_t *);
 extern bool		fm_socket_send(fm_socket_t *sock, const fm_address_t *dstaddr, const void *pkt, size_t len);
 extern void		fm_socket_close(fm_socket_t *);
