@@ -388,6 +388,12 @@ fm_socket_send(fm_socket_t *sock, const fm_address_t *dstaddr, const void *pkt, 
 	return true;
 }
 
+bool
+fm_socket_send_buffer(fm_socket_t *sock, const fm_address_t *dstaddr, fm_buffer_t *data)
+{
+	return fm_socket_send(sock, dstaddr, fm_buffer_head(data), fm_buffer_available(data));
+}
+
 /*
  * recvmsg convenience functions
  */
