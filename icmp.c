@@ -106,10 +106,10 @@ fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 	fm_extant_t *extant = NULL;
 	bool ignore_id = false;
 
-	fm_log_debug("received ICMP reply from %s", fm_address_format(&pkt->recv_addr));
+	fm_log_debug("received ICMP reply from %s", fm_address_format(&pkt->peer_addr));
 	/* fm_print_hexdump(pkt->data, pkt->len); */
 
-	fm_host_asset_update_state_by_address(&pkt->recv_addr, FM_ASSET_STATE_OPEN);
+	fm_host_asset_update_state_by_address(&pkt->peer_addr, FM_ASSET_STATE_OPEN);
 
 	if (proto->ops == &fm_icmp_bsdsock_ops) {
 		/* When using dgram/icmp sockets, the kernel will overwrite the icmp sequence
@@ -136,7 +136,7 @@ fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 		}
 	}
 
-	extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, true, ignore_id);
+	extant = fm_icmp_locate_probe(&pkt->peer_addr, pkt, true, ignore_id);
 	if (extant != NULL) {
 		/* Mark the probe as successful, and update the RTT estimate */
 		fm_extant_received_reply(extant, pkt);
@@ -168,16 +168,16 @@ fm_icmp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 	if (pkt->family == AF_INET && ee->ee_origin == SO_EE_ORIGIN_ICMP) {
 		if (ee->ee_type != ICMP_DEST_UNREACH) {
 			fm_log_debug("%s ignoring icmp packet with type %d.%d",
-					fm_address_format(&pkt->recv_addr),
+					fm_address_format(&pkt->peer_addr),
 					ee->ee_type, ee->ee_code);
 			return false;
 		}
 
 		fm_log_debug("%s destination unreachable (code %d)\n",
-				fm_address_format(&pkt->recv_addr), ee->ee_code);
+				fm_address_format(&pkt->peer_addr), ee->ee_code);
 
 		/* update asset state right away */
-		fm_host_asset_update_state_by_address(&pkt->recv_addr, FM_ASSET_STATE_CLOSED);
+		fm_host_asset_update_state_by_address(&pkt->peer_addr, FM_ASSET_STATE_CLOSED);
 		if (pkt->info.offender != NULL)
 			fm_host_asset_update_state_by_address(pkt->info.offender, FM_ASSET_STATE_OPEN);
 
@@ -185,7 +185,7 @@ fm_icmp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 		 * ICMP packet, the "from" address is the IP we originally sent the packet
 		 * to, and the offender is the address of the host that generated the
 		 * ICMP packet. */
-		extant = fm_icmp_locate_probe(&pkt->recv_addr, pkt, false, ignore_id);
+		extant = fm_icmp_locate_probe(&pkt->peer_addr, pkt, false, ignore_id);
 
 		/* TODO: record the gateway that generated this error code;
 		 * we could build a rough sketch of the network topo and avoid swamping

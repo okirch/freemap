@@ -105,7 +105,7 @@ fm_ipproto_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt, fm_asset_state_t st
 
 	ipproto = 5;
 
-	target = fm_target_pool_find(&pkt->recv_addr);
+	target = fm_target_pool_find(&pkt->peer_addr);
 	if (target == NULL)
 		return NULL;
 

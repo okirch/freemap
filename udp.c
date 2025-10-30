@@ -149,11 +149,11 @@ fm_udp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt, fm_asset_state_t state)
 	hlist_iterator_t iter;
 	fm_extant_t *extant;
 
-	target = fm_target_pool_find(&pkt->recv_addr);
+	target = fm_target_pool_find(&pkt->peer_addr);
 	if (target == NULL)
 		return NULL;
 
-	port = fm_address_get_port(&pkt->recv_addr);
+	port = fm_address_get_port(&pkt->peer_addr);
 
 	/* update the asset */
 	fm_target_update_port_state(target, FM_PROTO_UDP, port, state);

@@ -116,7 +116,7 @@ fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
 	fm_extant_t *extant;
 
-	extant = fm_tcp_locate_probe(pkt->family, &pkt->recv_addr, FM_ASSET_STATE_OPEN);
+	extant = fm_tcp_locate_probe(pkt->family, &pkt->peer_addr, FM_ASSET_STATE_OPEN);
 	if (extant != NULL) {
 		fm_extant_received_reply(extant, pkt);
 		fm_extant_free(extant);
@@ -144,7 +144,7 @@ fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
 	fm_extant_t *extant;
 
-	extant = fm_tcp_locate_probe(pkt->family, &pkt->recv_addr, FM_ASSET_STATE_CLOSED);
+	extant = fm_tcp_locate_probe(pkt->family, &pkt->peer_addr, FM_ASSET_STATE_CLOSED);
 	if (extant != NULL) {
 		fm_extant_received_error(extant, pkt);
 		fm_extant_free(extant);

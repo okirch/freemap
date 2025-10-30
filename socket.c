@@ -276,7 +276,7 @@ fm_socket_build_error_packet(const fm_address_t *addr, int err)
 	struct sock_extended_err *ee;
 
 	pkt = fm_pkt_alloc(addr->ss_family, 0);
-	pkt->recv_addr = *addr;
+	pkt->peer_addr = *addr;
 
 	ee = (struct sock_extended_err *) pkt->info.eebuf;
 	ee->ee_errno = err;
@@ -490,7 +490,7 @@ fm_socket_recv_packet(fm_socket_t *sock, int flags)
 	pkt = fm_pkt_alloc(sock->family, MAX_PAYLOAD);
 	bp = pkt->payload;
 
-	n = fm_socket_recv(sock, &pkt->recv_addr, bp->data, bp->size, &pkt->info, flags);
+	n = fm_socket_recv(sock, &pkt->peer_addr, bp->data, bp->size, &pkt->info, flags);
 	if (n < 0) {
 		fm_pkt_free(pkt);
 		return NULL;
