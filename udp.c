@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "scanner.h"
 #include "protocols.h"
@@ -44,10 +45,15 @@ typedef struct fm_udp_request {
 	 * we're not handling that yet.
 	 */
 	bool			use_connected_socket;
+
+	/* This is used primarily for connected sockets and
+	 * for traceroute */
+	unsigned int		src_port;
 } fm_udp_request_t;
 
 typedef struct fm_udp_extant_info {
-	unsigned int		port;
+	unsigned int		src_port;
+	unsigned int		dst_port;
 } fm_udp_extant_info_t;
 
 static fm_socket_t *	fm_udp_create_bsd_socket(fm_protocol_t *proto, int af);
@@ -200,10 +206,16 @@ fm_udp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_p
 static void
 fm_udp_request_set_socket(fm_udp_request_t *udp, fm_socket_t *sock)
 {
+	fm_address_t local_addr;
+
 	udp->sock = sock;
 	udp->sock_is_shared = true;
+	udp->src_port = 0;
 
 	fm_socket_enable_recverr(sock);
+
+	if (fm_socket_get_local_address(sock, &local_addr))
+		udp->src_port = fm_address_get_port(&local_addr);
 }
 
 /*
@@ -215,14 +227,15 @@ fm_udp_request_set_socket(fm_udp_request_t *udp, fm_socket_t *sock)
 static void
 fm_udp_extant_info_build(const fm_udp_request_t *udp, fm_udp_extant_info_t *extant_info)
 {
-	extant_info->port = udp->params.port;
+	extant_info->src_port = udp->src_port;
+	extant_info->dst_port = udp->params.port;
 }
 
 static fm_extant_t *
 fm_udp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt, fm_asset_state_t state)
 {
 	fm_target_t *target;
-	unsigned short port;
+	unsigned short dst_port, src_port = 0;
 	hlist_iterator_t iter;
 	fm_extant_t *extant;
 
@@ -230,10 +243,11 @@ fm_udp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt, fm_asset_state_t state)
 	if (target == NULL)
 		return NULL;
 
-	port = fm_address_get_port(&pkt->peer_addr);
+	src_port = fm_address_get_port(&pkt->local_addr);
+	dst_port = fm_address_get_port(&pkt->peer_addr);
 
 	/* update the asset */
-	fm_target_update_port_state(target, FM_PROTO_UDP, port, state);
+	fm_target_update_port_state(target, FM_PROTO_UDP, dst_port, state);
 
 	/* If this is an ICMP error, we might as well mark the router/end host
 	 * as reachable. */
@@ -251,7 +265,8 @@ fm_udp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt, fm_asset_state_t state)
 	while ((extant = fm_extant_iterator_match(&iter, pkt->family, IPPROTO_UDP)) != NULL) {
 		const fm_udp_extant_info_t *info = (fm_udp_extant_info_t *) (extant + 1);
 
-		if (info->port == port)
+		if (info->dst_port == dst_port
+		 && (src_port == 0 || info->src_port == src_port))
 			return extant;
 	}
 
@@ -341,8 +356,16 @@ fm_udp_request_send(fm_udp_request_t *udp, fm_udp_extant_info_t *extant_info)
 	if ((sock = udp->sock) != NULL) {
 		/* pass */
 	} else if (udp->use_connected_socket) {
+		fm_address_t local_addr;
+
 		udp->sock = fm_udp_create_connected_socket(udp->proto, &udp->host_address);
 		sock = udp->sock;
+
+		if (!fm_socket_get_local_address(sock, &local_addr)) {
+			fm_log_warning("UDP: unable to get local address after connect: %m");
+		} else {
+			udp->src_port = fm_address_get_port(&local_addr);
+		}
 	} else {
 		sock = fm_protocol_create_host_shared_socket(udp->proto, udp->target);
 	}
@@ -474,7 +497,7 @@ fm_udp_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, con
 	if (udp == NULL)
 		return NULL;
 
-	snprintf(name, sizeof(name), "udp/%u", params->port);
+	snprintf(name, sizeof(name), "udp/port=%u,ttl=%u", params->port, params->ttl);
 	probe = fm_probe_alloc(name, &fm_udp_port_probe_ops, proto, target);
 
 	fm_udp_probe_set_request(probe, udp);
