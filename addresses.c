@@ -286,11 +286,13 @@ fm_address_format(const fm_address_t *ap)
 	unsigned int index, port;
 	const unsigned char *raw_addr;
 
-	if (!(raw_addr = fm_address_get_raw_addr(ap, NULL)))
-		return "<unsupported address family>";
-
 	index = aindex;
 	aindex = (aindex + 1) % 4;
+
+	if (!(raw_addr = fm_address_get_raw_addr(ap, NULL))) {
+		snprintf(abuf[index], sizeof(abuf[index]), "<unsupported address family %d>", ap->ss_family);
+		return abuf[index];
+	}
 
 	if (ap->ss_family == AF_PACKET) {
 		const struct sockaddr_ll *sll = (const struct sockaddr_ll *) ap;
