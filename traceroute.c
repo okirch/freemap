@@ -159,41 +159,45 @@ fm_topo_hop_probe_pkt_callback(const fm_probe_t *probe, const fm_pkt_t *pkt, dou
 	fm_topo_hop_state_t *hop = user_data;
 	const struct sock_extended_err *ee;
 
-	fm_log_debug("%s()", __func__);
 	if ((ee = pkt->info.ee) == NULL) {
-		fm_log_debug("%s: %s: color me surprised: looks like we got a response to our packet",
-				fm_address_format(&probe->target->address),
-				probe->name);
-		return true;
-	}
-
-	if (ee->ee_origin != SO_EE_ORIGIN_ICMP && ee->ee_origin != SO_EE_ORIGIN_LOCAL)
-		return true;
-
-	if (pkt->info.offender == NULL) {
-		fm_log_error("received ICMP packet but no offender?");
-		return true;
-	}
-
-	if (ee->ee_type == ICMP_TIME_EXCEEDED) {
-		fm_log_debug("time exceeded ttl=%u, gw=%s, rtt=%f", hop->distance,
-				fm_address_format(pkt->info.offender),
+		/* For UDP, we never receive a response packet - but for ICMP echo probes,
+		 * we actually do. */
+		fm_log_debug("received %s response from %s",
+				probe->proto->ops->name,
+				fm_address_format(&pkt->peer_addr),
 				rtt);
-	} else
-	if (ee->ee_type == ICMP_DEST_UNREACH) {
-		fm_log_debug("destination unreachable ttl=%u, gw=%s, rtt=%f", hop->distance,
-				fm_address_format(pkt->info.offender),
-				rtt);
+
+		hop->gateway = fm_tgateway_for_address(hop->distance, &pkt->peer_addr);
 	} else {
-		fm_log_debug("ICMP message type %d code %d ttl=%u, gw=%s, rtt=%f",
-				ee->ee_type, ee->ee_code,
-				hop->distance,
-				fm_address_format(pkt->info.offender),
-				rtt);
-		return true;
+		if (ee->ee_origin != SO_EE_ORIGIN_ICMP && ee->ee_origin != SO_EE_ORIGIN_LOCAL)
+			return true;
+
+		if (pkt->info.offender == NULL) {
+			fm_log_error("received ICMP packet but no offender?");
+			return true;
+		}
+
+		if (ee->ee_type == ICMP_TIME_EXCEEDED) {
+			fm_log_debug("time exceeded ttl=%u, gw=%s, rtt=%f", hop->distance,
+					fm_address_format(pkt->info.offender),
+					rtt);
+		} else
+		if (ee->ee_type == ICMP_DEST_UNREACH) {
+			fm_log_debug("destination unreachable ttl=%u, gw=%s, rtt=%f", hop->distance,
+					fm_address_format(pkt->info.offender),
+					rtt);
+		} else {
+			fm_log_debug("ICMP message type %d code %d ttl=%u, gw=%s, rtt=%f",
+					ee->ee_type, ee->ee_code,
+					hop->distance,
+					fm_address_format(pkt->info.offender),
+					rtt);
+			return true;
+		}
+
+		hop->gateway = fm_tgateway_for_address(hop->distance, pkt->info.offender);
 	}
 
-	hop->gateway = fm_tgateway_for_address(hop->distance, pkt->info.offender);
 	hop->state = FM_ASSET_STATE_OPEN;
 
 	{
