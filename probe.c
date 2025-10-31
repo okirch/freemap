@@ -181,6 +181,9 @@ fm_probe_alloc(const char *id, const struct fm_probe_ops *ops, fm_protocol_t *pr
 {
 	fm_probe_t *probe;
 
+	if (ops->schedule == NULL)
+		fm_log_fatal("BUG: probe implementation %s lacks a schedule() function", ops->name);
+
 	assert(ops->obj_size >= sizeof(*probe));
 	probe = calloc(1, ops->obj_size);
 	probe->target = target;
@@ -214,25 +217,26 @@ fm_probe_send(fm_probe_t *probe)
 {
 	fm_error_t error;
 
+	fm_timestamp_clear(&probe->expires);
 	probe->timeout = 0;
 
-	error = probe->ops->send(probe);
-	if (error == 0) {
-		/* Record when we sent the first packet */
-		fm_timestamp_init(&probe->sent);
+	/* In theory, we could fold schedule() and send() into one, and some
+	 * probe implementations actually do this (eg traceroute). But in most
+	 * cases, the code looks just cleaner if we don't conflate these two steps. */
+	error = probe->ops->schedule(probe);
+	if (error == 0)
+		error = probe->ops->send(probe);
 
-		/* If we have an RTT estimator, use the timeout it suggests */
-		if (probe->timeout == 0 && probe->rtt != NULL)
-			probe->timeout = probe->rtt->timeout + probe->rtt_application_bias;
-
-		if (probe->timeout == 0)
-			probe->timeout = probe->ops->default_timeout;
-
-		if (probe->timeout > 0)
-			fm_timestamp_set_timeout(&probe->expires, probe->timeout);
-		else
-			fm_log_warning("%s: timeout=0\n", probe->name);
+	if (error == 0 || error == FM_TRY_AGAIN) {
+		if (!fm_timestamp_is_set(&probe->expires)) {
+			fm_log_warning("BUG: probe %s returned status=%d but did not set expiry", error);
+			fm_timestamp_set_timeout(&probe->expires, 10000);
+		}
+	} else {
+		fm_log_debug("%s: %s: %s", fm_address_format(&probe->target->address), probe->name, fm_strerror(error));
+		fm_probe_set_error(probe, error);
 	}
+
 	return error;
 }
 

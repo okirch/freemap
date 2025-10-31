@@ -343,17 +343,21 @@ fm_arp_host_probe_send(fm_probe_t *probe)
 	return error;
 }
 
-static bool
-fm_arp_host_probe_should_resend(fm_probe_t *probe)
+static fm_error_t
+fm_arp_host_probe_schedule(fm_probe_t *probe)
 {
 	fm_arp_request_t *arp = fm_arp_probe_get_request(probe);
 
-	if (arp->params.retries == 0) {
-		fm_probe_timed_out(probe);
-		return false;
-	}
+	if (arp->params.retries == 0)
+		return FM_TIMED_OUT;
 
-	return true;
+	/* After sending the last probe, we wait until the full timeout has expired.
+	 * For any earlier probe, we wait for the specified packet spacing */
+	if (arp->params.retries == 1)
+		fm_timestamp_set_timeout(&probe->expires, fm_global.arp.timeout);
+	else
+		fm_timestamp_set_timeout(&probe->expires, fm_global.arp.packet_spacing);
+	return 0;
 }
 
 static struct fm_probe_ops fm_arp_host_probe_ops = {
@@ -363,7 +367,7 @@ static struct fm_probe_ops fm_arp_host_probe_ops = {
 	.default_timeout= 1000,	/* FM_ARP_RESPONSE_TIMEOUT */
 
 	.send		= fm_arp_host_probe_send,
-	.should_resend	= fm_arp_host_probe_should_resend,
+	.schedule	= fm_arp_host_probe_schedule,
 };
 
 static fm_arp_request_t *

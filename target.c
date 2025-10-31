@@ -433,11 +433,13 @@ fm_target_send_new_probe(fm_target_t *tgt, fm_probe_t *probe)
 	fm_error_t error;
 
 	error = fm_probe_send(probe);
-	if (error < 0) {
+	if (error < 0 && error != FM_TRY_AGAIN) {
 		fm_log_warning("%s: probe %s is DOA", fm_address_format(&tgt->address), probe->name);
-		fm_probe_set_error(probe, error);
 		fm_probe_free(probe);
 	} else {
+		/* Record when we sent the first packet */
+		fm_timestamp_init(&probe->sent);
+
 		fm_probe_insert(&tgt->pending_probes, probe);
 
 		/* If the probe is marked as blocking, do not allow
@@ -446,6 +448,7 @@ fm_target_send_new_probe(fm_target_t *tgt, fm_probe_t *probe)
 		if (probe->blocking)
 			tgt->plugged = true;
 
+		/* XXX: move this to fm_probe_send()? */
 		fm_ratelimit_consume(&tgt->host_rate_limit, 1);
 	}
 }
@@ -461,25 +464,21 @@ fm_target_process_timeouts(fm_target_t *target, unsigned int quota)
                 next = (fm_probe_t *) probe->link.next;
 
 		if (fm_timestamp_older(&probe->expires, now)) {
-			if (probe->ops->should_resend != NULL
-			 && probe->ops->should_resend(probe)) {
-				if (num_sent < quota) {
-					fm_error_t error;
+			fm_error_t error;
 
-					fm_log_debug("%s: resending %s probe\n", fm_address_format(&target->address), probe->name);
-					error = fm_probe_send(probe);
-					if (error != 0)
-						fm_probe_set_error(probe, error);
-					num_sent += 1;
-				}
+			/* Check whether we're permitted to send anything at all. */
+			if (num_sent >= quota) {
+				fm_log_debug("%s skipped because over quota", probe->name);
 				continue;
 			}
 
-			fm_log_debug("%s: no response received", probe->name);
-			fm_probe_set_error(probe, FM_TIMED_OUT);
+			error = fm_probe_send(probe);
+			if (error != FM_SEND_ERROR)
+				num_sent += 1;
 		}
 	}
 
+	/* XXX: move this to fm_probe_send()? */
 	fm_ratelimit_consume(&target->host_rate_limit, num_sent);
 
 	return num_sent;

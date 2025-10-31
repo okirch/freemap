@@ -112,6 +112,9 @@ fm_tcp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_p
 	tcp->target = target;
 	tcp->params = *params;
 
+	if (tcp->params.retries == 0)
+		tcp->params.retries = fm_global.tcp.retries;
+
 	tcp->family = target->address.ss_family;
 	tcp->host_address = target->address;
 	if (!fm_address_set_port(&tcp->host_address, params->port)) {
@@ -208,6 +211,21 @@ fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 }
 
 static fm_error_t
+fm_tcp_request_schedule(fm_tcp_request_t *tcp, struct timeval *expires)
+{
+	if (tcp->params.retries == 0)
+		return FM_TIMED_OUT;
+
+	/* After sending the last probe, we wait until the full timeout has expired.
+	 * For any earlier probe, we wait for the specified packet spacing */
+	if (tcp->params.retries == 1)
+		fm_timestamp_set_timeout(expires, fm_global.tcp.timeout);
+	else
+		fm_timestamp_set_timeout(expires, fm_global.tcp.packet_spacing);
+	return 0;
+}
+
+static fm_error_t
 fm_tcp_request_send(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
 {
 	if (tcp->sock == NULL) {
@@ -254,6 +272,20 @@ fm_tcp_port_probe_destroy(fm_probe_t *probe)
 	}
 }
 
+/*
+ * Check whether we're clear to send. If so, set the probe timer
+ */
+static fm_error_t
+fm_tcp_port_probe_schedule(fm_probe_t *probe)
+{
+	fm_tcp_request_t *tcp = fm_tcp_probe_get_request(probe);
+
+	return fm_tcp_request_schedule(tcp, &probe->expires);
+}
+
+/*
+ * Transmit a packet
+ */
 static fm_error_t
 fm_tcp_port_probe_send(fm_probe_t *probe)
 {
@@ -273,6 +305,7 @@ static struct fm_probe_ops fm_tcp_port_probe_ops = {
 	.name 		= "tcp",
 
 	.destroy	= fm_tcp_port_probe_destroy,
+	.schedule	= fm_tcp_port_probe_schedule,
 	.send		= fm_tcp_port_probe_send,
 };
 

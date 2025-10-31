@@ -326,7 +326,8 @@ fm_ipproto_port_probe_send(fm_probe_t *probe)
 	/* update the asset state */
 	fm_target_update_host_state(probe->target, FM_PROTO_IP, FM_ASSET_STATE_PROBE_SENT);
 
-	probe->timeout = 1000;
+	ipprobe->send_retries -= 1;
+
 	return 0;
 }
 
@@ -334,10 +335,15 @@ fm_ipproto_port_probe_send(fm_probe_t *probe)
  * This is called when we time out.
  * We record the port as HEISENBERG
  */
-static bool
-fm_ipproto_port_probe_should_resend(fm_probe_t *probe)
+static fm_error_t
+fm_ipproto_port_probe_schedule(fm_probe_t *probe)
 {
-	fm_probe_timed_out(probe);
+	struct fm_ipproto_port_probe *ipproto = (struct fm_ipproto_port_probe *) probe;
+
+	if (ipproto->send_retries == 0)
+		return FM_TIMED_OUT;
+
+	fm_timestamp_set_timeout(&probe->expires, 1000);
 	return false;
 }
 
@@ -366,7 +372,7 @@ static struct fm_probe_ops fm_ipproto_port_probe_ops = {
 
 	.destroy	= fm_ipproto_port_probe_destroy,
 	.send		= fm_ipproto_port_probe_send,
-	.should_resend	= fm_ipproto_port_probe_should_resend,
+	.schedule	= fm_ipproto_port_probe_schedule,
 };
 
 static fm_probe_t *
@@ -407,6 +413,7 @@ fm_ipproto_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target,
 	probe->ip.src_addr = target->local_bind_address;
 	probe->ip.dst_addr = target->address;
 	probe->ip.ipproto = ipproto;
+	probe->send_retries = 3;
 
 	probe->sock = NULL;
 

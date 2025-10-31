@@ -199,6 +199,12 @@ typedef enum {
 	FM_SUCCESS = 0,
 	FM_SEND_ERROR = -1,
 	FM_TIMED_OUT = -2,
+
+	/* Returned by a probe when it can't send due to rate limiting or
+	 * other constraints.
+	 * The probe is expected to set probe->expires.
+	 */
+	FM_TRY_AGAIN = -3,
 } fm_error_t;
 
 /*

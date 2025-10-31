@@ -180,6 +180,9 @@ fm_udp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_p
 	udp->target = target;
 	udp->params = *params;
 
+	if (udp->params.retries == 0)
+		udp->params.retries = fm_global.udp.retries;
+
 	udp->family = target->address.ss_family;
 	udp->host_address = target->address;
 	if (!fm_address_set_port(&udp->host_address, params->port)) {
@@ -297,6 +300,21 @@ fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port)
 	return pkt;
 }
 
+static fm_error_t
+fm_udp_request_schedule(fm_udp_request_t *udp, struct timeval *expires)
+{
+	if (udp->params.retries == 0)
+		return FM_TIMED_OUT;
+
+	/* After sending the last probe, we wait until the full timeout has expired.
+	 * For any earlier probe, we wait for the specified packet spacing */
+	if (udp->params.retries == 1)
+		fm_timestamp_set_timeout(expires, fm_global.udp.timeout);
+	else
+		fm_timestamp_set_timeout(expires, fm_global.udp.packet_spacing);
+	return 0;
+}
+
 /*
  * Send the udp request.
  * The probe argument is only here because we need to notify it when done.
@@ -331,6 +349,7 @@ fm_udp_request_send(fm_udp_request_t *udp, fm_udp_extant_info_t *extant_info)
 	}
 
 	fm_udp_extant_info_build(udp, extant_info);
+	udp->params.retries -= 1;
 
 	/* update the asset state */
 	fm_target_update_port_state(udp->target, FM_PROTO_UDP, udp->params.port, FM_ASSET_STATE_PROBE_SENT);
@@ -350,6 +369,17 @@ fm_udp_port_probe_destroy(fm_probe_t *probe)
 		fm_udp_request_free(udp);
 		fm_udp_probe_set_request(probe, NULL);
 	}
+}
+
+/*
+ * Check whether we're clear to send. If so, set the probe timer
+ */
+static fm_error_t
+fm_udp_port_probe_schedule(fm_probe_t *probe)
+{
+	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
+
+	return fm_udp_request_schedule(udp, &probe->expires);
 }
 
 /*
@@ -379,13 +409,6 @@ fm_udp_port_probe_send(fm_probe_t *probe)
  * We record the port as HEISENBERG and then, when we look at the overall
  * picture for the host, we make an educated guess.
  */
-static bool
-fm_udp_port_probe_should_resend(fm_probe_t *probe)
-{
-	fm_probe_timed_out(probe);
-	return false;
-}
-
 struct fm_udp_port_probe {
 	fm_probe_t		base;
 	fm_udp_request_t *	udp;
@@ -396,8 +419,8 @@ static struct fm_probe_ops fm_udp_port_probe_ops = {
 	.name 		= "udp",
 
 	.destroy	= fm_udp_port_probe_destroy,
+	.schedule	= fm_udp_port_probe_schedule,
 	.send		= fm_udp_port_probe_send,
-	.should_resend	= fm_udp_port_probe_should_resend,
 };
 
 static fm_udp_request_t *
@@ -428,7 +451,7 @@ fm_udp_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, con
 
 	fm_udp_probe_set_request(probe, udp);
 
-	/* UDP services may take up to .5 sec for the queued TCP connection to be accepted. */
+	/* UDP services may be slow to respond. */
 	probe->rtt_application_bias = fm_global.udp.application_delay;
 
 	fm_log_debug("Created UDP socket probe for %s\n", fm_address_format(&udp->host_address));

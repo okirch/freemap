@@ -576,6 +576,23 @@ fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr)
 }
 
 static fm_error_t
+fm_icmp_host_probe_schedule(fm_probe_t *probe)
+{
+	const struct fm_icmp_host_probe *icmp = (struct fm_icmp_host_probe *) probe;
+
+	if (icmp->probe_params.retries == 0)
+		return FM_TIMED_OUT;
+
+	/* After sending the last probe, we wait until the full timeout has expired.
+	 * For any earlier probe, we wait for the specified packet spacing */
+	if (icmp->probe_params.retries == 1)
+		fm_timestamp_set_timeout(&probe->expires, fm_global.icmp.timeout);
+	else
+		fm_timestamp_set_timeout(&probe->expires, fm_global.icmp.packet_spacing);
+	return 0;
+}
+
+static fm_error_t
 fm_icmp_host_probe_send(fm_probe_t *probe)
 {
 	fm_target_t *target = probe->target;
@@ -635,20 +652,6 @@ fm_icmp_host_probe_send(fm_probe_t *probe)
 	return 0;
 }
 
-static bool
-fm_icmp_host_probe_should_resend(fm_probe_t *probe)
-{
-	const struct fm_icmp_host_probe *icmp = (struct fm_icmp_host_probe *) probe;
-
-	/* This is overly aggressive - icmp/echo may be just one of several reachability probes */
-	if (icmp->probe_params.retries == 0) {
-		fm_probe_timed_out(probe);
-		return false;
-	}
-
-	return true;
-}
-
 static struct fm_probe_ops fm_icmp_host_probe_ops = {
 	.obj_size	= sizeof(struct fm_icmp_host_probe),
 	.name 		= "icmp",
@@ -657,7 +660,7 @@ static struct fm_probe_ops fm_icmp_host_probe_ops = {
 
 	.destroy	= fm_icmp_host_probe_destroy,
 	.send		= fm_icmp_host_probe_send,
-	.should_resend	= fm_icmp_host_probe_should_resend,
+	.schedule	= fm_icmp_host_probe_schedule,
 };
 
 static fm_probe_t *

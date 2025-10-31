@@ -41,8 +41,8 @@ struct fm_probe_ops {
 	long			default_timeout;
 
 	void			(*destroy)(fm_probe_t *);
+	fm_error_t		(*schedule)(fm_probe_t *);
 	fm_error_t		(*send)(fm_probe_t *);
-	bool			(*should_resend)(fm_probe_t *);
 };
 
 struct fm_probe {
