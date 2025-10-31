@@ -11,6 +11,7 @@ OBJS	= projects.o \
 	  icmp.o \
 	  arp.o \
 	  ipproto.o \
+	  traceroute.o \
 	  ratelimit.o \
 	  addresses.o \
 	  network.o \
