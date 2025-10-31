@@ -277,6 +277,19 @@ fm_socket_enable_tos(fm_socket_t *sock)
 	return true;
 }
 
+bool
+fm_socket_enable_pktinfo(fm_socket_t *sock)
+{
+	if (sock->family == AF_INET)
+		return fm_socket_option_set(sock, "IP_PKTINFO", SOL_IP, IP_PKTINFO, true);
+
+	if (sock->family == AF_INET6)
+		return fm_socket_option_set(sock, "IPV6_RECVPKTINFO", SOL_IPV6, IPV6_RECVPKTINFO, true);
+
+	fm_log_error("Cannot set RECVPKTINFO socket option on %s sockets", fm_socket_family_name(sock));
+	return true;
+}
+
 /*
  * Access to socket level errors
  */
@@ -587,6 +600,17 @@ fm_process_cmsg(struct fm_msghdr *rd, fm_pkt_info_t *info, fm_address_t *local_a
 			info->ee = (struct sock_extended_err *) info->eebuf;
 			info->offender = (const struct sockaddr_storage *) SO_EE_OFFENDER(info->ee);
 			info->error_class = fm_socket_error_class(info);
+		} else
+		if (cm->cmsg_level == SOL_IP && cm->cmsg_type == IP_PKTINFO) {
+			unsigned int len = cm->cmsg_len;
+			struct in_pktinfo pktinfo;
+			
+			if (local_addr && len >= sizeof(pktinfo)) {
+				memcpy(&pktinfo, ptr, sizeof(pktinfo));
+				fm_address_set_ipv4(local_addr, pktinfo.ipi_addr.s_addr);
+			}
+		} else
+		if (cm->cmsg_level == SOL_IPV6 && cm->cmsg_type == IPV6_PKTINFO) {
 		}
 	}
 

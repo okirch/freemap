@@ -169,6 +169,7 @@ extern bool		fm_socket_enable_hdrincl(fm_socket_t *sock);
 extern bool		fm_socket_enable_ttl(fm_socket_t *sock);
 extern bool		fm_socket_enable_tos(fm_socket_t *sock);
 extern bool		fm_socket_enable_timestamp(fm_socket_t *);
+extern bool		fm_socket_enable_pktinfo(fm_socket_t *);
 extern bool		fm_socket_send(fm_socket_t *sock, const fm_address_t *dstaddr, const void *pkt, size_t len);
 extern bool		fm_socket_send_buffer(fm_socket_t *sock, const fm_address_t *dstaddr, fm_buffer_t *data);
 extern bool		fm_socket_send_pkt(fm_socket_t *sock, fm_pkt_t *pkt);
