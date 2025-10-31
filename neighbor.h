@@ -20,8 +20,6 @@
 
 #include "freemap.h"
 
-typedef struct fm_completion	fm_completion_t;
-
 enum {
 	FM_NEIGHBOR_LARVAL,
 	FM_NEIGHBOR_VALID,

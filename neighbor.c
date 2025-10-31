@@ -141,7 +141,6 @@ fm_neighbor_cache_update(fm_neighbor_cache_t *cache, const fm_address_t *network
 static bool
 fm_neighbor_initiate_arp(const fm_address_t *network_address)
 {
-	fm_protocol_engine_t *engine;
 	fm_target_t *target;
 	fm_protocol_t *proto;
 
