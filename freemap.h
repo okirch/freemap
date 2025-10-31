@@ -64,6 +64,8 @@ extern bool		fm_neighbor_get_link_address(const fm_neighbor_t *neigh, fm_address
 extern void		fm_timestamp_init(struct timeval *ts);
 extern double		fm_timestamp_update(struct timeval *ts);
 extern double		fm_timestamp_since(struct timeval *ts);
+extern void		fm_timestamp_clear(struct timeval *ts);
+extern bool		fm_timestamp_is_set(const struct timeval *ts);
 extern void		fm_timestamp_set_timeout(struct timeval *ts, long milliseconds);
 extern bool		fm_timestamp_older(const struct timeval *expiry, const struct timeval *now);
 extern const struct timeval *fm_timestamp_now(void);

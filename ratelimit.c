@@ -60,6 +60,18 @@ fm_timestamp_init(struct timeval *ts)
 		__fm_timestamp_do(ts, true);
 }
 
+void
+fm_timestamp_clear(struct timeval *ts)
+{
+	timerclear(ts);
+}
+
+bool
+fm_timestamp_is_set(const struct timeval *ts)
+{
+	return timerisset(ts);
+}
+
 double
 fm_timestamp_update(struct timeval *ts)
 {
