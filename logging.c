@@ -99,3 +99,30 @@ fm_log_warning(const char *fmt, ...)
 		fputc('\n', fp);
 	va_end(ap);
 }
+
+#define FM_MAX_ERROR_INDEX 18 /* for now */
+static const char *strings[FM_MAX_ERROR_INDEX] = {
+	[0] = "Succcess",
+	[-FM_SEND_ERROR] = "Unable to send packet",
+	[-FM_TIMED_OUT] = "Timed out",
+	[-FM_TRY_AGAIN] = "Try again",
+};
+
+const char *
+fm_strerror(fm_error_t error)
+{
+	static char msgbuf[64];
+	const char *ret = NULL;
+	int index;
+
+	index = -error;
+	if (index >= 0 && index < FM_MAX_ERROR_INDEX)
+		ret = strings[index];
+
+	if (ret == NULL) {
+		snprintf(msgbuf, sizeof(msgbuf), "Invalid error code %d", error);
+		ret = msgbuf;
+	}
+
+	return ret;
+}
