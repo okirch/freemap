@@ -100,7 +100,7 @@ void
 fm_timestamp_set_timeout(struct timeval *ts, long timeout)
 {
 	if (timeout <= 0) {
-		timerclear(ts);
+		fm_timestamp_update(ts);
 	} else {
 		fm_timestamp_update(ts);
 		ts->tv_sec += timeout / 1000;
