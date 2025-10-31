@@ -186,9 +186,9 @@ fm_socket_attach_protocol(fm_socket_t *sock, fm_protocol_t *proto)
  * Change a boolean setsockopt
  */
 static bool
-fm_socket_option_set(fm_socket_t *sock, const char *name, int level, int type, bool value)
+fm_socket_option_set(fm_socket_t *sock, const char *name, int level, int type, unsigned int value)
 {
-	int optval = value? 1 : 0;
+	int optval = value;
 
 	if (sock->fd < 0)
 		return false;
@@ -288,6 +288,18 @@ fm_socket_enable_pktinfo(fm_socket_t *sock)
 
 	fm_log_error("Cannot set RECVPKTINFO socket option on %s sockets", fm_socket_family_name(sock));
 	return true;
+}
+
+bool
+fm_socket_set_send_ttl(fm_socket_t *sock, unsigned int ttl)
+{
+	if (sock->family == AF_INET)
+		return fm_socket_option_set(sock, "IP_TTL", SOL_IP, IP_TTL, ttl);
+	if (sock->family == AF_INET6)
+		return fm_socket_option_set(sock, "IPV6_HOPLIMIT", SOL_IP, IPV6_HOPLIMIT, ttl);
+
+	fm_log_error("Cannot set TTL socket option on %s sockets", fm_socket_family_name(sock));
+	return false;
 }
 
 /*
