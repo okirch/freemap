@@ -35,6 +35,7 @@ struct fm_socket {
 	socklen_t		addrlen;
 	int			rpoll;
 
+	fm_address_t		local_address;
 	fm_address_t		peer_address;
 
 	/* must be set before we can poll */

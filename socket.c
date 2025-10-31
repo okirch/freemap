@@ -334,6 +334,8 @@ fm_socket_bind(fm_socket_t *sock, const fm_address_t *address)
 	if (bind(sock->fd, (struct sockaddr *) address, sock->addrlen) < 0)
 		return false;
 
+	fm_socket_get_local_address(sock, NULL);
+
 	return true;
 }
 
@@ -361,19 +363,20 @@ fm_socket_connect(fm_socket_t *sock, const fm_address_t *address)
 bool
 fm_socket_get_local_address(const fm_socket_t *sock, fm_address_t *addr)
 {
-	struct sockaddr_storage ss;
-	socklen_t slen = sizeof(ss);
-
 	if (sock->fd < 0)
 		return false;
 
-	memset(&ss, 0, sizeof(ss));
-	if (getsockname(sock->fd, (struct sockaddr *) &ss, &slen) < 0) {
-		fm_log_error("getsockname: %m");
-		return false;
+	if (sock->local_address.ss_family == AF_UNSPEC) {
+		socklen_t slen = sizeof(sock->local_address);
+		if (getsockname(sock->fd, (struct sockaddr *) &sock->local_address, &slen) < 0) {
+			fm_log_error("getsockname: %m");
+			return false;
+		}
 	}
 
-	*addr = ss;
+	if (addr != NULL)
+		*addr = sock->local_address;
+
 	return true;
 }
 
@@ -550,7 +553,7 @@ fm_recvmsg_prepare(void *buffer, size_t bufsize, int flags)
 }
 
 static bool
-fm_process_cmsg(struct fm_msghdr *rd, fm_pkt_info_t *info)
+fm_process_cmsg(struct fm_msghdr *rd, fm_pkt_info_t *info, fm_address_t *local_addr)
 {
 	struct cmsghdr *cm;
 
@@ -606,14 +609,16 @@ fm_socket_recverr(fm_socket_t *sock, fm_pkt_info_t *info)
 
 	n = recvmsg(sock->fd, &rd->msg, MSG_ERRQUEUE);
 	if (n >= 0)
-		fm_process_cmsg(rd, info);
+		fm_process_cmsg(rd, info, NULL);
 
 	free(rd);
 	return n >= 0;
 }
 
 static int
-fm_socket_recv(fm_socket_t *sock, struct sockaddr_storage *peer_addr, void *buffer, size_t size, fm_pkt_info_t *info, int flags)
+fm_socket_recv(fm_socket_t *sock,
+		struct sockaddr_storage *local_addr, struct sockaddr_storage *peer_addr,
+		void *buffer, size_t size, fm_pkt_info_t *info, int flags)
 {
 	struct fm_msghdr *rd;
 	int n;
@@ -621,12 +626,16 @@ fm_socket_recv(fm_socket_t *sock, struct sockaddr_storage *peer_addr, void *buff
 	if (sock->fd < 0)
 		return -1;
 
+	/* in the bound socket case, return our bound addr by default */
+	if (local_addr)
+		*local_addr = sock->local_address;
+
 	rd = fm_recvmsg_prepare(buffer, size, flags);
 
 	n = recvmsg(sock->fd, &rd->msg, flags);
 	if (n >= 0) {
 		if (info != NULL)
-			fm_process_cmsg(rd, info);
+			fm_process_cmsg(rd, info, local_addr);
 		if (peer_addr != NULL)
 			*peer_addr = rd->peer_addr;
 	}
@@ -646,7 +655,9 @@ fm_socket_recv_packet(fm_socket_t *sock, int flags)
 	pkt = fm_pkt_alloc(sock->family, MAX_PAYLOAD);
 	bp = pkt->payload;
 
-	n = fm_socket_recv(sock, &pkt->peer_addr, bp->data, bp->size, &pkt->info, flags);
+	n = fm_socket_recv(sock, &pkt->local_addr, &pkt->peer_addr,
+				bp->data, bp->size,
+				&pkt->info, flags);
 	if (n < 0) {
 		fm_pkt_free(pkt);
 		return NULL;

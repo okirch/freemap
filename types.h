@@ -157,6 +157,7 @@ typedef struct fm_pkt_info {
 
 typedef struct fm_pkt {
 	int			family;
+	struct sockaddr_storage local_addr;
 	struct sockaddr_storage peer_addr;
 
 	fm_pkt_info_t		info;
