@@ -39,10 +39,16 @@ fm_config_init_defaults(fm_config_t *conf)
 	/* For the time being, assume that any TCP service may take up to .5 sec for the
          * queued TCP connection to be accepted. */
 	conf->tcp.application_delay = 500;
+	conf->tcp.retries = 3;
+	conf->tcp.packet_spacing = 250;
+	conf->tcp.timeout = 1000;
 
 	/* For the time being, assume that any UDP service may take up to .5 sec for the
          * queued UDP connection to be accepted. */
 	conf->udp.application_delay = 500;
+	conf->udp.retries = 3;
+	conf->udp.packet_spacing = 250;
+	conf->udp.timeout = 1000;
 
 	/* ICMP reachability probe. We transmit 3 echo requests,
 	 * 250 msec apart, then wait for up to 1 second for a response. */

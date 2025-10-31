@@ -281,6 +281,9 @@ static fm_config_proc_t		fm_config_ipv6 = {
 static fm_config_proc_t		fm_config_udp = {
 	.attributes = {
 		ATTRIB_INT(struct fm_config_udp, application_delay),
+		ATTRIB_INT(struct fm_config_udp, retries),
+		ATTRIB_INT(struct fm_config_udp, packet_spacing),
+		ATTRIB_INT(struct fm_config_udp, timeout),
 	},
 };
 
@@ -290,6 +293,9 @@ static fm_config_proc_t		fm_config_udp = {
 static fm_config_proc_t		fm_config_tcp = {
 	.attributes = {
 		ATTRIB_INT(struct fm_config_tcp, application_delay),
+		ATTRIB_INT(struct fm_config_tcp, retries),
+		ATTRIB_INT(struct fm_config_tcp, packet_spacing),
+		ATTRIB_INT(struct fm_config_tcp, timeout),
 	},
 };
 

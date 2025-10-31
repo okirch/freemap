@@ -53,9 +53,25 @@ struct fm_config {
 		unsigned int	tos;
 	} ipv6;
 	struct fm_config_udp {
+		unsigned int	retries;
+
+		/* delay, in ms, between sending two packets */
+		unsigned int	packet_spacing;
+
+		/* timeout for response to arrive */
+		unsigned int	timeout;
+
 		unsigned int	application_delay;
 	} udp;
 	struct fm_config_tcp {
+		unsigned int	retries;
+
+		/* delay, in ms, between sending two packets */
+		unsigned int	packet_spacing;
+
+		/* timeout for response to arrive */
+		unsigned int	timeout;
+
 		unsigned int	application_delay;
 	} tcp;
 	struct fm_config_icmp {
