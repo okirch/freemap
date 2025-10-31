@@ -247,8 +247,16 @@ fm_routing_for_address(const fm_address_t *addr)
 
 		assert(route->family == addr->ss_family);
 
+		/* default route */
+		if (route->dst.prefix_len == 0)
+			return route;
+
 		/* we could also cache the route's raw dst addr */
 		raw_addr2 = fm_address_get_raw_addr(&route->dst.addr, NULL);
+
+		if (raw_addr2 == NULL)
+			continue; /* why? */
+
 		for (k = 0; k < noctets && xor == 0; ++k)
 			xor = route->dst.raw_mask[k] & (raw_addr1[k] ^ raw_addr2[k]);
 
