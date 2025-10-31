@@ -228,8 +228,8 @@ fm_linear_scheduler_transmit_some(fm_scheduler_t *sched, unsigned int quota)
 			if (probe == NULL)
 				break;
 
-			fm_target_send_new_probe(target, probe);
-			num_sent += 1;
+			if (fm_target_send_new_probe(target, probe) == 0)
+				num_sent += 1;
 		}
 
 		quota -= num_sent;

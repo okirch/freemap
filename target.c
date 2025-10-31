@@ -427,7 +427,7 @@ fm_target_continue_probe(fm_target_t *target, fm_probe_t *probe)
  * A new probe has been created.
  * Transmit its first packet and put it on the list of pending probes.
  */
-void
+fm_error_t
 fm_target_send_new_probe(fm_target_t *tgt, fm_probe_t *probe)
 {
 	fm_error_t error;
@@ -448,6 +448,8 @@ fm_target_send_new_probe(fm_target_t *tgt, fm_probe_t *probe)
 		if (probe->blocking)
 			tgt->plugged = true;
 	}
+
+	return error;
 }
 
 unsigned int
