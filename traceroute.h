@@ -68,7 +68,7 @@ typedef struct fm_topo_state {
 	fm_protocol_t *		packet_proto;
 
 	unsigned int		next_ttl;
-	unsigned int		current_scan_depth;
+	unsigned int		destination_ttl;
 
 	fm_topo_hop_state_t	hop[FM_MAX_TOPO_DEPTH];
 

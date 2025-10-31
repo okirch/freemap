@@ -254,13 +254,43 @@ fm_topo_state_max_ttl(fm_topo_state_t *topo)
 }
 
 /*
+ * Check whether we have pending probes
+ */
+static bool
+fm_topo_state_check_pending(fm_topo_state_t *topo, double *delay_ret)
+{
+	const struct timeval *now = fm_timestamp_now();
+	unsigned int ttl, max_ttl;
+	bool have_pending = false;
+
+	max_ttl = fm_topo_state_max_ttl(topo);
+	for (ttl = 1; ttl < max_ttl; ++ttl) {
+		fm_topo_hop_state_t *hop = &topo->hop[ttl];
+		double delay;
+
+		if (hop->pending == NULL)
+			continue;
+
+		delay = fm_timestamp_expires_when(&hop->pending->expires, now);
+		if (delay < 0) {
+			fm_log_warning("traceroute: hop %u has a pending probe w/o expiry", ttl);
+		} else if (delay < *delay_ret) {
+			*delay_ret = delay;
+		}
+		fm_log_debug("  %2u pending probe %s delay=%f sec", ttl, hop->pending->name, delay);
+		have_pending = true;
+	}
+
+	return have_pending;
+}
+
+/*
  * Select the next distance to probe
  */
 static fm_error_t
 fm_topo_state_select_ttl(fm_topo_state_t *topo, double *delay_ret, fm_topo_hop_state_t **next_hop_ret)
 {
 	unsigned int ttl, max_ttl;
-	const struct timeval *now;
 	fm_tgateway_t *previous_gw;
 	bool have_pending = false;
 	bool done = false;
@@ -281,6 +311,11 @@ fm_topo_state_select_ttl(fm_topo_state_t *topo, double *delay_ret, fm_topo_hop_s
 
 				hop->gateway = fm_tgateway_unknown_next_hop(previous_gw);
 			}
+		} else
+		if (fm_address_equal(&topo->host_address, &hop->gateway->address, false)) {
+			fm_log_debug("  %2u reached destination", ttl);
+			topo->destination_ttl = ttl;
+			break;
 		} else {
 			fm_log_debug("  %2u addr=%s; we can progress", ttl, fm_address_format(&hop->gateway->address));
 			topo->next_ttl = ttl + 1;
@@ -289,33 +324,15 @@ fm_topo_state_select_ttl(fm_topo_state_t *topo, double *delay_ret, fm_topo_hop_s
 		previous_gw = hop->gateway;
 	}
 
-	fm_log_debug("%s: next_ttl=%u, max=%u", fm_address_format(&topo->host_address), topo->next_ttl, max_ttl);
-	now = fm_timestamp_now();
 	for (ttl = topo->next_ttl; ttl < max_ttl; ++ttl) {
 		fm_topo_hop_state_t *hop = &topo->hop[ttl];
 		fm_tgateway_t *gw;
-		double delay = 0;
 
-		gw = hop->gateway;
-		if (fm_address_equal(&topo->host_address, &gw->address, false)) {
-			fm_log_debug("  %2u reached destination", ttl);
-			done = true;
-		}
+		if (ttl == topo->destination_ttl)
+			break;
 
-		if (hop->pending != NULL) {
-			delay = fm_timestamp_expires_when(&hop->pending->expires, now);
-			if (delay < 0) {
-				fm_log_warning("traceroute: hop %u has a pending probe w/o expiry", ttl);
-			} else if (delay < *delay_ret) {
-				*delay_ret = delay;
-			}
-			fm_log_debug("  %2u pending probe %s delay=%f sec", ttl, hop->pending->name, delay);
-			have_pending = true;
-
-			if (done)
-				break;
-			continue;
-		}
+		if (hop->pending != NULL)
+			continue; /* we've dealt with you already */
 
 		if (done)
 			break;
@@ -325,20 +342,45 @@ fm_topo_state_select_ttl(fm_topo_state_t *topo, double *delay_ret, fm_topo_hop_s
 			continue;
 		}
 
-		/* consult the rate limit */
+		gw = hop->gateway;
+
+		/* Consult the rate limit
+		 * Can we consume 1 token, or would we have to wait?
+		 */
 		fm_ratelimit_update(&gw->ratelimit);
+		if (fm_ratelimit_available(&gw->ratelimit) >= 1) {
+			fm_log_debug("  %2u ready to create new probe", ttl);
 
-		/* Can we consume 1 token, or would we have to wait? */
-		delay = fm_ratelimit_wait_until(&gw->ratelimit, 1);
+			if (*next_hop_ret == NULL)
+				*next_hop_ret = hop;
+		} else {
+			double delay = fm_ratelimit_wait_until(&gw->ratelimit, 1);
 
-		fm_log_debug("  %2u delay=%f sec", ttl, delay);
-		if (delay == 0 && *next_hop_ret == NULL) {
-			*next_hop_ret = hop;
-			continue;
+			fm_log_debug("  %2u delay=%f sec", ttl, delay);
+			if (delay < *delay_ret)
+				*delay_ret = delay;
+		}
+	}
+
+	have_pending = fm_topo_state_check_pending(topo, delay_ret);
+
+	if (topo->destination_ttl != 0) {
+		/* We have reached the destination.
+		 * If we have outstanding probes that reach further, cancel them right away.
+		 */
+		for (ttl = topo->destination_ttl + 1; ttl < max_ttl; ++ttl) {
+			fm_topo_hop_state_t *hop = &topo->hop[ttl];
+
+			if (hop->pending == NULL)
+				continue;
+
+			fm_log_debug("  %2u cancel pending probe %s", ttl, hop->pending->name);
+			fm_probe_cancel_completion(hop->pending, hop->completion);
+			fm_probe_mark_complete(hop->pending);
+			hop->pending = NULL;
 		}
 
-		if (delay < *delay_ret)
-			*delay_ret = delay;
+		done = true;
 	}
 
 	if (*next_hop_ret == NULL) {
@@ -416,10 +458,13 @@ fm_topo_state_send_probe(fm_topo_state_t *topo, fm_topo_hop_state_t *hop, double
 static void
 fm_topo_state_display(fm_topo_state_t *topo)
 {
-	unsigned int ttl;
+	unsigned int ttl, max_ttl = FM_MAX_TOPO_DEPTH;;
 
 	fm_log_debug("traceroute results for %s", fm_address_format(&topo->host_address));
-	for (ttl = 1; ttl < FM_MAX_TOPO_DEPTH; ++ttl) {
+
+	if (topo->destination_ttl != 0)
+		max_ttl = topo->destination_ttl + 1;
+	for (ttl = 1; ttl < max_ttl; ++ttl) {
 		fm_topo_hop_state_t *hop = &topo->hop[ttl];
 		fm_tgateway_t *gw;
 
