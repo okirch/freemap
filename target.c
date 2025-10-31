@@ -458,6 +458,7 @@ fm_target_process_timeouts(fm_target_t *target, unsigned int quota)
 	const struct timeval *now = fm_timestamp_now();
 	unsigned int num_sent = 0;
 	fm_probe_t *probe, *next;
+	unsigned int nprocessed = 0;
 
         for (probe = (fm_probe_t *) (target->pending_probes.hlist.first); probe != NULL; probe = next) {
                 next = (fm_probe_t *) probe->link.next;
@@ -474,14 +475,52 @@ fm_target_process_timeouts(fm_target_t *target, unsigned int quota)
 				if (delay == 0)
 					delay = .5;
 
+				fm_log_debug("%s: delay by %f", probe->name, delay);
 				fm_probe_set_expiry(probe, delay);
 				continue;
 			}
 
 			error = fm_probe_send(probe);
-			if (error != FM_SEND_ERROR)
+			if (error != FM_SEND_ERROR && error != FM_TRY_AGAIN)
 				num_sent += 1;
+
+			if (error != FM_TRY_AGAIN)
+				nprocessed += 1;
 		}
+	}
+
+	if (fm_debug_level) {
+		static struct timeval next_ps;
+		bool update_ts = false;
+
+		if (nprocessed != 0) {
+			fm_timestamp_clear(&next_ps);
+		} else if (!fm_timestamp_is_set(&next_ps)) {
+			update_ts = true;
+		} else
+		if (fm_timestamp_older(&next_ps, now)) {
+			if (target->pending_probes.hlist.first == NULL) {
+				fm_log_debug("%s: no pending probes", fm_address_format(&target->address));
+			} else {
+				fm_log_debug("%s: *** pending ***", fm_address_format(&target->address));
+			}
+
+			for (probe = (fm_probe_t *) (target->pending_probes.hlist.first); probe != NULL; probe = next) {
+				double probe_wait;
+
+				next = (fm_probe_t *) probe->link.next;
+
+				probe_wait = fm_timestamp_expires_when(&probe->expires, NULL);
+				fm_log_debug("   %4u ms %s", (unsigned int) (1000 * probe_wait), probe->name);
+			}
+			update_ts = true;
+		}
+
+		if (update_ts) {
+			fm_log_debug("Setting alarm for pslist check");
+			fm_timestamp_set_timeout(&next_ps, 5000);
+		}
+
 	}
 
 	return num_sent;
