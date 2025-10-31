@@ -65,7 +65,10 @@ static struct fm_protocol_ops	fm_tcp_bsdsock_ops = {
 
 	.supported_parameters = 
 			  FM_PARAM_TYPE_PORT_MASK |
-			  FM_PARAM_TYPE_RETRIES_MASK,
+			  FM_PARAM_TYPE_TOS_MASK |
+			  FM_PARAM_TYPE_TTL_MASK |
+			  FM_PARAM_TYPE_RETRIES_MASK |
+			  FM_FEATURE_STATUS_CALLBACK_MASK,
 
 	.create_socket	= fm_tcp_create_bsd_socket,
 	.process_packet = fm_tcp_process_packet,
@@ -228,6 +231,11 @@ fm_tcp_request_schedule(fm_tcp_request_t *tcp, struct timeval *expires)
 static fm_error_t
 fm_tcp_request_send(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
 {
+	if (tcp->sock != NULL) {
+		fm_socket_free(tcp->sock);
+		tcp->sock = NULL;
+	}
+
 	if (tcp->sock == NULL) {
 		tcp->sock = fm_protocol_create_socket(tcp->proto, tcp->host_address.ss_family);
 		if (tcp->sock == NULL) {
@@ -249,6 +257,8 @@ fm_tcp_request_send(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
 
 	/* update the asset state */
 	fm_target_update_port_state(tcp->target, FM_PROTO_TCP, tcp->params.port, FM_ASSET_STATE_PROBE_SENT);
+
+	tcp->params.retries -= 1;
 
 	return 0;
 }
