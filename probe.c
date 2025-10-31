@@ -230,9 +230,13 @@ fm_probe_send(fm_probe_t *probe)
 	if (error == 0)
 		error = probe->ops->send(probe);
 
+	if (error == 0) {
+		fm_ratelimit_consume(&probe->target->host_rate_limit, 1);
+	}
+
 	if (error == 0 || error == FM_TRY_AGAIN) {
 		if (!fm_timestamp_is_set(&probe->expires)) {
-			fm_log_warning("BUG: probe %s returned status=%d but did not set expiry", error);
+			fm_log_warning("BUG: probe %s returned status=%d but did not set expiry", probe->name, -error);
 			fm_timestamp_set_timeout(&probe->expires, 10000);
 		}
 	} else {

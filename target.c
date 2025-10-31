@@ -447,9 +447,6 @@ fm_target_send_new_probe(fm_target_t *tgt, fm_probe_t *probe)
 		 * processed everything that is in the queue. */
 		if (probe->blocking)
 			tgt->plugged = true;
-
-		/* XXX: move this to fm_probe_send()? */
-		fm_ratelimit_consume(&tgt->host_rate_limit, 1);
 	}
 }
 
@@ -477,9 +474,6 @@ fm_target_process_timeouts(fm_target_t *target, unsigned int quota)
 				num_sent += 1;
 		}
 	}
-
-	/* XXX: move this to fm_probe_send()? */
-	fm_ratelimit_consume(&target->host_rate_limit, num_sent);
 
 	return num_sent;
 }
