@@ -32,17 +32,7 @@
 #include "target.h" /* for fm_probe_t */
 #include "buffer.h"
 #include "utils.h"
-
-struct icmp_params {
-	fm_address_t	host_address;
-	int		ipproto;
-	int		icmp_type;
-	int		icmp6_type;
-	uint32_t	ident;
-	uint32_t	seq;
-
-	const char *	type_name;
-};
+#include "icmp.h"
 
 static fm_socket_t *	fm_icmp_create_bsd_socket(fm_protocol_t *proto, int ipproto);
 static bool		fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
@@ -55,6 +45,9 @@ static void *		fm_icmp_process_extra_parameters(fm_protocol_t *, const fm_string
 static fm_probe_t *	fm_icmp_create_host_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 static int		fm_icmp_protocol_for_family(int af);
 static fm_extant_t *	fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response, bool ignore_id);
+
+static fm_icmp_request_t *fm_icmp_probe_get_request(const fm_probe_t *probe);
+static void		fm_icmp_probe_set_request(fm_probe_t *probe, fm_icmp_request_t *icmp);
 
 static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -74,6 +67,7 @@ static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 
 	.process_extra_parameters = fm_icmp_process_extra_parameters,
 	.create_parameterized_probe = fm_icmp_create_host_probe,
+	.process_extra_parameters = fm_icmp_process_extra_parameters,
 };
 
 static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
@@ -96,6 +90,7 @@ static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
 
 	.process_extra_parameters = fm_icmp_process_extra_parameters,
 	.create_parameterized_probe = fm_icmp_create_host_probe,
+	.process_extra_parameters = fm_icmp_process_extra_parameters,
 };
 
 FM_PROTOCOL_REGISTER(fm_icmp_bsdsock_ops);
@@ -119,6 +114,30 @@ fm_icmp_create_bsd_socket(fm_protocol_t *proto, int af)
 	}
 	return sock;
 }
+
+/*
+ * Create a DGRAM socket and connect it.
+ * Used for PF_PACKET sockets only
+ */
+static fm_socket_t *
+fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr)
+{
+	fm_socket_t *sock;
+
+	sock = fm_protocol_create_socket(proto, addr->ss_family);
+	if (sock == NULL)
+		return NULL;
+
+	fm_socket_enable_recverr(sock);
+
+	if (!fm_socket_connect(sock, addr)) {
+		fm_socket_free(sock);
+		return NULL;
+	}
+
+	return sock;
+}
+
 
 static bool
 fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
@@ -264,54 +283,114 @@ fm_icmp_create_shared_raw_socket(fm_protocol_t *proto, fm_target_t *target)
 }
 
 /*
- * ICMP param block.
- * We do this in two steps - early on, we parse the arguments given by the user, leaving
- * everything blank that is related to the target or the target address family.
- * In a second step, when we create a probe for a specific target, we fill in these
- * blanks.
+ * Choose the ICMP type to use.
+ * As we don't know how long the type_name string passed as argument will be valid,
+ * we replace it with a const string.
  */
-static inline bool
-fm_icmp_build_params(struct icmp_params *params, const fm_string_array_t *args)
+static bool
+fm_icmp_extra_params_set_type(fm_icmp_extra_params_t *params, const char *type_name)
 {
-	unsigned int i;
+	params->ipv4.send_type = -1;
+	params->ipv4.response_type = -1;
+	params->ipv6.send_type = -1;
+	params->ipv6.response_type = -1;
 
-	memset(params, 0, sizeof(*params));
-
-	for (i = 0; i < args->count; ++i) {
-		const char *arg = args->entries[i];
-
-		if (fm_parse_string_argument(arg, "type", &params->type_name)) {
-			/* pass */
-		} else {
-			fm_log_error("Cannot create ICMP host probe: invalid argument \"%s\"", arg);
-			return false;
-		}
-	}
-
-	if (params->type_name == NULL)
+	if (!strcasecmp(type_name, "echo")) {
 		params->type_name = "echo";
-
-	if (!strcasecmp(params->type_name, "echo")) {
-		params->icmp_type = ICMP_ECHO;
-		params->icmp6_type = ICMP6_ECHO_REQUEST;
-	} else if (!strcasecmp(params->type_name, "timestamp")) {
-		params->icmp_type = ICMP_TIMESTAMP;
-		params->icmp6_type = -1;
-	} else if (!strcasecmp(params->type_name, "info")) {
-		params->icmp_type = ICMP_INFO_REQUEST;
-		params->icmp6_type = -1;
+		params->ipv4.send_type = ICMP_ECHO;
+		params->ipv4.response_type = ICMP_ECHOREPLY;
+		params->ipv6.send_type = ICMP6_ECHO_REQUEST;
+		params->ipv6.response_type = ICMP6_ECHO_REPLY;
+	} else if (!strcasecmp(type_name, "timestamp")) {
+		params->type_name = "timestamp";
+		params->ipv4.send_type = ICMP_TIMESTAMP;
+		params->ipv4.response_type = ICMP_TIMESTAMPREPLY;
+	} else if (!strcasecmp(type_name, "info")) {
+		params->type_name = "info";
+		params->ipv4.send_type = ICMP_INFO_REQUEST;
+		params->ipv4.response_type = ICMP_INFO_REPLY;
 	} else {
-		fm_log_error("ICMP type %s not supported\n", params->type_name);
 		return false;
 	}
 
 	return true;
 }
 
+
+/*
+ * Create an ICMP request block
+ */
+fm_icmp_request_t *
+fm_icmp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const fm_icmp_extra_params_t *extra_params)
+{
+	fm_icmp_request_t *icmp;
+
+	icmp = calloc(1, sizeof(*icmp));
+	icmp->proto = proto;
+	icmp->target = target;
+	icmp->params = *params;
+
+	if (extra_params != NULL)
+		icmp->extra_params = *extra_params;
+
+	if (icmp->params.retries == 0)
+		icmp->params.retries = fm_global.icmp.retries;
+
+	if (icmp->extra_params.type_name == NULL)
+		fm_icmp_extra_params_set_type(&icmp->extra_params, "echo");
+
+	icmp->family = target->address.ss_family;
+	icmp->host_address = target->address;
+
+	return icmp;
+}
+
+/*
+ * Free an existing request
+ */
+static void
+fm_icmp_request_free(fm_icmp_request_t *icmp)
+{
+	if (icmp->sock != NULL && !icmp->sock_is_shared)
+		fm_socket_free(icmp->sock);
+
+	icmp->sock = NULL;
+	free(icmp);
+}
+
+/*
+ * Set the shared socket (for traceroute)
+ */
+static void
+fm_icmp_request_set_socket(fm_icmp_request_t *icmp, fm_socket_t *sock)
+{
+	icmp->sock = sock;
+	icmp->sock_is_shared = true;
+}
+
+/*
+ * Do the scheduling
+ */
+static fm_error_t
+fm_icmp_request_schedule(fm_icmp_request_t *icmp, struct timeval *expires)
+{
+	if (icmp->params.retries == 0)
+		return FM_TIMED_OUT;
+
+	/* After sending the last probe, we wait until the full timeout has expired.
+	 * For any earlier probe, we wait for the specified packet spacing */
+	if (icmp->params.retries == 1)
+		fm_timestamp_set_timeout(expires, fm_global.icmp.timeout);
+	else
+		fm_timestamp_set_timeout(expires, fm_global.icmp.packet_spacing);
+	return 0;
+}
+
+
 static inline bool
 fm_icmp_instantiate_params(struct icmp_params *params, fm_target_t *target)
 {
-	params->host_address = target->address;
+	/* params->host_address = target->address; */
 
 	params->ipproto = fm_icmp_protocol_for_family(target->address.ss_family);
 	if (params->ipproto < 0) {
@@ -319,7 +398,7 @@ fm_icmp_instantiate_params(struct icmp_params *params, fm_target_t *target)
 		return false;
 	}
 
-	params->ident = 0x1234;
+	/* params->ident = 0x1234; */
 	return true;
 }
 
@@ -338,57 +417,39 @@ fm_icmp_protocol_for_family(int af)
 	}
 }
 
-/*
- * ICMP probes using standard BSD sockets
- */
-struct fm_icmp_host_probe {
-	fm_probe_t		base;
-
-	fm_probe_params_t	probe_params;
-	struct icmp_params	icmp_params;
-	fm_socket_t *		sock;
-};
-
-static void
-fm_icmp_host_probe_destroy(fm_probe_t *probe)
-{
-	struct fm_icmp_host_probe *icmp = (struct fm_icmp_host_probe *) probe;
-
-	if (icmp->sock != NULL) {
-		fm_socket_free(icmp->sock);
-		icmp->sock = NULL;
-	}
-}
-
 static fm_pkt_t *
-fm_icmp_build_echo_request(int af, const struct icmp_params *params)
+fm_icmp_request_build_packet(const fm_icmp_request_t *icmp)
 {
-	fm_pkt_t *pkt = fm_pkt_alloc(af, 64);
+	fm_pkt_t *pkt = fm_pkt_alloc(icmp->family, 64);
 	fm_buffer_t *bp = pkt->payload;
 
-	if (af == AF_INET) {
-		struct icmp *icmp;
+	pkt->peer_addr = icmp->host_address;
+	if (icmp->family == AF_INET) {
+		struct icmp *icmph;
 
-		icmp = fm_buffer_push(bp, sizeof(*icmp));
-		icmp->icmp_type = params->icmp_type;
-		icmp->icmp_code = 0;
-		icmp->icmp_cksum = 0;
-		icmp->icmp_id = htons(params->ident);
-		icmp->icmp_seq = htons(params->seq);
+		icmph = fm_buffer_push(bp, sizeof(*icmph));
+		icmph->icmp_type = icmp->extra_params.ipv4.send_type;
+		icmph->icmp_code = 0;
+		icmph->icmp_cksum = 0;
+		icmph->icmp_id = htons(icmp->icmp.ident);
+		icmph->icmp_seq = htons(icmp->icmp.seq);
 
-		icmp->icmp_cksum = in_csum(icmp, sizeof(*icmp));
-        } else if (af == AF_INET6) {
-		struct icmp6_hdr *icmp6;
+		icmph->icmp_cksum = in_csum(icmph, sizeof(*icmph));
+        } else if (icmp->family == AF_INET6) {
+		struct icmp6_hdr *icmph;
 
-		icmp6 = fm_buffer_push(bp, sizeof(*icmp6));
-		icmp6->icmp6_type = params->icmp6_type;
-		icmp6->icmp6_code = 0;
-		icmp6->icmp6_cksum = 0;
-		icmp6->icmp6_id = htons(params->ident);
-		icmp6->icmp6_seq = htons(params->seq);
+		icmph = fm_buffer_push(bp, sizeof(*icmph));
+		icmph->icmp6_type = icmp->extra_params.ipv6.send_type;
+		icmph->icmp6_code = 0;
+		icmph->icmp6_cksum = 0;
+		icmph->icmp6_id = htons(icmp->icmp.ident);
+		icmph->icmp6_seq = htons(icmp->icmp.seq);
 
 		/* Kernel takes care of checksums */
         }
+
+	/* apply ttl, tos etc */
+	fm_pkt_apply_probe_params(pkt, &icmp->params, icmp->proto->ops->supported_parameters);
 
 	return pkt;
 }
@@ -396,96 +457,35 @@ fm_icmp_build_echo_request(int af, const struct icmp_params *params)
 /*
  * Build the response match
  */
-static inline int
-get_icmp4_response_type(int type)
+typedef struct fm_icmp_extant_info {
+	struct {
+		unsigned int	len;
+		union {
+			struct icmp		icmp4;
+			struct icmp6_hdr	icmp6;
+			unsigned char		raw[64];
+		};
+	} sent_hdr, expect_hdr;
+} fm_icmp_extant_info_t;
+
+static void
+fm_icmp_request_build_extant_info(const fm_icmp_request_t *icmp, const fm_pkt_t *pkt, fm_icmp_extant_info_t *info)
 {
-	switch (type) {
-	case ICMP_ECHO:
-		return ICMP_ECHOREPLY;
-	case ICMP_TIMESTAMP:
-		return ICMP_TIMESTAMPREPLY;
-	case ICMP_INFO_REQUEST:
-		return ICMP_INFO_REPLY;
-	}
-	return -1;
-}
+	unsigned int len = fm_buffer_available(pkt->payload);
+	const void *raw = fm_buffer_head(pkt->payload);
 
-static inline int
-get_icmp6_response_type(int type)
-{
-	switch (type) {
-	case ICMP6_ECHO_REQUEST:
-		return ICMP6_ECHO_REPLY;
-	}
-	return -1;
-}
+	if (len > sizeof(info->sent_hdr.raw))
+		len = sizeof(info->sent_hdr.raw);
+	memcpy(info->sent_hdr.raw, raw, len);
+	info->sent_hdr.len = len;
 
-struct icmp_extant_info {
-	struct icmp		sent_hdr;
-	struct icmp		expect_hdr;
-};
+	/* The response we expect is exactly what we sent, just with the response type */
+	info->expect_hdr = info->sent_hdr;
 
-struct icmp6_extant_info {
-	struct icmp6_hdr	sent_hdr;
-	struct icmp6_hdr	expect_hdr;
-};
-
-static bool
-fm_icmp4_expect_response(const void *sent_data, unsigned int sent_len, fm_probe_t *probe)
-{
-	struct icmp_extant_info info;
-	int expect_type = -1;
-
-	if (sent_len < sizeof(info.sent_hdr))
-		return false;
-
-	memcpy(&info.sent_hdr, sent_data, sizeof(info.sent_hdr));
-
-	if ((expect_type = get_icmp4_response_type(info.sent_hdr.icmp_type)) < 0)
-		return false;
-
-	info.expect_hdr = info.sent_hdr;
-	info.expect_hdr.icmp_type = expect_type;
-
-	fm_extant_alloc(probe, AF_INET, IPPROTO_ICMP, &info, sizeof(info));
-	return true;
-}
-
-static bool
-fm_icmp6_expect_response(const void *sent_data, unsigned int sent_len, fm_probe_t *probe)
-{
-	struct icmp6_extant_info info;
-	int expect_type = -1;
-
-	if (sent_len < sizeof(info.sent_hdr))
-		return false;
-
-	memcpy(&info.sent_hdr, sent_data, sizeof(info.sent_hdr));
-
-	if ((expect_type = get_icmp6_response_type(info.sent_hdr.icmp6_type)) < 0)
-		return false;
-
-	info.expect_hdr = info.sent_hdr;
-	info.expect_hdr.icmp6_type = expect_type;
-
-	fm_extant_alloc(probe, AF_INET6, IPPROTO_ICMPV6, &info, sizeof(info));
-	return true;
-}
-
-static bool
-fm_icmp_expect_response(const fm_pkt_t *pkt, fm_probe_t *probe)
-{
-	fm_buffer_t *bp = pkt->payload;
-	unsigned int sent_len = fm_buffer_available(bp);
-	const void *sent_data = fm_buffer_head(bp);
-
-	if (pkt->family == AF_INET) {
-		return fm_icmp4_expect_response(sent_data, sent_len, probe);
-	} else if (pkt->family == AF_INET6) {
-		return fm_icmp6_expect_response(sent_data, sent_len, probe);
-	}
-
-	return false;
+	if (icmp->family == AF_INET)
+		info->expect_hdr.icmp4.icmp_type = icmp->extra_params.ipv4.response_type;
+	else if (icmp->family == AF_INET6)
+		info->expect_hdr.icmp6.icmp6_type = icmp->extra_params.ipv6.response_type;
 }
 
 fm_extant_t *
@@ -500,8 +500,8 @@ fm_icmp4_locate_probe(fm_target_t *target, fm_pkt_t *pkt, bool is_response, bool
 
         fm_extant_iterator_init(&iter, &target->expecting);
         while ((extant = fm_extant_iterator_match(&iter, AF_INET, IPPROTO_ICMP)) != NULL) {
-		const struct icmp_extant_info *ei = (struct icmp_extant_info *) (extant + 1);
-		const struct icmp *match = is_response? &ei->expect_hdr : &ei->sent_hdr;
+		fm_icmp_extant_info_t *ei = (fm_icmp_extant_info_t *) (extant + 1);
+		const struct icmp *match = is_response? &ei->expect_hdr.icmp4 : &ei->sent_hdr.icmp4;
 
 		if (!ignore_id && match->icmp_id != icmph->icmp_id)
 			continue;
@@ -526,8 +526,8 @@ fm_icmp6_locate_probe(fm_target_t *target, fm_pkt_t *pkt, bool is_response, bool
 
         fm_extant_iterator_init(&iter, &target->expecting);
         while ((extant = fm_extant_iterator_match(&iter, AF_INET6, IPPROTO_ICMPV6)) != NULL) {
-		const struct icmp6_extant_info *ei = (struct icmp6_extant_info *) (extant + 1);
-		const struct icmp6_hdr *match = is_response? &ei->expect_hdr : &ei->sent_hdr;
+		fm_icmp_extant_info_t *ei = (fm_icmp_extant_info_t *) (extant + 1);
+		const struct icmp6_hdr *match = is_response? &ei->expect_hdr.icmp6 : &ei->sent_hdr.icmp6;
 
 		if (!ignore_id && match->icmp6_id != icmph->icmp6_id)
 			continue;
@@ -560,100 +560,107 @@ fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, 
 	return NULL;
 }
 
-static fm_socket_t *
-fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr)
+/*
+ * Send the icmp request.
+ * The probe argument is only here because we need to notify it when done.
+ */
+static fm_error_t
+fm_icmp_request_send(fm_icmp_request_t *icmp, fm_icmp_extant_info_t *extant_info)
 {
 	fm_socket_t *sock;
-
-	sock = fm_protocol_create_socket(proto, addr->ss_family);
-	if (sock == NULL)
-		return NULL;
-
-	fm_socket_enable_recverr(sock);
-
-	if (!fm_socket_connect(sock, addr)) {
-		fm_socket_free(sock);
-		return NULL;
-	}
-
-	return sock;
-}
-
-static fm_error_t
-fm_icmp_host_probe_schedule(fm_probe_t *probe)
-{
-	const struct fm_icmp_host_probe *icmp = (struct fm_icmp_host_probe *) probe;
-
-	if (icmp->probe_params.retries == 0)
-		return FM_TIMED_OUT;
-
-	/* After sending the last probe, we wait until the full timeout has expired.
-	 * For any earlier probe, we wait for the specified packet spacing */
-	if (icmp->probe_params.retries == 1)
-		fm_timestamp_set_timeout(&probe->expires, fm_global.icmp.timeout);
-	else
-		fm_timestamp_set_timeout(&probe->expires, fm_global.icmp.packet_spacing);
-	return 0;
-}
-
-static fm_error_t
-fm_icmp_host_probe_send(fm_probe_t *probe)
-{
-	fm_target_t *target = probe->target;
-	fm_socket_t *sock;
-	struct fm_icmp_host_probe *icmp = (struct fm_icmp_host_probe *) probe;
-	int af = icmp->icmp_params.host_address.ss_family;
 	fm_pkt_t *pkt;
 
-	/* When using raw sockets, create a single ICMP socket per target host */
-	sock = fm_protocol_create_host_shared_socket(probe->proto, probe->target);
+	if ((sock = icmp->sock) != NULL) {
+		/* pass */
+	} else {
+		/* When using raw sockets, create a single ICMP socket per target host */
+		sock = fm_protocol_create_host_shared_socket(icmp->proto, icmp->target);
+	}
 
 	if (sock == NULL) {
-		if (icmp->sock == NULL) {
-			icmp->sock = fm_icmp_create_connected_socket(probe->proto, &target->address);
-		}
+		icmp->sock = fm_icmp_create_connected_socket(icmp->proto, &icmp->host_address);
 		if (icmp->sock == NULL) {
 			fm_log_error("Unable to create ICMP socket for %s: %m",
-					fm_address_format(&target->address));
+					fm_address_format(&icmp->host_address));
 			return FM_SEND_ERROR;
 		}
 
 		sock = icmp->sock;
 	}
 
-	icmp->icmp_params.seq = target->host_probe_seq++;
+	pkt = fm_icmp_request_build_packet(icmp);
 
-	pkt = fm_icmp_build_echo_request(af, &icmp->icmp_params);
-	if (pkt == NULL) {
-		fm_log_error("Don't know how to build ICMP packet for address family %d", af);
-		return FM_SEND_ERROR;
-	}
-
-	/* apply ttl and tos */
-	fm_pkt_apply_probe_params(pkt, &icmp->probe_params, probe->proto->ops->supported_parameters);
-
-	/* inform the ICMP response matching code that we're waiting for a response to this packet */
-	fm_icmp_expect_response(pkt, probe);
+	fm_icmp_request_build_extant_info(icmp, pkt, extant_info);
 
 	if (!fm_socket_send_pkt_and_burn(sock, pkt)) {
 		fm_log_error("Unable to send ICMP packet: %m");
 		return FM_SEND_ERROR;
 	}
 
-	if (icmp->probe_params.retries > 0)
-		icmp->probe_params.retries -= 1;
+	icmp->params.retries -= 1;
 
-	/* We send several packets in rapid succession, and then we wait for a bit longer.
-	 * The actual values are set in create_rtt_estimator */
-	if (icmp->probe_params.retries == 0)
-		probe->timeout = FM_ICMP_RESPONSE_TIMEOUT;
-
-	/* If retries > 0, we let the caller pick a timeout based on the rtt estimate */
-
-	/* Update the asset state */
-	fm_target_update_host_state(target, FM_PROTO_ICMP, FM_ASSET_STATE_PROBE_SENT);
+	/* update the asset state */
+	fm_target_update_host_state(icmp->target, FM_PROTO_ICMP, FM_ASSET_STATE_PROBE_SENT);
 
 	return 0;
+}
+
+/*
+ * The ICMP host probe
+ */
+struct fm_icmp_host_probe {
+	fm_probe_t		base;
+	fm_icmp_request_t *	icmp;
+};
+
+/*
+ * Check whether we're clear to send. If so, set the probe timer
+ */
+static fm_error_t
+fm_icmp_host_probe_schedule(fm_probe_t *probe)
+{
+	fm_icmp_request_t *icmp = fm_icmp_probe_get_request(probe);
+
+	if (icmp == NULL)
+		return FM_NOT_SUPPORTED;
+
+	return fm_icmp_request_schedule(icmp, &probe->expires);
+}
+
+
+/*
+ * Send the probe.
+ */
+static fm_error_t
+fm_icmp_host_probe_send(fm_probe_t *probe)
+{
+	fm_icmp_request_t *icmp = fm_icmp_probe_get_request(probe);
+	fm_icmp_extant_info_t extant_info;
+	fm_error_t error;
+
+	error = fm_icmp_request_send(icmp, &extant_info);
+	if (error == 0)
+		fm_extant_alloc(probe, icmp->family, icmp->icmp.ipproto, &extant_info, sizeof(extant_info));
+
+	return error;
+}
+
+static fm_error_t
+fm_icmp_host_probe_set_socket(fm_probe_t *probe, fm_socket_t *sock)
+{
+	fm_icmp_request_t *icmp = fm_icmp_probe_get_request(probe);
+
+	if (icmp == NULL)
+		return FM_NOT_SUPPORTED;
+
+	fm_icmp_request_set_socket(icmp, sock);
+	return 0;
+}
+
+static void
+fm_icmp_host_probe_destroy(fm_probe_t *probe)
+{
+	fm_icmp_probe_set_request(probe, NULL);
 }
 
 static struct fm_probe_ops fm_icmp_host_probe_ops = {
@@ -663,49 +670,84 @@ static struct fm_probe_ops fm_icmp_host_probe_ops = {
 	.default_timeout= 1000,	/* FM_ICMP_RESPONSE_TIMEOUT */
 
 	.destroy	= fm_icmp_host_probe_destroy,
-	.send		= fm_icmp_host_probe_send,
 	.schedule	= fm_icmp_host_probe_schedule,
+	.send		= fm_icmp_host_probe_send,
+	.set_socket	= fm_icmp_host_probe_set_socket,
 };
+
+static fm_icmp_request_t *
+fm_icmp_probe_get_request(const fm_probe_t *probe)
+{
+	if (probe->ops != &fm_icmp_host_probe_ops)
+		return NULL;
+
+	return ((struct fm_icmp_host_probe *) probe)->icmp;
+}
+
+static void
+fm_icmp_probe_set_request(fm_probe_t *probe, fm_icmp_request_t *icmp)
+{
+	struct fm_icmp_host_probe *icmp_probe;
+
+	if (probe->ops != &fm_icmp_host_probe_ops)
+		return;
+
+	icmp_probe = (struct fm_icmp_host_probe *) probe;
+	if (icmp_probe->icmp != NULL)
+		fm_icmp_request_free(icmp_probe->icmp);
+	icmp_probe->icmp = icmp;
+}
+
+static void *
+fm_icmp_process_extra_parameters(fm_protocol_t *proto, const fm_string_array_t *extra_args)
+{
+	fm_icmp_extra_params_t *extra_params;
+	const char *type_name = NULL;
+	unsigned int i;
+
+	extra_params = calloc(1, sizeof(*extra_params));
+
+	for (i = 0; i < extra_args->count; ++i) {
+		const char *arg = extra_args->entries[i];
+
+		if (fm_parse_string_argument(arg, "type", &type_name)) {
+			/* pass */
+		} else {
+			fm_log_error("Cannot create ICMP host probe: invalid argument \"%s\"", arg);
+			return false;
+		}
+	}
+
+	if (type_name == NULL)
+		type_name = "echo";
+
+	if (!fm_icmp_extra_params_set_type(extra_params, type_name)) {
+		fm_log_error("ICMP type %s not supported\n", type_name);
+		free(extra_params);
+		return NULL;
+	}
+
+	return extra_params;
+
+}
+
 
 static fm_probe_t *
 fm_icmp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
-	const struct icmp_params *icmp_args = extra_params;
-	struct fm_icmp_host_probe *probe;
+	fm_icmp_request_t *icmp;
+	fm_probe_t *probe;
+	char name[32];
 
-	probe = (struct fm_icmp_host_probe *) fm_probe_alloc("icmp/echo", &fm_icmp_host_probe_ops, proto, target);
-
-	probe->sock = NULL;
-	if (icmp_args != NULL)
-		probe->icmp_params = *icmp_args;
-
-	probe->probe_params = *params;
-	if (probe->probe_params.retries == 0)
-		probe->probe_params.retries = FM_ICMP_PROBE_RETRIES;
-
-	if (!fm_icmp_instantiate_params(&probe->icmp_params, target))
+	icmp = fm_icmp_request_alloc(proto, target, params, extra_params);
+	if (icmp == NULL)
 		return NULL;
 
-	if (params->port != 0)
-		probe->icmp_params.seq = params->port;
+	snprintf(name, sizeof(name), "icmp/%s", icmp->extra_params.type_name);
+	probe = fm_probe_alloc(name, &fm_icmp_host_probe_ops, proto, target);
 
-	fm_log_debug("Created ICMP socket probe for %s\n", fm_address_format(&probe->icmp_params.host_address));
-	return &probe->base;
-}
+	fm_icmp_probe_set_request(probe, icmp);
 
-/*
- * After we've created a generic hostscan action, come here for some polishing
- */
-static void *
-fm_icmp_process_extra_parameters(fm_protocol_t *proto, const fm_string_array_t *extra_args)
-{
-	struct icmp_params *icmp_params;
-
-	icmp_params = calloc(1, sizeof(*icmp_params));
-	if (!fm_icmp_build_params(icmp_params, extra_args)) {
-		free(icmp_params);
-		return NULL;
-	}
-
-	return icmp_params;
+	fm_log_debug("Created ICMP socket probe for %s\n", fm_address_format(&icmp->host_address));
+	return probe;
 }
