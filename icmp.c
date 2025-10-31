@@ -62,9 +62,11 @@ static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.id		= FM_PROTO_ICMP,
 
 	.supported_parameters =
+			  FM_PARAM_TYPE_PORT_MASK |	/* we use the port parameter to seq the icmp_id */
 			  FM_PARAM_TYPE_TTL_MASK |
 			  FM_PARAM_TYPE_TOS_MASK |
-			  FM_PARAM_TYPE_RETRIES_MASK,
+			  FM_PARAM_TYPE_RETRIES_MASK |
+			  FM_FEATURE_STATUS_CALLBACK_MASK,
 
 	.create_socket	= fm_icmp_create_bsd_socket,
 	.process_packet	= fm_icmp_process_packet,
@@ -81,9 +83,11 @@ static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
 	.require_raw	= true,
 
 	.supported_parameters =
+			  FM_PARAM_TYPE_PORT_MASK |	/* we use the port parameter to seq the icmp_id */
 			  FM_PARAM_TYPE_TTL_MASK |
 			  FM_PARAM_TYPE_TOS_MASK |
-			  FM_PARAM_TYPE_RETRIES_MASK,
+			  FM_PARAM_TYPE_RETRIES_MASK |
+			  FM_FEATURE_STATUS_CALLBACK_MASK,
 
 	.create_socket	= fm_icmp_create_raw_socket,
 	.create_host_shared_socket = fm_icmp_create_shared_raw_socket,
@@ -672,7 +676,8 @@ fm_icmp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_pr
 	probe = (struct fm_icmp_host_probe *) fm_probe_alloc("icmp/echo", &fm_icmp_host_probe_ops, proto, target);
 
 	probe->sock = NULL;
-	probe->icmp_params = *icmp_args;
+	if (icmp_args != NULL)
+		probe->icmp_params = *icmp_args;
 
 	probe->probe_params = *params;
 	if (probe->probe_params.retries == 0)
@@ -680,6 +685,9 @@ fm_icmp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_pr
 
 	if (!fm_icmp_instantiate_params(&probe->icmp_params, target))
 		return NULL;
+
+	if (params->port != 0)
+		probe->icmp_params.seq = params->port;
 
 	fm_log_debug("Created ICMP socket probe for %s\n", fm_address_format(&probe->icmp_params.host_address));
 	return &probe->base;
