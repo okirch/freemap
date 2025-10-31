@@ -235,7 +235,7 @@ fm_host_asset_update_state(fm_host_asset_t *host, fm_asset_state_t state)
 	/* Only update if the new state is "better", where
 	 *  open > closed > probe_sent > undef
 	 */
-	if (state == host->state)
+	if (state <= host->state)
 		return false;
 
 	host->state = state;
