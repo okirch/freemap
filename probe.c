@@ -328,6 +328,27 @@ fm_completion_free(fm_completion_t *completion)
 	completion = NULL;
 }
 
+/*
+ * Another set of callbacks; this time for inspecting packets received
+ * an errors encountered.
+ * Returns true if the probe should keep going, false if is considered complete.
+ */
+void
+fm_probe_install_status_callback(fm_probe_t *probe, fm_probe_status_callback_t *cb, void *user_data)
+{
+	probe->status_callback.cb = cb;
+	probe->status_callback.user_data = user_data;
+}
+
+static inline bool
+fm_probe_invoke_status_callback(const fm_probe_t *probe, const fm_pkt_t *pkt, double rtt)
+{
+	if (!probe->status_callback.cb)
+		return false;
+
+	return probe->status_callback.cb(probe, pkt, rtt, probe->status_callback.user_data);
+}
+
 void
 fm_probe_set_error(fm_probe_t *probe, fm_error_t error)
 {
@@ -483,14 +504,26 @@ void
 fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt)
 {
 	double rtt = fm_pkt_rtt(pkt, &extant->timestamp);
+	fm_probe_t *probe = extant->probe;
 
-	fm_probe_received_reply(extant->probe, &rtt);
+	fm_probe_update_rtt_estimate(probe, &rtt);
+
+	if (fm_probe_invoke_status_callback(probe, pkt, rtt))
+		return; /* whoever is watching this probe wants us to keep going */
+
+	fm_probe_mark_complete(probe);
 }
 
 void
 fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt)
 {
 	double rtt = fm_pkt_rtt(pkt, &extant->timestamp);
+	fm_probe_t *probe = extant->probe;
 
-	fm_probe_received_error(extant->probe, &rtt);
+	fm_probe_update_rtt_estimate(probe, &rtt);
+
+	if (fm_probe_invoke_status_callback(probe, pkt, rtt))
+		return; /* whoever is watching this probe wants us to keep going */
+
+	fm_probe_mark_complete(probe);
 }

@@ -33,6 +33,10 @@ typedef enum {
 	FM_PROBE_VERDICT_TIMEOUT,
 } fm_probe_verdict_t;
 
+typedef bool			fm_probe_status_callback_t(const fm_probe_t *probe,
+						const fm_pkt_t *, double rtt,
+						void *user_data);
+
 struct fm_probe_ops {
 	const char *		name;
 	size_t			obj_size;
@@ -67,6 +71,13 @@ struct fm_probe {
 
 	/* Used to notify someone who is waiting for this probe to complete */
 	fm_completion_t *	completion;
+
+	/* Used by traceroute to receive callbacks when there is something to be
+	 * learned. */
+	struct {
+		fm_probe_status_callback_t *cb;
+		void *		user_data;
+	} status_callback;
 
 	/* When probing eg UDP based services, we need to slap some
 	 * constant value on the timeout derived from the RTT estimate,
@@ -208,6 +219,7 @@ extern void		fm_probe_mark_complete(fm_probe_t *);
 extern fm_completion_t *fm_probe_wait_for_completion(fm_probe_t *probe, void (*func)(const fm_probe_t *, void *), void *);
 extern void		fm_probe_cancel_completion(fm_probe_t *probe, const fm_completion_t *);
 extern void		fm_completion_free(fm_completion_t *);
+extern void		fm_probe_install_status_callback(fm_probe_t *, fm_probe_status_callback_t *, void *);
 
 extern void		fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt);
 extern void		fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt);
