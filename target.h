@@ -65,6 +65,9 @@ struct fm_probe {
 	 */
 	fm_event_listener_t *	event_listener;
 
+	/* Used to notify someone who is waiting for this probe to complete */
+	fm_completion_t *	completion;
+
 	/* When probing eg UDP based services, we need to slap some
 	 * constant value on the timeout derived from the RTT estimate,
 	 * because the RTT will be largely based on the network timing;
@@ -86,6 +89,15 @@ struct fm_probe {
 
 struct fm_probe_list {
 	struct hlist_head	hlist;
+};
+
+/*
+ * completions can be used to wait for a probe to finish.
+ * They're owned by the caller and are theirs to disponse of after use.
+ */
+struct fm_completion {
+	void			(*callback)(const fm_probe_t *, void *user_data);
+	void *			user_data;
 };
 
 /*
@@ -193,6 +205,9 @@ extern void		fm_probe_received_error(fm_probe_t *, double *rtt);
 extern void		fm_probe_timed_out(fm_probe_t *);
 extern void		fm_probe_set_error(fm_probe_t *, fm_error_t);
 extern void		fm_probe_mark_complete(fm_probe_t *);
+extern fm_completion_t *fm_probe_wait_for_completion(fm_probe_t *probe, void (*func)(const fm_probe_t *, void *), void *);
+extern void		fm_probe_cancel_completion(fm_probe_t *probe, const fm_completion_t *);
+extern void		fm_completion_free(fm_completion_t *);
 
 extern void		fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt);
 extern void		fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt);

@@ -47,6 +47,7 @@ typedef struct fm_uint_array fm_uint_array_t;
 typedef struct fm_neighbor fm_neighbor_t;
 typedef struct fm_neighbor_cache fm_neighbor_cache_t;
 typedef struct fm_event_listener fm_event_listener_t;
+typedef struct fm_completion fm_completion_t;
 typedef struct fm_host_asset fm_host_asset_t;
 typedef struct fm_protocol_asset fm_protocol_asset_t;
 

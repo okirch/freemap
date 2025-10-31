@@ -197,6 +197,9 @@ fm_probe_alloc(const char *id, const struct fm_probe_ops *ops, fm_protocol_t *pr
 void
 fm_probe_free(fm_probe_t *probe)
 {
+	if (probe->completion)
+		fm_log_fatal("BUG: %s(%s) with pending completion", __func__, probe->name);
+
 	if (probe->ops->destroy)
 		probe->ops->destroy(probe);
 
@@ -240,6 +243,51 @@ fm_probe_send(fm_probe_t *probe)
 	return error;
 }
 
+/*
+ * Probe completion
+ */
+fm_completion_t *
+fm_probe_wait_for_completion(fm_probe_t *probe, void (*func)(const fm_probe_t *, void *), void *user_data)
+{
+	fm_completion_t *completion;
+
+	if (probe->completion != NULL) {
+		fm_log_error("%s: refusing to install more than one completion", probe->name);
+		return NULL;
+	}
+
+	completion = calloc(1, sizeof(*completion));
+	completion->callback = func;
+	completion->user_data = user_data;
+
+	probe->completion = completion;
+	return completion;
+}
+
+void
+fm_probe_invoke_completion(fm_probe_t *probe)
+{
+	fm_completion_t *completion;
+
+	if ((completion = probe->completion) != NULL) {
+		probe->completion = NULL;
+		completion->callback(probe, completion->user_data);
+	}
+}
+
+void
+fm_probe_cancel_completion(fm_probe_t *probe, const fm_completion_t *completion)
+{
+	if (probe->completion == completion)
+		probe->completion = NULL;
+}
+
+void
+fm_completion_free(fm_completion_t *completion)
+{
+	completion = NULL;
+}
+
 void
 fm_probe_set_error(fm_probe_t *probe, fm_error_t error)
 {
@@ -252,7 +300,7 @@ fm_probe_set_error(fm_probe_t *probe, fm_error_t error)
 			/* probe->elapsed = fm_timestamp_since(&probe->sent); */
 		}
 	}
-	probe->done = true;
+	fm_probe_mark_complete(probe);
 }
 
 void
@@ -263,6 +311,8 @@ fm_probe_mark_complete(fm_probe_t *probe)
 		/* probe->elapsed = fm_timestamp_since(&probe->sent); */
 	}
 	probe->done = true;
+
+	fm_probe_invoke_completion(probe);
 }
 
 /*
