@@ -93,15 +93,24 @@ fm_topo_state_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_pa
 
 	required_mask = FM_PARAM_TYPE_PORT_MASK | FM_PARAM_TYPE_TTL_MASK | FM_PARAM_TYPE_RETRIES_MASK | FM_FEATURE_STATUS_CALLBACK_MASK;
 	if (~(topo->packet_proto->ops->supported_parameters) & required_mask) {
-		fm_log_error("topo: packet protocol %s does not support all required features", packet_proto_name);
+		fm_log_error("traceroute: packet protocol %s does not support all required features", packet_proto_name);
 		goto failed;
 	}
 
 	for (ttl = 0; ttl < FM_MAX_TOPO_DEPTH; ++ttl)
 		topo->hop[ttl].distance = ttl;
 
-	if (topo->packet_proto->ops->supported_parameters & FM_FEATURE_SOCKET_SHARING_MASK)
+	if (topo->packet_proto->ops->supported_parameters & FM_FEATURE_SOCKET_SHARING_MASK) {
 		topo->shared_socks = fm_topo_shared_sockets_get(topo->packet_proto, topo->family);
+
+		if (extra_params->packet_proto_params) {
+			fm_log_warning("traceroute: ignoring %s options", packet_proto_name);
+			/* If we want to honor these, we would need to share fm_topo_shared_sockets_t
+			 * per traceroute probe rather than locally.
+			 * FIXME: maybe stick fm_topo_shared_sockets_t into the tracerout extra_params?
+			 * Would be icky, because it's not really a parameter... :-( */
+		}
+	}
 
 	/* start with ttl 1 */
 	topo->next_ttl = 1;
@@ -662,6 +671,54 @@ fm_topo_probe_set_request(fm_probe_t *probe, fm_topo_state_t *topo)
 	}
 }
 
+static void *
+fm_topo_process_extra_parameters(fm_protocol_t *proto, const fm_string_array_t *extra_args)
+{
+	fm_topo_extra_params_t *extra_params;
+	fm_string_array_t proto_args;
+	unsigned int i;
+
+	extra_params = calloc(1, sizeof(*extra_params));
+	extra_params->packet_proto = "udp"; /* default */
+
+	memset(&proto_args, 0, sizeof(proto_args));
+	for (i = 0; i < extra_args->count; ++i) {
+		const char *arg = extra_args->entries[i];
+		unsigned int proto_id;
+
+		proto_id = fm_protocol_string_to_id(arg);
+		if (proto_id != FM_PROTO_NONE) {
+			extra_params->packet_proto = fm_protocol_id_to_string(proto_id);
+		} else
+		if (fm_parse_numeric_argument(arg, "max-depth", &extra_params->max_depth)
+		 || fm_parse_numeric_argument(arg, "max-hole-size", &extra_params->max_hole_size)) {
+			/* good to go */
+		} else {
+			fm_string_array_append(&proto_args, arg);
+		}
+	}
+
+	if (proto_args.count != 0) {
+		fm_protocol_t *proto = fm_protocol_by_name(extra_params->packet_proto);
+
+		if (proto->ops->process_extra_parameters != NULL)
+			extra_params->packet_proto_params = proto->ops->process_extra_parameters(proto, &proto_args);
+
+		if (extra_params->packet_proto_params == NULL) {
+			fm_log_error("traceroute/%s: cannot process extra parameters", extra_params->packet_proto);
+			for (i = 0; i < proto_args.count; ++i)
+				fm_log_error("  unknown option %s", proto_args.entries[i]);
+
+			free(extra_params);
+			return NULL;
+		}
+
+	}
+
+	fm_string_array_destroy(&proto_args);
+	return extra_params;
+}
+
 static fm_probe_t *
 fm_topo_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
@@ -672,10 +729,6 @@ fm_topo_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, co
 	topo = fm_topo_state_alloc(proto, target, params, (fm_topo_extra_params_t *) extra_params);
 	if (topo == NULL)
 		return NULL;
-
-	/* Unfortunately, there's currently no way to pass extra parameters to the packet protocol
-	 * (the scanner code takes no hostages here).
-	 */
 
 	snprintf(name, sizeof(name), "topo/%s", topo->packet_proto->ops->name);
 	probe = fm_probe_alloc(name, &fm_topo_probe_ops, proto, target);
@@ -699,6 +752,7 @@ static struct fm_protocol_ops	fm_traceroute_ops = {
 			  FM_PARAM_TYPE_RETRIES_MASK,
 
 	.create_parameterized_probe = fm_topo_create_parameterized_probe,
+	.process_extra_parameters = fm_topo_process_extra_parameters,
 };
 
 FM_PROTOCOL_REGISTER(fm_traceroute_ops);

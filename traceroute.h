@@ -21,6 +21,7 @@
 #define FREEMAP_TRACEROUTE_H
 
 #include "freemap.h"
+#include "utils.h"
 
 #define FM_MAX_TOPO_DEPTH	64
 #define FM_RTT_SAMPLES_WANTED	3
@@ -31,6 +32,8 @@ typedef struct fm_topo_extra_params {
 	const char *		packet_proto;
 	unsigned int		max_depth;
 	unsigned int		max_hole_size;
+
+	void *			packet_proto_params;
 } fm_topo_extra_params_t;
 
 typedef struct fm_topo_hop_state {
