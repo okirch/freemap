@@ -152,10 +152,7 @@ fm_neighbor_initiate_arp(const fm_address_t *network_address)
 		return false;
 	}
 
-	engine = fm_protocol_engine_create_default();
-	assert(engine != NULL);
-
-	proto = fm_protocol_engine_get_protocol(engine, "arp");
+	proto = fm_protocol_by_name("arp");
 	if (proto == NULL) {
 		fm_log_error("ARP protocol not available (possibly due to insufficient privilege)");
 		return false;

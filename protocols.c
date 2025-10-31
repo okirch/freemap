@@ -204,6 +204,26 @@ fm_protocol_engine_get_protocol(fm_protocol_engine_t *engine, const char *name)
 	return NULL;
 }
 
+fm_protocol_t *
+fm_protocol_by_name(const char *name)
+{
+	fm_protocol_engine_t *engine = fm_protocol_engine_create_default();
+
+	assert(engine != NULL);
+	return fm_protocol_engine_get_protocol(engine, name);
+}
+
+fm_protocol_t *
+fm_protocol_by_id(unsigned int proto_id)
+{
+	fm_protocol_engine_t *engine = fm_protocol_engine_create_default();
+
+	assert(engine != NULL);
+	if (proto_id >= __FM_PROTO_MAX)
+		return NULL;
+	return engine->driver[proto_id];
+}
+
 /*
  * mapping between FM_PROTO_* constants and protocol names
  */

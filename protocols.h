@@ -76,6 +76,7 @@ extern void		fm_protocol_directory_add(struct fm_protocol_ops *ops);
 extern void		fm_protocol_directory_display(void);
 
 extern fm_protocol_t *	fm_protocol_engine_get_protocol(fm_protocol_engine_t *, const char *);
+extern fm_protocol_t *	fm_protocol_by_name(const char *);
 
 extern fm_protocol_t *	fm_protocol_create(const struct fm_protocol_ops *ops);
 extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);
