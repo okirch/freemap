@@ -176,7 +176,7 @@ fm_udp_request_free(fm_udp_request_t *udp)
 }
 
 static fm_udp_request_t *
-fm_udp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params)
+fm_udp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
 	fm_udp_request_t *udp;
 
@@ -493,7 +493,7 @@ fm_udp_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, con
 	fm_probe_t *probe;
 	char name[32];
 
-	udp = fm_udp_request_alloc(proto, target, params);
+	udp = fm_udp_request_alloc(proto, target, params, extra_params);
 	if (udp == NULL)
 		return NULL;
 
