@@ -106,6 +106,7 @@ static const char *strings[FM_MAX_ERROR_INDEX] = {
 	[-FM_SEND_ERROR] = "Unable to send packet",
 	[-FM_TIMED_OUT] = "Timed out",
 	[-FM_TRY_AGAIN] = "Try again",
+	[-FM_NOT_SUPPORTED] = "Not supported",
 };
 
 const char *

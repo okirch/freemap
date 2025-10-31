@@ -206,6 +206,8 @@ typedef enum {
 	 * The probe is expected to set probe->expires.
 	 */
 	FM_TRY_AGAIN = -3,
+
+	FM_NOT_SUPPORTED = -4,
 } fm_error_t;
 
 /*
