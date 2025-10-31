@@ -212,6 +212,7 @@ typedef enum {
 	FM_TRY_AGAIN = -3,
 
 	FM_NOT_SUPPORTED = -4,
+	FM_NO_ROUTE_TO_HOST = -5,
 } fm_error_t;
 
 /*
