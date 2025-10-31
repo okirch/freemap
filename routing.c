@@ -278,7 +278,7 @@ fm_routing_lookup(fm_routing_info_t *info)
 	fm_neighbor_t *neigh;
 
 	if (!(route = fm_routing_for_address(&info->dst.network_address))) {
-		fm_log_error("%s: no route to host", fm_address_format(&info->dst.link_address));
+		fm_log_error("%s: no route to host", fm_address_format(&info->dst.network_address));
 		return false;
 	}
 
