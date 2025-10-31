@@ -381,11 +381,16 @@ fm_scanner_create_host_probe(fm_scanner_t *scanner, fm_protocol_t *proto, const 
 
 	action = fm_host_scan_action_create(proto, &params);
 
-	if (proto->ops->finalize_action != NULL) {
-		if (!proto->ops->finalize_action(proto, action, &proto_args)) {
+	if (proto->ops->process_extra_parameters != NULL) {
+		void *extra_params;
+
+		extra_params = proto->ops->process_extra_parameters(proto, &proto_args);
+		if (extra_params == NULL) {
 			/* FIXME: memory leak: we should free action */
 			return NULL;
 		}
+
+		action->extra_params = extra_params;
 	} else
 	if (proto_args.count != 0) {
 		fm_log_error("found %u unrecognized parameters in host probe for %s", proto_args.count, proto->ops->name);

@@ -51,7 +51,7 @@ static fm_socket_t *	fm_icmp_create_raw_socket(fm_protocol_t *proto, int ipproto
 static fm_socket_t *	fm_icmp_create_shared_raw_socket(fm_protocol_t *proto, fm_target_t *target);
 
 static fm_socket_t *	fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr);
-static bool		fm_icmp_finalize_action(fm_protocol_t *, fm_scan_action_t *, const fm_string_array_t *);
+static void *		fm_icmp_process_extra_parameters(fm_protocol_t *, const fm_string_array_t *);
 static fm_probe_t *	fm_icmp_create_host_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 static int		fm_icmp_protocol_for_family(int af);
 static fm_extant_t *	fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response, bool ignore_id);
@@ -70,7 +70,7 @@ static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.process_packet	= fm_icmp_process_packet,
 	.process_error	= fm_icmp_process_error,
 
-	.finalize_action = fm_icmp_finalize_action,
+	.process_extra_parameters = fm_icmp_process_extra_parameters,
 	.create_parameterized_probe = fm_icmp_create_host_probe,
 };
 
@@ -90,7 +90,7 @@ static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
 	.process_packet	= fm_icmp_process_packet,
 	.process_error	= fm_icmp_process_error,
 
-	.finalize_action = fm_icmp_finalize_action,
+	.process_extra_parameters = fm_icmp_process_extra_parameters,
 	.create_parameterized_probe = fm_icmp_create_host_probe,
 };
 
@@ -688,17 +688,16 @@ fm_icmp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_pr
 /*
  * After we've created a generic hostscan action, come here for some polishing
  */
-static bool
-fm_icmp_finalize_action(fm_protocol_t *proto, fm_scan_action_t *action, const fm_string_array_t *extra_args)
+static void *
+fm_icmp_process_extra_parameters(fm_protocol_t *proto, const fm_string_array_t *extra_args)
 {
 	struct icmp_params *icmp_params;
 
 	icmp_params = calloc(1, sizeof(*icmp_params));
 	if (!fm_icmp_build_params(icmp_params, extra_args)) {
 		free(icmp_params);
-		return false;
+		return NULL;
 	}
 
-	action->extra_params = icmp_params;
-	return true;
+	return icmp_params;
 }

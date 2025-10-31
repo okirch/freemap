@@ -52,7 +52,7 @@ struct fm_protocol_ops {
 
 	int		action_flags;
 
-	bool		(*finalize_action)(fm_protocol_t *, fm_scan_action_t *, const fm_string_array_t *extra_args);
+	void *		(*process_extra_parameters)(fm_protocol_t *, const fm_string_array_t *extra_args);
 	fm_probe_t *	(*create_parameterized_probe)(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 	bool		(*set_probe_socket)(fm_protocol_t *, fm_probe_t *, fm_socket_t *);
 };

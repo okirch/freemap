@@ -56,7 +56,6 @@ static fm_socket_t *	fm_arp_create_socket(fm_protocol_t *proto, int ipproto);
 static bool		fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 
 static int		fm_arp_probe_original_ifindex(const fm_probe_t *);
-static bool		fm_arp_finalize_action(fm_protocol_t *proto, fm_scan_action_t *action, const fm_string_array_t *extra_args);
 static fm_probe_t *	fm_arp_create_host_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 
 static fm_arp_request_t *fm_arp_probe_get_request(const fm_probe_t *probe);
@@ -71,12 +70,10 @@ static struct fm_protocol_ops	fm_arp_ops = {
 	.supported_parameters = FM_PARAM_TYPE_RETRIES_MASK,
 
 	.create_socket	= fm_arp_create_socket,
+	.process_packet	= fm_arp_process_packet,
 
 	.action_flags	= FM_SCAN_ACTION_FLAG_LOCAL_ONLY,
-	.finalize_action = fm_arp_finalize_action,
 	.create_parameterized_probe = fm_arp_create_host_probe,
-
-	.process_packet	= fm_arp_process_packet,
 };
 
 FM_PROTOCOL_REGISTER(fm_arp_ops);
@@ -429,25 +426,6 @@ fm_arp_probe_original_ifindex(const fm_probe_t *probe)
 		return -1;
 
 	return arp->arp_params.src_lladdr.sll_ifindex;
-}
-
-/*
- * After we've created a generic hostscan action, come here for some polishing
- */
-static bool
-fm_arp_finalize_action(fm_protocol_t *proto, fm_scan_action_t *action, const fm_string_array_t *extra_args)
-{
-	if (extra_args && extra_args->count != 0) {
-		/* FIXME: we should have a generic function that handles this sort of complaint
-		 * and produces a reasonable error message. */
-		fm_log_error("ARP: unrecognized extra parameters...");
-                return false;
-        }
-
-	action->flags = FM_SCAN_ACTION_FLAG_LOCAL_ONLY;
-	if (action->probe_params.retries == 0)
-		action->probe_params.retries = FM_ARP_PROBE_RETRIES;
-	return true;
 }
 
 /*
