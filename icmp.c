@@ -205,15 +205,9 @@ fm_icmp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 		return false;
 
 	if (pkt->family == AF_INET && ee->ee_origin == SO_EE_ORIGIN_ICMP) {
-		if (ee->ee_type != ICMP_DEST_UNREACH) {
-			fm_log_debug("%s ignoring icmp packet with type %d.%d",
-					fm_address_format(&pkt->peer_addr),
-					ee->ee_type, ee->ee_code);
-			return false;
-		}
-
-		fm_log_debug("%s destination unreachable (code %d)\n",
-				fm_address_format(&pkt->peer_addr), ee->ee_code);
+		fm_log_debug("%s received ICMP error type %d code %d\n",
+				fm_address_format(&pkt->peer_addr),
+				ee->ee_type, ee->ee_code);
 
 		/* update asset state right away */
 		fm_host_asset_update_state_by_address(&pkt->peer_addr, FM_ASSET_STATE_CLOSED);
@@ -230,6 +224,31 @@ fm_icmp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 		 * we could build a rough sketch of the network topo and avoid swamping
 		 * the gateway with too many packets (which would result in ICMP errors
 		 * being dropped). */
+
+		/* We should not decide this here; the probe should decide what it
+		 * wants to ignore and what not. */
+		if (ee->ee_type != ICMP_DEST_UNREACH) {
+
+			/* super ugly; layering violation */
+			if (extant != NULL) {
+				fm_probe_t *probe = extant->probe;
+
+				if (probe->status_callback.cb) {
+					double rtt = fm_pkt_rtt(pkt, &extant->timestamp);
+					bool keep_going;
+
+					keep_going = probe->status_callback.cb(probe, pkt, rtt, probe->status_callback.user_data);
+					if (!keep_going)
+						fm_probe_mark_complete(probe);
+				}
+				return true;
+			}
+
+			fm_log_debug("%s ignoring icmp packet with type %d.%d",
+					fm_address_format(&pkt->peer_addr),
+					ee->ee_type, ee->ee_code);
+			return false;
+		}
 	}
 
 	if (extant != NULL) {
@@ -323,6 +342,7 @@ fm_icmp_extra_params_set_type(fm_icmp_extra_params_t *params, const char *type_n
 fm_icmp_request_t *
 fm_icmp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const fm_icmp_extra_params_t *extra_params)
 {
+	static unsigned int global_icmp_seq = 1;
 	fm_icmp_request_t *icmp;
 
 	icmp = calloc(1, sizeof(*icmp));
@@ -335,6 +355,19 @@ fm_icmp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_
 
 	if (icmp->params.retries == 0)
 		icmp->params.retries = fm_global.icmp.retries;
+
+	icmp->icmp.ident = 0x5678;
+
+	/* If the TTL parameter is set, this is probably traceroute, and we need to
+	 * have a way to match error packets against the actual request.
+	 * With SOCK_PACKET, we can actually choose the icmp_id, but with SOCK_RAW,
+	 * the kernel will overwrite what we try to send.
+	 * Fudge a sequence number that is a combination of retry and ttl.
+	 */
+	if (icmp->params.ttl != 0)
+		icmp->icmp.seq = (icmp->params.ttl << 8);
+	else
+		icmp->icmp.seq = global_icmp_seq++;
 
 	if (icmp->extra_params.type_name == NULL)
 		fm_icmp_extra_params_set_type(&icmp->extra_params, "echo");
@@ -418,7 +451,7 @@ fm_icmp_protocol_for_family(int af)
 }
 
 static fm_pkt_t *
-fm_icmp_request_build_packet(const fm_icmp_request_t *icmp)
+fm_icmp_request_build_packet(fm_icmp_request_t *icmp)
 {
 	fm_pkt_t *pkt = fm_pkt_alloc(icmp->family, 64);
 	fm_buffer_t *bp = pkt->payload;
@@ -450,6 +483,8 @@ fm_icmp_request_build_packet(const fm_icmp_request_t *icmp)
 
 	/* apply ttl, tos etc */
 	fm_pkt_apply_probe_params(pkt, &icmp->params, icmp->proto->ops->supported_parameters);
+
+	icmp->icmp.seq += 1;
 
 	return pkt;
 }
@@ -743,7 +778,7 @@ fm_icmp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_pr
 	if (icmp == NULL)
 		return NULL;
 
-	snprintf(name, sizeof(name), "icmp/%s", icmp->extra_params.type_name);
+	snprintf(name, sizeof(name), "icmp/%s/%04x", icmp->extra_params.type_name, icmp->icmp.seq);
 	probe = fm_probe_alloc(name, &fm_icmp_host_probe_ops, proto, target);
 
 	fm_icmp_probe_set_request(probe, icmp);
