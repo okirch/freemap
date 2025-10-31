@@ -248,6 +248,20 @@ fm_probe_adjust_expiry(fm_probe_t *probe)
 }
 
 /*
+ * used by traceroute
+ */
+fm_error_t
+fm_probe_set_socket(fm_probe_t *probe, fm_socket_t *sock)
+{
+	if (probe->ops->set_socket == NULL) {
+		fm_log_error("%s: %s does not support shared sockets", __func__, probe->name);
+		return FM_NOT_SUPPORTED;
+	}
+
+	return probe->ops->set_socket(probe, sock);
+}
+
+/*
  * This kicks the probe to make it send another packet (if it feels like it)
  */
 fm_error_t

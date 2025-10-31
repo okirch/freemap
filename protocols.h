@@ -52,12 +52,16 @@ struct fm_protocol_ops {
 
 	bool		(*finalize_action)(fm_protocol_t *, fm_scan_action_t *, const fm_string_array_t *extra_args);
 	fm_probe_t *	(*create_parameterized_probe)(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
+	bool		(*set_probe_socket)(fm_protocol_t *, fm_probe_t *, fm_socket_t *);
 };
 
 #define FM_PARAM_TYPE_RETRIES_MASK	(1 << FM_PARAM_TYPE_RETRIES)
 #define FM_PARAM_TYPE_PORT_MASK		(1 << FM_PARAM_TYPE_PORT)
 #define FM_PARAM_TYPE_TTL_MASK		(1 << FM_PARAM_TYPE_TTL)
 #define FM_PARAM_TYPE_TOS_MASK		(1 << FM_PARAM_TYPE_TOS)
+
+#define FM_FEATURE_SOCKET_SHARING_MASK	(1 << FM_FEATURE_SOCKET_SHARING)
+#define FM_FEATURE_STATUS_CALLBACK_MASK	(1 << FM_FEATURE_STATUS_CALLBACK)
 
 #define FM_PROTOCOL_ENGINE_MAX	256
 struct fm_protocol_engine {

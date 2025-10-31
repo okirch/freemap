@@ -84,6 +84,9 @@ typedef enum fm_param_type {
 	FM_PARAM_TYPE_TTL,
 	FM_PARAM_TYPE_TOS,
 
+	FM_FEATURE_SOCKET_SHARING,	/* for traceroute */
+	FM_FEATURE_STATUS_CALLBACK,	/* for traceroute */
+
 	__FM_PARAM_TYPE_MAX,
 } fm_param_type_t;
 
