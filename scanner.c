@@ -641,6 +641,7 @@ fm_host_scan_action_create(fm_protocol_t *proto, const fm_probe_params_t *params
 	action = fm_scan_action_create(&fm_host_scan_ops, idbuf);
 	action->proto = proto;
 	action->probe_params = *params;
+	action->flags = proto->ops->action_flags;
 
 	action->nprobes = 1;
 

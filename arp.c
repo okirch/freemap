@@ -72,6 +72,7 @@ static struct fm_protocol_ops	fm_arp_ops = {
 
 	.create_socket	= fm_arp_create_socket,
 
+	.action_flags	= FM_SCAN_ACTION_FLAG_LOCAL_ONLY,
 	.finalize_action = fm_arp_finalize_action,
 	.create_parameterized_probe = fm_arp_create_host_probe,
 
