@@ -150,6 +150,17 @@ fm_ratelimit_update(fm_ratelimit_t *rl)
 		rl->value = rl->max_burst;
 }
 
+/*
+ * How long would we have to wait until we could extract ntokens?
+ */
+double
+fm_ratelimit_wait_until(const fm_ratelimit_t *rl, unsigned int ntokens)
+{
+	if (rl->value >= ntokens)
+		return 0;
+	return (ntokens - rl->value) / rl->rate;
+}
+
 bool
 fm_ratelimit_okay(fm_ratelimit_t *rl)
 {
