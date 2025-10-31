@@ -423,13 +423,18 @@ fm_target_continue_probe(fm_target_t *target, fm_probe_t *probe)
 	fm_log_debug("%s: moved to ready", probe->name);
 }
 
+/*
+ * A new probe has been created.
+ * Transmit its first packet and put it on the list of pending probes.
+ */
 void
-fm_target_send_probe(fm_target_t *tgt, fm_probe_t *probe)
+fm_target_send_new_probe(fm_target_t *tgt, fm_probe_t *probe)
 {
 	fm_error_t error;
 
 	error = fm_probe_send(probe);
 	if (error < 0) {
+		fm_log_warning("%s: probe %s is DOA", fm_address_format(&tgt->address), probe->name);
 		fm_probe_set_error(probe, error);
 		fm_probe_free(probe);
 	} else {
