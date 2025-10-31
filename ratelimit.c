@@ -124,6 +124,23 @@ fm_timestamp_older(const struct timeval *expiry, const struct timeval *now)
 	return timercmp(expiry, now, <=);
 }
 
+double
+fm_timestamp_expires_when(const struct timeval *expiry, const struct timeval *now)
+{
+	struct timeval delta;
+
+	if (!timerisset(expiry))
+		return -1;
+
+	if (now == NULL)
+		now = fm_timestamp_now();
+	if (timercmp(expiry, now, <=))
+		return 0;
+
+	timersub(expiry, now, &delta);
+	return delta.tv_sec + 1e-6 * delta.tv_usec;
+}
+
 void
 fm_ratelimit_init(fm_ratelimit_t *rl, unsigned int rate, unsigned int max_burst)
 {
