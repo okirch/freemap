@@ -465,7 +465,14 @@ fm_target_process_timeouts(fm_target_t *target, unsigned int quota)
 
 			/* Check whether we're permitted to send anything at all. */
 			if (num_sent >= quota) {
-				fm_log_debug("%s skipped because over quota", probe->name);
+				/* This is not the right approach, but a stupid band-aid caused
+				 * by the fact that the main scheduling loop is essentially
+				 * busy-waiting. */
+				double delay = fm_ratelimit_wait_until(&target->host_rate_limit, 1);
+				if (delay == 0)
+					delay = .5;
+
+				fm_probe_set_expiry(probe, delay);
 				continue;
 			}
 

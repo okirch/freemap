@@ -215,6 +215,41 @@ fm_probe_free(fm_probe_t *probe)
 	free(probe);
 }
 
+void
+fm_probe_set_expiry(fm_probe_t *probe, double seconds)
+{
+	if (seconds < 0)
+		fm_log_error("%s: asking to set a negative expiry value %f", probe->name, seconds);
+
+	if (seconds <= 0) {
+		fm_timestamp_init(&probe->expires);
+	} else {
+		fm_timestamp_set_timeout(&probe->expires, 1000 * seconds);
+	}
+}
+
+static void
+fm_probe_adjust_expiry(fm_probe_t *probe)
+{
+	double target_wait, probe_wait;
+
+	/* The probe may want to be scheduled sooner that we're prepared to allow */
+	target_wait = fm_ratelimit_wait_until(&probe->target->host_rate_limit, 1);
+	if (target_wait == 0)
+		return;
+
+	probe_wait = fm_timestamp_expires_when(&probe->expires, NULL);
+	if (probe_wait < target_wait) {
+		fm_log_debug("%s %s ready delayed by %u ms due to target rate limiting",
+				fm_address_format(&probe->target->address), probe->name,
+				(unsigned int) (1000 * (target_wait - probe_wait)));
+		fm_timestamp_set_timeout(&probe->expires, 1000 * target_wait);
+	}
+}
+
+/*
+ * This kicks the probe to make it send another packet (if it feels like it)
+ */
 fm_error_t
 fm_probe_send(fm_probe_t *probe)
 {
@@ -232,6 +267,7 @@ fm_probe_send(fm_probe_t *probe)
 
 	if (error == 0) {
 		fm_ratelimit_consume(&probe->target->host_rate_limit, 1);
+		fm_probe_adjust_expiry(probe);
 	}
 
 	if (error == 0 || error == FM_TRY_AGAIN) {
