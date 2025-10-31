@@ -32,7 +32,9 @@
 typedef struct fm_udp_request {
 	fm_protocol_t *		proto;
 	fm_target_t *		target;
+
 	fm_socket_t *		sock;
+	bool			sock_is_shared;
 
 	int			family;
 	fm_address_t		host_address;
@@ -66,7 +68,9 @@ static struct fm_protocol_ops	fm_udp_bsdsock_ops = {
 			  FM_PARAM_TYPE_PORT_MASK |
 			  FM_PARAM_TYPE_TTL_MASK |
 			  FM_PARAM_TYPE_TOS_MASK |
-			  FM_PARAM_TYPE_RETRIES_MASK,
+			  FM_PARAM_TYPE_RETRIES_MASK |
+			  FM_FEATURE_SOCKET_SHARING_MASK |
+			  FM_FEATURE_STATUS_CALLBACK_MASK,
 
 	.create_socket	= fm_udp_create_bsd_socket,
 	.create_host_shared_socket = fm_udp_create_shared_socket,
@@ -158,10 +162,10 @@ fm_udp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr)
 static void
 fm_udp_request_free(fm_udp_request_t *udp)
 {
-	if (udp->sock != NULL) {
+	if (udp->sock != NULL && !udp->sock_is_shared)
 		fm_socket_free(udp->sock);
-		udp->sock = NULL;
-	}
+
+	udp->sock = NULL;
 	free(udp);
 }
 
@@ -191,6 +195,15 @@ fm_udp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_p
 	}
 
 	return udp;
+}
+
+static void
+fm_udp_request_set_socket(fm_udp_request_t *udp, fm_socket_t *sock)
+{
+	udp->sock = sock;
+	udp->sock_is_shared = true;
+
+	fm_socket_enable_recverr(sock);
 }
 
 /*
@@ -325,7 +338,9 @@ fm_udp_request_send(fm_udp_request_t *udp, fm_udp_extant_info_t *extant_info)
 	fm_socket_t *sock;
 	fm_pkt_t *pkt;
 
-	if (udp->use_connected_socket) {
+	if ((sock = udp->sock) != NULL) {
+		/* pass */
+	} else if (udp->use_connected_socket) {
 		udp->sock = fm_udp_create_connected_socket(udp->proto, &udp->host_address);
 		sock = udp->sock;
 	} else {
@@ -399,6 +414,18 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 	return error;
 }
 
+static fm_error_t
+fm_udp_port_probe_set_socket(fm_probe_t *probe, fm_socket_t *sock)
+{
+	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
+
+	if (udp == NULL)
+		return FM_NOT_SUPPORTED;
+
+	fm_udp_request_set_socket(udp, sock);
+	return 0;
+}
+
 /*
  * This is called when we time out.
  * Assuming that the host in general is reachable, this means either that
@@ -421,6 +448,7 @@ static struct fm_probe_ops fm_udp_port_probe_ops = {
 	.destroy	= fm_udp_port_probe_destroy,
 	.schedule	= fm_udp_port_probe_schedule,
 	.send		= fm_udp_port_probe_send,
+	.set_socket	= fm_udp_port_probe_set_socket,
 };
 
 static fm_udp_request_t *
