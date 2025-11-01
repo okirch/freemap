@@ -32,6 +32,8 @@ struct fm_socket {
 	int			fd;
 	int			family;
 	int			type;
+	bool			trace;
+
 	socklen_t		addrlen;
 	int			rpoll;
 
