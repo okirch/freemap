@@ -26,8 +26,7 @@
 #include "utils.h"
 
 
-static fm_scan_action_t *	fm_host_scan_action_create(const fm_probe_class_t *pclass, const fm_probe_params_t *params);
-static fm_scan_action_t *	fm_scan_action_port_scan(const fm_probe_class_t *pclass, const fm_probe_params_t *, const fm_uint_array_t *);
+static fm_scan_action_t *	fm_probe_scan_create(const fm_probe_class_t *, int, const fm_probe_params_t *, const fm_uint_array_t *);
 static fm_scan_action_t *	fm_scan_action_reachability_check(void);
 
 static inline void
@@ -384,7 +383,7 @@ fm_scanner_create_host_probe(fm_scanner_t *scanner, const fm_probe_class_t *pcla
 		}
 	}
 
-	action = fm_host_scan_action_create(pclass, &params);
+	action = fm_probe_scan_create(pclass, FM_PROBE_MODE_HOST, &params, NULL);
 
 	if (pclass->process_extra_parameters != NULL) {
 		void *extra_params;
@@ -531,7 +530,8 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *probe_name, int fla
 	if (randomize)
 		fm_uint_array_randomize(&ports);
 
-	if (!(action = fm_scan_action_port_scan(pclass, &params, &ports)))
+	action = fm_probe_scan_create(pclass, FM_PROBE_MODE_PORT, &params, &ports);
+	if (action == NULL)
 		goto failed;
 
 	action->flags |= flags;
@@ -580,72 +580,64 @@ fm_scan_action_reachability_check(void)
 }
 
 /*
- * Probe for a tcp or udp port
+ * Generic scan action representing a probe.
  */
 static fm_probe_t *
-fm_simple_port_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *target, unsigned int index)
+fm_probe_scan_action_get_next_probe(const fm_scan_action_t *action, fm_target_t *target, unsigned int index)
 {
-	int port;
+	if (action->mode == FM_PROBE_MODE_PORT) {
+		int port;
 
-	if ((port = fm_uint_array_get(&action->numeric_params, index)) < 0)
-		return NULL;
+		if ((port = fm_uint_array_get(&action->numeric_params, index)) < 0)
+			return NULL;
 
-	return fm_create_port_probe(action->probe_class, target, port, &action->probe_params);
+		return fm_create_port_probe(action->probe_class, target, port, &action->probe_params);
+	} else {
+		if (index != 0)
+			return NULL;
+
+		return fm_create_host_probe(action->probe_class, target, &action->probe_params, action->extra_params);
+	}
 }
 
-static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
+static const struct fm_scan_action_ops	fm_probe_scan_action_ops = {
 	.obj_size	= sizeof(fm_scan_action_t),
-	.get_next_probe	= fm_simple_port_scan_get_next_probe,
+	.get_next_probe	= fm_probe_scan_action_get_next_probe,
 };
 
 fm_scan_action_t *
-fm_scan_action_port_scan(const fm_probe_class_t *pclass, const fm_probe_params_t *params, const fm_uint_array_t *ports)
+fm_probe_scan_create(const fm_probe_class_t *pclass, int mode, const fm_probe_params_t *params, const fm_uint_array_t *ports)
 {
+	const char *mode_string = fm_probe_mode_to_string(mode);
 	fm_scan_action_t *action;
 	char idbuf[128];
 
-	snprintf(idbuf, sizeof(idbuf), "portscan/%s", pclass->name);
+	if (mode == FM_PROBE_MODE_PORT) {
+		if (ports == NULL || ports->count == 0) {
+			fm_log_error("%s: %s scan requires ports", pclass->name, mode_string);
+			return NULL;
+		}
+	} else {
+		if (ports != NULL || ports->count != 0) {
+			fm_log_error("%s: %s scan cannot handle port range", pclass->name, mode_string);
+			return NULL;
+		}
+	}
 
-	action = fm_scan_action_create(FM_PROBE_MODE_PORT, &fm_simple_port_scan_ops, idbuf, pclass);
+
+	snprintf(idbuf, sizeof(idbuf), "%sscan/%s", mode_string, pclass->name);
+
+	action = fm_scan_action_create(mode, &fm_probe_scan_action_ops, idbuf, pclass);
 	action->probe_params = *params;
 
-	/* simple assign the port array. The caller better not free their copy */
-	action->numeric_params = *ports;
+	if (ports) {
+		/* simple assign the port array. The caller better not free their copy */
+		action->numeric_params = *ports;
+		action->nprobes = action->numeric_params.count;
+	} else {
+		action->nprobes = 1;
+	}
 
-	action->nprobes = action->numeric_params.count;
-
-	return action;
-}
-
-/*
- * Host reachability probe
- */
-static fm_probe_t *
-fm_host_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *target, unsigned int index)
-{
-	if (index != 0)
-		return NULL;
-
-	return fm_create_host_probe(action->probe_class, target, &action->probe_params, action->extra_params);
-}
-
-static const struct fm_scan_action_ops	fm_host_scan_ops = {
-	.obj_size	= sizeof(fm_scan_action_t),
-	.get_next_probe	= fm_host_scan_get_next_probe,
-};
-
-fm_scan_action_t *
-fm_host_scan_action_create(const fm_probe_class_t *pclass, const fm_probe_params_t *params)
-{
-	fm_scan_action_t *action;
-	char idbuf[128];
-
-	snprintf(idbuf, sizeof(idbuf), "hostscan/%s", pclass->name);
-
-	action = fm_scan_action_create(FM_PROBE_MODE_HOST, &fm_host_scan_ops, idbuf, pclass);
-	action->probe_params = *params;
-
-	action->nprobes = 1;
 
 	return action;
 }

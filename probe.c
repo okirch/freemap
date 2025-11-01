@@ -161,6 +161,23 @@ fm_probe_class_by_proto_id(unsigned int proto_id, int mode)
 }
 
 /*
+ * probe modes
+ */
+const char *
+fm_probe_mode_to_string(int mode)
+{
+	switch (mode) {
+	case FM_PROBE_MODE_TOPO:
+		return "topo";
+	case FM_PROBE_MODE_HOST:
+		return "host";
+	case FM_PROBE_MODE_PORT:
+		return "port";
+	}
+	return "bad";
+}
+
+/*
  * Allocate an event listener.
  */
 static fm_event_listener_t *

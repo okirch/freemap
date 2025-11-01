@@ -157,7 +157,7 @@ extern fm_probe_t *	fm_create_port_probe(const fm_probe_class_t *, fm_target_t *
 extern fm_probe_t *	fm_probe_alloc(const char *id,
 				const struct fm_probe_ops *ops,
 				fm_target_t *target);
-
+extern const char *	fm_probe_mode_to_string(int mode);
 
 extern fm_extant_t *	fm_extant_alloc(fm_probe_t *, int af, int ipproto,
 				const void *payload, size_t payload_size);
