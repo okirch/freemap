@@ -26,16 +26,31 @@
 #include "lists.h"
 #include "addresses.h"
 
-typedef enum {
-	FM_PROBE_VERDICT_NONE = 0,
-	FM_PROBE_VERDICT_REACHABLE,
-	FM_PROBE_VERDICT_UNREACHABLE,
-	FM_PROBE_VERDICT_TIMEOUT,
-} fm_probe_verdict_t;
-
 typedef bool			fm_probe_status_callback_t(const fm_probe_t *probe,
 						const fm_pkt_t *, double rtt,
 						void *user_data);
+
+struct fm_probe_class {
+	const char *		name;
+	int			action_flags;
+	int			features;	/* usually a copy of proto->supported_parameters */
+	bool			disabled;
+
+	unsigned int		proto_id;
+	fm_protocol_t *		proto;
+
+	void *			(*process_extra_parameters)(const fm_probe_class_t *, const fm_string_array_t *extra_args);
+	fm_probe_t *		(*create_probe)(const fm_probe_class_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
+//	bool			(*set_probe_socket)(const fm_probe_class_t *, fm_probe_t *, fm_socket_t *);
+};
+
+#define FM_PROBE_CLASS_REGISTER(ops) \
+__attribute__((constructor)) \
+static void \
+fm_probe_class_register_ ## ops(void) \
+{ \
+        fm_probe_class_register(&ops); \
+}
 
 struct fm_probe_ops {
 	const char *		name;
@@ -53,7 +68,6 @@ struct fm_probe_ops {
 struct fm_probe {
 	struct hlist		link;
 
-	fm_protocol_t *		proto;
 	fm_target_t *		target;
 
 	/* name of the probe, like udp/53 or icmp/echo */
@@ -129,9 +143,15 @@ struct fm_extant_list {
 	struct hlist_head	hlist;
 };
 
+extern void		fm_probe_class_register(struct fm_probe_class *);
+extern fm_probe_class_t *fm_probe_class_find(const char *name);
+extern fm_probe_class_t *fm_probe_class_by_proto_id(unsigned int proto_id);
+
+extern fm_probe_t *	fm_create_host_probe(const fm_probe_class_t *, fm_target_t *, const fm_probe_params_t *, const void *extra_params);
+extern fm_probe_t *	fm_create_port_probe(const fm_probe_class_t *, fm_target_t *, uint16_t, const fm_probe_params_t *);
+
 extern fm_probe_t *	fm_probe_alloc(const char *id,
 				const struct fm_probe_ops *ops,
-				fm_protocol_t *proto,
 				fm_target_t *target);
 
 
@@ -153,6 +173,12 @@ extern fm_error_t	fm_probe_set_socket(fm_probe_t *probe, fm_socket_t *sock);
 
 extern void		fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt);
 extern void		fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt);
+
+static inline bool
+fm_probe_class_supports(const fm_probe_class_t *pclass, fm_param_type_t type)
+{
+	return !!(pclass->features & (1 << type));
+}
 
 static inline void
 fm_probe_insert(struct fm_probe_list *list, fm_probe_t *probe)

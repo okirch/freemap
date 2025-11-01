@@ -54,8 +54,8 @@ struct fm_scan_action {
 		fm_probe_t *	(*get_next_probe)(const fm_scan_action_t *, fm_target_t *, unsigned int);
 	} *ops;
 
-	/* The following bits are protocol specific. */
-	fm_protocol_t *		proto;
+	/* The following bits are probe class specific. */
+	fm_probe_class_t *	probe_class;
 	fm_probe_params_t	probe_params;
 	void *			extra_params;
 };

@@ -26,8 +26,8 @@
 #include "utils.h"
 
 
-static fm_scan_action_t *	fm_host_scan_action_create(fm_protocol_t *proto, const fm_probe_params_t *params);
-static fm_scan_action_t *	fm_scan_action_port_scan(fm_protocol_t *proto, const fm_probe_params_t *,
+static fm_scan_action_t *	fm_host_scan_action_create(const fm_probe_class_t *pclass, const fm_probe_params_t *params);
+static fm_scan_action_t *	fm_scan_action_port_scan(const fm_probe_class_t *pclass, const fm_probe_params_t *,
 					unsigned int nranges, const fm_port_range_t *range, bool randomize);
 static fm_scan_action_t *	fm_scan_action_reachability_check(void);
 
@@ -348,7 +348,7 @@ fm_scanner_add_dummy_probe(void)
  * Reachability probe
  */
 static fm_scan_action_t *
-fm_scanner_create_host_probe(fm_scanner_t *scanner, fm_protocol_t *proto, const fm_string_array_t *args)
+fm_scanner_create_host_probe(fm_scanner_t *scanner, const fm_probe_class_t *pclass, const fm_string_array_t *args)
 {
 	fm_scan_action_t *action;
 	fm_probe_params_t params;
@@ -373,18 +373,18 @@ fm_scanner_create_host_probe(fm_scanner_t *scanner, fm_protocol_t *proto, const 
 		}
 
 		if (param_type != FM_PARAM_TYPE_NONE
-		 && !fm_protocol_supports_param(proto, param_type)) {
-			fm_log_error("protocol %s does not support parameter %s", proto->ops->name, arg);
+		 && !fm_probe_class_supports(pclass, param_type)) {
+			fm_log_error("probe %s does not support parameter %s", pclass->name, arg);
 			return NULL;
 		}
 	}
 
-	action = fm_host_scan_action_create(proto, &params);
+	action = fm_host_scan_action_create(pclass, &params);
 
-	if (proto->ops->process_extra_parameters != NULL) {
+	if (pclass->process_extra_parameters != NULL) {
 		void *extra_params;
 
-		extra_params = proto->ops->process_extra_parameters(proto, &proto_args);
+		extra_params = pclass->process_extra_parameters(pclass, &proto_args);
 		if (extra_params == NULL) {
 			/* FIXME: memory leak: we should free action */
 			return NULL;
@@ -393,7 +393,7 @@ fm_scanner_create_host_probe(fm_scanner_t *scanner, fm_protocol_t *proto, const 
 		action->extra_params = extra_params;
 	} else
 	if (proto_args.count != 0) {
-		fm_log_error("found %u unrecognized parameters in host probe for %s", proto_args.count, proto->ops->name);
+		fm_log_error("found %u unrecognized parameters in host probe for %s", proto_args.count, pclass->name);
 		fm_string_array_destroy(&proto_args);
 		/* FIXME: memory leak: we should free action */
 		return NULL;
@@ -405,21 +405,21 @@ fm_scanner_create_host_probe(fm_scanner_t *scanner, fm_protocol_t *proto, const 
 }
 
 fm_scan_action_t *
-fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *protocol_name, int flags, const fm_string_array_t *args)
+fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *probe_name, int flags, const fm_string_array_t *args)
 {
-	fm_protocol_t *proto;
+	const fm_probe_class_t *pclass;
 	fm_scan_action_t *action;
 
-	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
+	if (!(pclass = fm_probe_class_find(probe_name))) {
 		if (!(flags & FM_SCAN_ACTION_FLAG_OPTIONAL)) {
-			fm_log_error("Cannot create host probe: no driver for protocol id %s\n", protocol_name);
+			fm_log_error("Cannot create host probe: unknown probe class %s\n", probe_name);
 			return NULL;
 		}
 
-		fm_log_debug("Ignoring optional %s host probe - creating dummy action", protocol_name);
+		fm_log_debug("Ignoring optional %s host probe - creating dummy action", probe_name);
 		action = fm_scanner_add_dummy_probe();
 	} else {
-		action = fm_scanner_create_host_probe(scanner, proto, args);
+		action = fm_scanner_create_host_probe(scanner, pclass, args);
 	}
 
 	if (action != NULL) {
@@ -447,22 +447,22 @@ fm_scanner_add_reachability_check(fm_scanner_t *scanner)
  * Port scan probes
  */
 fm_scan_action_t *
-fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, int flags, const fm_string_array_t *args)
+fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *probe_name, int flags, const fm_string_array_t *args)
 {
 	static const unsigned int MAXRANGE=32;
 	fm_port_range_t ranges[MAXRANGE];
 	unsigned int i, nranges = 0;
+	const fm_probe_class_t *pclass;
 	fm_scan_action_t *action = NULL;
 	fm_string_array_t proto_args;
-	fm_protocol_t *proto;
 	bool randomize = false;
 	fm_probe_params_t params;
 
 	memset(&proto_args, 0, sizeof(proto_args));
 	memset(&params, 0, sizeof(proto_args));
 
-	if (!(proto = fm_scanner_get_protocol_engine(scanner, protocol_name))) {
-		fm_log_error("No protocol engine for protocol id %s port scan\n", protocol_name);
+	if (!(pclass = fm_probe_class_find(probe_name))) {
+		fm_log_error("Unknown port probe class %s\n", probe_name);
 		return NULL;
 	}
 
@@ -497,8 +497,8 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, int 
 		}
 
 		if (param_type != FM_PARAM_TYPE_NONE
-		 && !fm_protocol_supports_param(proto, param_type)) {
-			fm_log_error("protocol %s does not support parameter %s", proto->ops->name, arg);
+		 && !fm_probe_class_supports(pclass, param_type)) {
+			fm_log_error("probe class %s does not support parameter %s", pclass->name, arg);
 			return NULL;
 		}
 	}
@@ -506,7 +506,7 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *protocol_name, int 
 	if (nranges == 0)
 		fm_log_error("Port scan call does not specify any ports to scan");
 
-	if (!(action = fm_scan_action_port_scan(proto, &params, nranges, ranges, randomize)))
+	if (!(action = fm_scan_action_port_scan(pclass, &params, nranges, ranges, randomize)))
 		return NULL;
 
 	action->flags |= flags;
@@ -552,7 +552,7 @@ fm_scan_action_reachability_check(void)
 struct fm_simple_port_scan {
 	fm_scan_action_t	base;
 
-	fm_protocol_t *		proto;
+	fm_probe_class_t *	pclass;
 	fm_uint_array_t		ports;
 	fm_probe_params_t	params;
 };
@@ -566,7 +566,7 @@ fm_simple_port_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *
 	if ((port = fm_uint_array_get(&portscan->ports, index)) < 0)
 		return NULL;
 
-	return fm_protocol_create_port_probe(portscan->proto, target, port, &portscan->params);
+	return fm_create_port_probe(portscan->pclass, target, port, &portscan->params);
 }
 
 static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
@@ -575,14 +575,14 @@ static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
 };
 
 fm_scan_action_t *
-fm_scan_action_port_scan(fm_protocol_t *proto, const fm_probe_params_t *params, unsigned int nranges, const fm_port_range_t *range, bool randomize)
+fm_scan_action_port_scan(const fm_probe_class_t *pclass, const fm_probe_params_t *params, unsigned int nranges, const fm_port_range_t *range, bool randomize)
 {
 	struct fm_simple_port_scan *portscan;
 	unsigned int i;
 	char idbuf[128];
 
 	if (nranges == 0) {
-		fm_log_error("%s: no port ranges given", proto);
+		fm_log_error("%s: no port ranges given", pclass->name);
 		return NULL;
 	}
 
@@ -591,15 +591,15 @@ fm_scan_action_port_scan(fm_protocol_t *proto, const fm_probe_params_t *params, 
 		unsigned int high_port = range[i].last;
 
 		if (low_port == 0 || low_port > high_port || high_port > 65535) {
-			fm_log_error("%s: invalid port range %u-%u", proto, low_port, high_port);
+			fm_log_error("%s: invalid port range %u-%u", pclass->name, low_port, high_port);
 			return NULL;
 		}
 	}
 
-	snprintf(idbuf, sizeof(idbuf), "portscan/%s", proto->ops->name);
+	snprintf(idbuf, sizeof(idbuf), "portscan/%s", pclass->name);
 
 	portscan = (struct fm_simple_port_scan *) fm_scan_action_create(&fm_simple_port_scan_ops, idbuf);
-	portscan->proto = proto;
+	portscan->pclass = pclass;
 	portscan->params = *params;
 
 	for (i = 0; i < nranges; ++i) {
@@ -627,7 +627,7 @@ fm_host_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *target,
 	if (index != 0)
 		return NULL;
 
-	return fm_protocol_create_host_probe(action->proto, target, &action->probe_params, action->extra_params);
+	return fm_create_host_probe(action->probe_class, target, &action->probe_params, action->extra_params);
 }
 
 static const struct fm_scan_action_ops	fm_host_scan_ops = {
@@ -636,17 +636,17 @@ static const struct fm_scan_action_ops	fm_host_scan_ops = {
 };
 
 fm_scan_action_t *
-fm_host_scan_action_create(fm_protocol_t *proto, const fm_probe_params_t *params)
+fm_host_scan_action_create(const fm_probe_class_t *pclass, const fm_probe_params_t *params)
 {
 	fm_scan_action_t *action;
 	char idbuf[128];
 
-	snprintf(idbuf, sizeof(idbuf), "hostscan/%s", proto->ops->name);
+	snprintf(idbuf, sizeof(idbuf), "hostscan/%s", pclass->name);
 
 	action = fm_scan_action_create(&fm_host_scan_ops, idbuf);
-	action->proto = proto;
+	action->probe_class = pclass;
 	action->probe_params = *params;
-	action->flags = proto->ops->action_flags;
+	action->flags = pclass->action_flags;
 
 	action->nprobes = 1;
 

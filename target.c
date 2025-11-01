@@ -517,7 +517,6 @@ fm_target_process_timeouts(fm_target_t *target, unsigned int quota)
 		}
 
 		if (update_ts) {
-			fm_log_debug("Setting alarm for pslist check");
 			fm_timestamp_set_timeout(&next_ps, 5000);
 		}
 

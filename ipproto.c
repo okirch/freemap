@@ -58,7 +58,6 @@ typedef struct fm_ipproto_extant_info {
 
 static fm_socket_t *	fm_ipproto_create_socket(fm_protocol_t *proto, int ipproto);
 static bool		fm_ipproto_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
-static fm_probe_t *	fm_ipproto_create_parameterized_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 
 static fm_ipproto_request_t *fm_ipproto_probe_get_request(const fm_probe_t *probe);
 static void		fm_ipproto_probe_set_request(fm_probe_t *probe, fm_ipproto_request_t *req);
@@ -71,8 +70,6 @@ static struct fm_protocol_ops	fm_ipproto_ops = {
 	.create_socket	= fm_ipproto_create_socket,
 	/* We do not expect to receive a response, so no response handler for now */
 	.process_error	= fm_ipproto_process_error,
-
-	.create_parameterized_probe = fm_ipproto_create_parameterized_probe,
 };
 
 FM_PROTOCOL_REGISTER(fm_ipproto_ops);
@@ -589,8 +586,9 @@ fm_ipproto_probe_set_request(fm_probe_t *probe, fm_ipproto_request_t *req)
 
 
 static fm_probe_t *
-fm_ipproto_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
+fm_ipproto_create_host_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
+	fm_protocol_t *proto = pclass->proto; /* this is just a dummy for now until we have a real rawip protocol */
 	fm_ipproto_request_t *req;
 	fm_probe_t *probe;
 	char name[32];
@@ -600,7 +598,7 @@ fm_ipproto_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target,
 		return NULL;
 
 	snprintf(name, sizeof(name), "req/port=%u,ttl=%u", params->port, params->ttl);
-	probe = fm_probe_alloc(name, &fm_ipproto_host_probe_ops, proto, target);
+	probe = fm_probe_alloc(name, &fm_ipproto_host_probe_ops, target);
 	fm_ipproto_probe_set_request(probe, req);
 
 	if (req->wait_for_ndisc)
@@ -609,3 +607,12 @@ fm_ipproto_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target,
 	fm_log_debug("Created IP protocol socket probe for %s\n", fm_address_format(&req->host_address));
 	return probe;
 }
+
+static struct fm_probe_class fm_ipproto_host_probe_class = {
+	.name		= "ipproto",
+	.proto_id	= FM_PROTO_IP,
+
+	.create_probe	= fm_ipproto_create_host_probe,
+};
+
+FM_PROBE_CLASS_REGISTER(fm_ipproto_host_probe_class)

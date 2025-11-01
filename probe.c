@@ -21,6 +21,7 @@
 #include "network.h"
 #include "utils.h"
 #include "lists.h"
+#include "protocols.h"
 
 /*
  * We implement a simple and hopefully robust mechanism that allows
@@ -71,6 +72,85 @@ typedef struct fm_posted_event {
 } fm_posted_event_t;
 
 static struct hlist_head	fm_posted_events;
+
+/*
+ * Handle registration of probe classes
+ */
+#define FM_PROBE_CLASS_MAX	128
+static unsigned int		probe_class_count;
+static struct fm_probe_class *	probe_class_registry[FM_PROBE_CLASS_MAX];
+
+void
+fm_probe_class_register(struct fm_probe_class *probe_class)
+{
+	assert(probe_class_count < FM_PROBE_CLASS_MAX);
+	probe_class_registry[probe_class_count++] = probe_class;
+}
+
+static void
+fm_probe_classes_init(void)
+{
+	static bool initialized = false;
+	struct fm_probe_class *pclass;
+	unsigned int i;
+
+	if (!initialized) {
+		for (i = 0; i < probe_class_count; ++i) {
+			fm_protocol_t *proto;
+
+			pclass = probe_class_registry[i];
+
+			if (pclass->proto_id == 0)
+				continue;
+
+			proto = fm_protocol_by_id(pclass->proto_id);
+			if (proto == NULL) {
+				fm_log_debug("probe class %s requires protocol %s, which is not available",
+						pclass->name, fm_protocol_id_to_string(pclass->proto_id));
+				pclass->disabled = true;
+				continue;
+			}
+
+			pclass->proto = proto;
+			pclass->features |= proto->ops->supported_parameters;
+		}
+		initialized = true;
+	}
+}
+
+const fm_probe_class_t *
+fm_probe_class_find(const char *name)
+{
+	struct fm_probe_class *pclass;
+	unsigned int i;
+
+	fm_probe_classes_init();
+	for (i = 0; i < probe_class_count; ++i) {
+		pclass = probe_class_registry[i];
+
+		if (!pclass->disabled && !strcmp(pclass->name, name))
+			return pclass;
+	}
+
+	return NULL;
+}
+
+fm_probe_class_t *
+fm_probe_class_by_proto_id(unsigned int proto_id)
+{
+	struct fm_probe_class *pclass;
+	unsigned int i;
+
+	fm_probe_classes_init();
+	for (i = 0; i < probe_class_count; ++i) {
+		pclass = probe_class_registry[i];
+
+		if (!pclass->disabled && pclass->proto_id == proto_id)
+			return pclass;
+	}
+
+	return NULL;
+}
 
 /*
  * Allocate an event listener.
@@ -177,7 +257,7 @@ fm_event_process_all(void)
  * Probe objects
  */
 fm_probe_t *
-fm_probe_alloc(const char *id, const struct fm_probe_ops *ops, fm_protocol_t *proto, fm_target_t *target)
+fm_probe_alloc(const char *id, const struct fm_probe_ops *ops, fm_target_t *target)
 {
 	fm_probe_t *probe;
 
@@ -189,7 +269,6 @@ fm_probe_alloc(const char *id, const struct fm_probe_ops *ops, fm_protocol_t *pr
 	probe->target = target;
 	probe->name = strdup(id);
 	probe->ops = ops;
-	probe->proto = proto;
 
 	return probe;
 }
@@ -390,16 +469,6 @@ fm_probe_mark_complete(fm_probe_t *probe)
 	fm_probe_invoke_completion(probe);
 }
 
-/*
- * This function used to be much more complex.
- * We keep it around in case we later need a way to collect the outcome of a probe.
- */
-static void
-fm_probe_render_verdict(fm_probe_t *probe, fm_probe_verdict_t verdict)
-{
-	fm_probe_mark_complete(probe);
-}
-
 void
 fm_probe_set_rtt_estimator(fm_probe_t *probe, fm_rtt_stats_t *rtt)
 {
@@ -423,21 +492,21 @@ fm_probe_update_rtt_estimate(fm_probe_t *probe, double *rtt)
 void
 fm_probe_received_reply(fm_probe_t *probe, double *rtt)
 {
-	fm_probe_render_verdict(probe, FM_PROBE_VERDICT_REACHABLE);
 	fm_probe_update_rtt_estimate(probe, rtt);
+	fm_probe_mark_complete(probe);
 }
 
 void
 fm_probe_received_error(fm_probe_t *probe, double *rtt)
 {
-	fm_probe_render_verdict(probe, FM_PROBE_VERDICT_UNREACHABLE);
 	fm_probe_update_rtt_estimate(probe, rtt);
+	fm_probe_mark_complete(probe);
 }
 
 void
 fm_probe_timed_out(fm_probe_t *probe)
 {
-	fm_probe_render_verdict(probe, FM_PROBE_VERDICT_TIMEOUT);
+	fm_probe_mark_complete(probe);
 }
 
 /*

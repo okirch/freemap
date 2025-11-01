@@ -56,7 +56,6 @@ static fm_socket_t *	fm_arp_create_socket(fm_protocol_t *proto, int ipproto);
 static bool		fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 
 static int		fm_arp_probe_original_ifindex(const fm_probe_t *);
-static fm_probe_t *	fm_arp_create_host_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 
 static fm_arp_request_t *fm_arp_probe_get_request(const fm_probe_t *probe);
 static void		fm_arp_probe_set_request(fm_probe_t *probe, fm_arp_request_t *arp);
@@ -71,9 +70,6 @@ static struct fm_protocol_ops	fm_arp_ops = {
 
 	.create_socket	= fm_arp_create_socket,
 	.process_packet	= fm_arp_process_packet,
-
-	.action_flags	= FM_SCAN_ACTION_FLAG_LOCAL_ONLY,
-	.create_parameterized_probe = fm_arp_create_host_probe,
 };
 
 FM_PROTOCOL_REGISTER(fm_arp_ops);
@@ -384,21 +380,34 @@ fm_arp_probe_set_request(fm_probe_t *probe, fm_arp_request_t *arp)
 }
 
 static fm_probe_t *
-fm_arp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
+fm_arp_create_host_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
+	fm_protocol_t *proto = pclass->proto;
 	fm_arp_request_t *arp;
 	fm_probe_t *probe;
+
+	assert(proto && proto->ops->id == FM_PROTO_ARP);
 
 	arp = fm_arp_request_alloc(proto, target, params, extra_params);
 	if (arp == NULL)
 		return NULL;
 
-	probe = fm_probe_alloc("arp", &fm_arp_host_probe_ops, proto, target);
+	probe = fm_probe_alloc("arp", &fm_arp_host_probe_ops, target);
 	fm_arp_probe_set_request(probe, arp);
 
 	fm_log_debug("Created ARP socket probe for %s\n", fm_address_format(&target->address));
 	return probe;
 }
+
+static struct fm_probe_class fm_arp_host_probe_class = {
+	.name		= "arp",
+	.proto_id	= FM_PROTO_ARP,
+	.action_flags	= FM_SCAN_ACTION_FLAG_LOCAL_ONLY,
+
+	.create_probe	= fm_arp_create_host_probe,
+};
+
+FM_PROBE_CLASS_REGISTER(fm_arp_host_probe_class)
 
 bool
 fm_arp_discover(fm_protocol_t *proto, fm_target_t *target, int retries)
@@ -409,7 +418,7 @@ fm_arp_discover(fm_protocol_t *proto, fm_target_t *target, int retries)
 	memset(&params, 0, sizeof(params));
 	params.retries = retries? : FM_ARP_PROBE_RETRIES;
 
-	probe = fm_arp_create_host_probe(proto, target, &params, NULL);
+	probe = fm_arp_create_host_probe(&fm_arp_host_probe_class, target, &params, NULL);
 	if (probe == NULL)
 		return false;
 

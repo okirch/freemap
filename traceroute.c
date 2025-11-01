@@ -36,6 +36,7 @@
 static fm_topo_state_t *	fm_topo_probe_get_request(const fm_probe_t *probe);
 static void			fm_topo_probe_set_request(fm_probe_t *probe, fm_topo_state_t *topo);
 static void			fm_topo_state_free(fm_topo_state_t *topo);
+static fm_probe_class_t *	fm_topo_get_packet_probe_class(const char *proto_name);
 
 static fm_tgateway_t *		fm_tgateway_default(void);
 static fm_tgateway_t *		fm_tgateway_unknown_next_hop(fm_tgateway_t *);
@@ -75,27 +76,12 @@ fm_topo_state_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_pa
 	if (topo->topo_params.max_hole_size == 0)
 		topo->topo_params.max_hole_size = 5;
 
-	packet_proto_name = topo->topo_params.packet_proto;
-	if (packet_proto_name == NULL)
-		packet_proto_name = "udp";
-
-	topo->packet_proto = fm_protocol_by_name(packet_proto_name);
-	if (topo->packet_proto == NULL) {
-		fm_log_error("topo: unknown packet protocol %s", packet_proto_name);
+	topo->packet_probe_class = fm_topo_get_packet_probe_class(topo->topo_params.packet_proto);
+	if (topo->packet_probe_class == NULL)
 		goto failed;
-	}
-	if (topo->packet_proto->ops->id == FM_PROTO_NONE) {
-		fm_log_error("topo: not packet protocol: %s", packet_proto_name);
-		goto failed;
-	}
 
-	unsigned int required_mask;
+	topo->packet_proto = topo->packet_probe_class->proto;
 
-	required_mask = FM_PARAM_TYPE_PORT_MASK | FM_PARAM_TYPE_TTL_MASK | FM_PARAM_TYPE_RETRIES_MASK | FM_FEATURE_STATUS_CALLBACK_MASK;
-	if (~(topo->packet_proto->ops->supported_parameters) & required_mask) {
-		fm_log_error("traceroute: packet protocol %s does not support all required features", packet_proto_name);
-		goto failed;
-	}
 
 	for (ttl = 0; ttl < FM_MAX_TOPO_DEPTH; ++ttl)
 		topo->hop[ttl].distance = ttl;
@@ -122,6 +108,46 @@ failed:
 	return NULL;
 
 	return topo;
+}
+
+/*
+ * traceroute can be used with different packet protos (udp, tcp, icmp, ...)
+ * We need the proto handle as well as a suitable probe class that goes with it.
+ */
+static fm_probe_class_t *
+fm_topo_get_packet_probe_class(const char *proto_name)
+{
+	fm_probe_class_t *probe_class;
+	fm_protocol_t *proto;
+	unsigned int required_mask;
+
+	if (proto_name == NULL)
+		proto_name = "udp";
+
+	proto = fm_protocol_by_name(proto_name);
+	if (proto == NULL) {
+		fm_log_error("traceroute: unknown packet protocol %s", proto_name);
+		return NULL;
+	}
+	if (proto->ops->id == FM_PROTO_NONE) {
+		fm_log_error("traceroute: not packet protocol: %s", proto_name);
+		return NULL;
+	}
+
+	/* Now get a corresponding probe for this protocol */
+	probe_class = fm_probe_class_by_proto_id(proto->ops->id);
+	if (probe_class == NULL) {
+		fm_log_error("traceroute: no (host) probe for packet protocol %s", proto_name);
+		return NULL;
+	}
+
+	required_mask = FM_PARAM_TYPE_PORT_MASK | FM_PARAM_TYPE_TTL_MASK | FM_PARAM_TYPE_RETRIES_MASK | FM_FEATURE_STATUS_CALLBACK_MASK;
+	if (~(probe_class->features) & required_mask) {
+		fm_log_error("traceroute: packet protocol %s does not support all required features", proto_name);
+		return NULL;
+	}
+
+	return probe_class;
 }
 
 static void
@@ -162,10 +188,9 @@ fm_topo_hop_probe_pkt_callback(const fm_probe_t *probe, const fm_pkt_t *pkt, dou
 	if ((ee = pkt->info.ee) == NULL) {
 		/* For UDP, we never receive a response packet - but for ICMP echo probes,
 		 * we actually do. */
-		fm_log_debug("received %s response from %s",
-				probe->proto->ops->name,
+		fm_log_debug("%s responded to %s",
 				fm_address_format(&pkt->peer_addr),
-				rtt);
+				probe->name);
 
 		hop->gateway = fm_tgateway_for_address(hop->distance, &pkt->peer_addr);
 	} else {
@@ -411,7 +436,7 @@ fm_topo_state_send_probe(fm_topo_state_t *topo, fm_topo_hop_state_t *hop, double
 	params = topo->params;
 	params.ttl = ttl;
 
-	probe = fm_protocol_create_host_probe(packet_proto, topo->target, &params, NULL);
+	probe = fm_create_host_probe(topo->packet_probe_class, topo->target, &params, NULL);
 	if (probe == NULL) {
 		fm_log_error("%s: unable to create %s probe", fm_address_format(&topo->target->address), packet_proto->ops->name);
 		return FM_SEND_ERROR;
@@ -721,7 +746,7 @@ fm_topo_probe_set_request(fm_probe_t *probe, fm_topo_state_t *topo)
 }
 
 static void *
-fm_topo_process_extra_parameters(fm_protocol_t *proto, const fm_string_array_t *extra_args)
+fm_topo_process_extra_parameters(fm_probe_class_t *pclass, const fm_string_array_t *extra_args)
 {
 	fm_topo_extra_params_t *extra_params;
 	fm_string_array_t proto_args;
@@ -748,39 +773,45 @@ fm_topo_process_extra_parameters(fm_protocol_t *proto, const fm_string_array_t *
 	}
 
 	if (proto_args.count != 0) {
-		fm_protocol_t *proto = fm_protocol_by_name(extra_params->packet_proto);
+		fm_probe_class_t *packet_probe_class = fm_topo_get_packet_probe_class(extra_params->packet_proto);
 
-		if (proto->ops->process_extra_parameters != NULL)
-			extra_params->packet_proto_params = proto->ops->process_extra_parameters(proto, &proto_args);
+		if (packet_probe_class == NULL)
+			goto failed;
+
+		if (packet_probe_class->process_extra_parameters != NULL)
+			extra_params->packet_proto_params = packet_probe_class->process_extra_parameters(packet_probe_class, &proto_args);
 
 		if (extra_params->packet_proto_params == NULL) {
 			fm_log_error("traceroute/%s: cannot process extra parameters", extra_params->packet_proto);
 			for (i = 0; i < proto_args.count; ++i)
 				fm_log_error("  unknown option %s", proto_args.entries[i]);
 
-			free(extra_params);
-			return NULL;
+			goto failed;
 		}
 
 	}
 
 	fm_string_array_destroy(&proto_args);
 	return extra_params;
+
+failed:
+	free(extra_params);
+	return NULL;
 }
 
 static fm_probe_t *
-fm_topo_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
+fm_topo_create_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
 	fm_topo_state_t *topo;
 	fm_probe_t *probe;
 	char name[32];
 
-	topo = fm_topo_state_alloc(proto, target, params, (fm_topo_extra_params_t *) extra_params);
+	topo = fm_topo_state_alloc(NULL, target, params, (fm_topo_extra_params_t *) extra_params);
 	if (topo == NULL)
 		return NULL;
 
 	snprintf(name, sizeof(name), "topo/%s", topo->packet_proto->ops->name);
-	probe = fm_probe_alloc(name, &fm_topo_probe_ops, proto, target);
+	probe = fm_probe_alloc(name, &fm_topo_probe_ops, target);
 
 	fm_topo_probe_set_request(probe, topo);
 
@@ -788,21 +819,19 @@ fm_topo_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, co
 }
 
 /*
- * The "protocol" that does traceroute like protocol probes.
+ * The probe class that does traceroute like protocol probes.
  * It feels wrong to call this a protocol
  */
-static struct fm_protocol_ops	fm_traceroute_ops = {
-	.obj_size	= sizeof(fm_protocol_t),
+static struct fm_probe_class fm_traceroute_host_probe_class = {
 	.name		= "traceroute",
+	.proto_id	= FM_PROTO_NONE,
 
-	.supported_parameters =
-			  FM_PARAM_TYPE_PORT_MASK |
+	.features =	FM_PARAM_TYPE_PORT_MASK |
 			  FM_PARAM_TYPE_TOS_MASK |
 			  FM_PARAM_TYPE_RETRIES_MASK,
 
-	.create_parameterized_probe = fm_topo_create_parameterized_probe,
 	.process_extra_parameters = fm_topo_process_extra_parameters,
+	.create_probe	= fm_topo_create_probe,
 };
 
-FM_PROTOCOL_REGISTER(fm_traceroute_ops);
-
+FM_PROBE_CLASS_REGISTER(fm_traceroute_host_probe_class)

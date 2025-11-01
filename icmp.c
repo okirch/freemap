@@ -41,8 +41,6 @@ static fm_socket_t *	fm_icmp_create_raw_socket(fm_protocol_t *proto, int ipproto
 static fm_socket_t *	fm_icmp_create_shared_raw_socket(fm_protocol_t *proto, fm_target_t *target);
 
 static fm_socket_t *	fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr);
-static void *		fm_icmp_process_extra_parameters(fm_protocol_t *, const fm_string_array_t *);
-static fm_probe_t *	fm_icmp_create_host_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 static int		fm_icmp_protocol_for_family(int af);
 static fm_extant_t *	fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response, bool ignore_id);
 
@@ -64,10 +62,6 @@ static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.create_socket	= fm_icmp_create_bsd_socket,
 	.process_packet	= fm_icmp_process_packet,
 	.process_error	= fm_icmp_process_error,
-
-	.process_extra_parameters = fm_icmp_process_extra_parameters,
-	.create_parameterized_probe = fm_icmp_create_host_probe,
-	.process_extra_parameters = fm_icmp_process_extra_parameters,
 };
 
 static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
@@ -87,10 +81,6 @@ static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
 	.create_host_shared_socket = fm_icmp_create_shared_raw_socket,
 	.process_packet	= fm_icmp_process_packet,
 	.process_error	= fm_icmp_process_error,
-
-	.process_extra_parameters = fm_icmp_process_extra_parameters,
-	.create_parameterized_probe = fm_icmp_create_host_probe,
-	.process_extra_parameters = fm_icmp_process_extra_parameters,
 };
 
 FM_PROTOCOL_REGISTER(fm_icmp_bsdsock_ops);
@@ -419,7 +409,6 @@ fm_icmp_request_schedule(fm_icmp_request_t *icmp, struct timeval *expires)
 	return 0;
 }
 
-
 static inline bool
 fm_icmp_instantiate_params(struct icmp_params *params, fm_target_t *target)
 {
@@ -734,7 +723,7 @@ fm_icmp_probe_set_request(fm_probe_t *probe, fm_icmp_request_t *icmp)
 }
 
 static void *
-fm_icmp_process_extra_parameters(fm_protocol_t *proto, const fm_string_array_t *extra_args)
+fm_icmp_process_extra_parameters(const fm_probe_class_t *pclass, const fm_string_array_t *extra_args)
 {
 	fm_icmp_extra_params_t *extra_params;
 	const char *type_name = NULL;
@@ -768,21 +757,34 @@ fm_icmp_process_extra_parameters(fm_protocol_t *proto, const fm_string_array_t *
 
 
 static fm_probe_t *
-fm_icmp_create_host_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
+fm_icmp_create_host_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
+	fm_protocol_t *proto = pclass->proto;
 	fm_icmp_request_t *icmp;
 	fm_probe_t *probe;
 	char name[32];
+
+	assert(proto && proto->ops->id == FM_PROTO_ICMP);
 
 	icmp = fm_icmp_request_alloc(proto, target, params, extra_params);
 	if (icmp == NULL)
 		return NULL;
 
 	snprintf(name, sizeof(name), "icmp/%s/%04x", icmp->extra_params.type_name, icmp->icmp.seq);
-	probe = fm_probe_alloc(name, &fm_icmp_host_probe_ops, proto, target);
+	probe = fm_probe_alloc(name, &fm_icmp_host_probe_ops, target);
 
 	fm_icmp_probe_set_request(probe, icmp);
 
 	fm_log_debug("Created ICMP socket probe for %s\n", fm_address_format(&icmp->host_address));
 	return probe;
 }
+
+static struct fm_probe_class fm_icmp_host_probe_class = {
+	.name		= "icmp",
+	.proto_id	= FM_PROTO_ICMP,
+
+	.process_extra_parameters = fm_icmp_process_extra_parameters,
+	.create_probe	= fm_icmp_create_host_probe,
+};
+
+FM_PROBE_CLASS_REGISTER(fm_icmp_host_probe_class)

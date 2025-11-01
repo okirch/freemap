@@ -53,7 +53,6 @@ static fm_socket_t *	fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af);
 static bool		fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_connecton_established(fm_protocol_t *proto, const fm_address_t *);
-static fm_probe_t *	fm_tcp_create_parameterized_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
 
 static fm_tcp_request_t *fm_tcp_probe_get_request(const fm_probe_t *probe);
 static void		fm_tcp_probe_set_request(fm_probe_t *probe, fm_tcp_request_t *tcp);
@@ -74,8 +73,6 @@ static struct fm_protocol_ops	fm_tcp_bsdsock_ops = {
 	.process_packet = fm_tcp_process_packet,
 	.process_error	= fm_tcp_process_error,
 	.connection_established = fm_tcp_connecton_established,
-
-	.create_parameterized_probe = fm_tcp_create_parameterized_probe,
 };
 
 FM_PROTOCOL_REGISTER(fm_tcp_bsdsock_ops);
@@ -332,17 +329,20 @@ fm_tcp_probe_set_request(fm_probe_t *probe, fm_tcp_request_t *tcp)
 }
 
 static fm_probe_t *
-fm_tcp_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
+fm_tcp_create_parameterized_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
+	fm_protocol_t *proto = pclass->proto;
 	fm_tcp_request_t *tcp;
 	fm_probe_t *probe;
 	char name[32];
+
+	assert(proto && proto->ops->id == FM_PROTO_TCP);
 
 	if (!(tcp = fm_tcp_request_alloc(proto, target, params)))
 		return NULL;
 
 	snprintf(name, sizeof(name), "tcp/%u", params->port);
-	probe = fm_probe_alloc(name, &fm_tcp_port_probe_ops, proto, target);
+	probe = fm_probe_alloc(name, &fm_tcp_port_probe_ops, target);
 
 	fm_tcp_probe_set_request(probe, tcp);
 
@@ -352,3 +352,11 @@ fm_tcp_create_parameterized_probe(fm_protocol_t *proto, fm_target_t *target, con
 	fm_log_debug("Created TCP socket probe for %s\n", fm_address_format(&tcp->host_address));
 	return probe;
 }
+
+static struct fm_probe_class	fm_tcp_port_probe_class = {
+	.name		= "tcp",
+	.proto_id	= FM_PROTO_TCP,
+	.create_probe	= fm_tcp_create_parameterized_probe,
+};
+
+FM_PROBE_CLASS_REGISTER(fm_tcp_port_probe_class)

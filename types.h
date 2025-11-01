@@ -39,6 +39,7 @@ typedef struct fm_scan_exec fm_scan_exec_t;
 typedef struct fm_protocol fm_protocol_t;
 typedef const struct fm_protocol_engine fm_protocol_engine_t;
 typedef struct fm_probe fm_probe_t;
+typedef const struct fm_probe_class	fm_probe_class_t;
 typedef struct fm_socket fm_socket_t;
 typedef struct fm_report fm_report_t;
 typedef const struct fm_wellknown_service fm_wellknown_service_t;

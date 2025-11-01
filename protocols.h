@@ -49,12 +49,6 @@ struct fm_protocol_ops {
 	bool		(*process_packet)(fm_protocol_t *, fm_pkt_t *);
 	bool		(*process_error)(fm_protocol_t *, fm_pkt_t *);
 	bool		(*connection_established)(fm_protocol_t *, const fm_address_t *);
-
-	int		action_flags;
-
-	void *		(*process_extra_parameters)(fm_protocol_t *, const fm_string_array_t *extra_args);
-	fm_probe_t *	(*create_parameterized_probe)(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
-	bool		(*set_probe_socket)(fm_protocol_t *, fm_probe_t *, fm_socket_t *);
 };
 
 #define FM_PARAM_TYPE_RETRIES_MASK	(1 << FM_PARAM_TYPE_RETRIES)
@@ -83,11 +77,10 @@ extern void		fm_protocol_directory_display(void);
 
 extern fm_protocol_t *	fm_protocol_engine_get_protocol(fm_protocol_engine_t *, const char *);
 extern fm_protocol_t *	fm_protocol_by_name(const char *);
+extern fm_protocol_t *	fm_protocol_by_id(unsigned int);
 
 extern fm_protocol_t *	fm_protocol_create(const struct fm_protocol_ops *ops);
 extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);
-extern fm_probe_t *	fm_protocol_create_host_probe(fm_protocol_t *, fm_target_t *, const fm_probe_params_t *, const void *extra_params);
-extern fm_probe_t *	fm_protocol_create_port_probe(fm_protocol_t *, fm_target_t *, uint16_t, const fm_probe_params_t *);
 extern fm_socket_t *	fm_protocol_create_host_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 
 #define FM_PROTOCOL_REGISTER(ops) \
