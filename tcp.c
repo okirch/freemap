@@ -361,19 +361,9 @@ fm_tcp_request_send(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
 			return FM_SEND_ERROR;
 		}
 
-		if (tcp->sock->type == SOCK_RAW) {
+		if (tcp->sock->type == SOCK_RAW)
 			fm_socket_enable_recverr(tcp->sock);
-		}
-		tcp->sock->trace = true;
 
-#if 0
-		if (tcp->sock->type == SOCK_RAW) {
-			/* FIXME: establish a TCP listening socket.
-			 * For half-open scans, we also need a local TCP port that
-			 * is bound to some larval socket.
-			 */
-		} else
-#endif
 		if (!fm_socket_connect(tcp->sock, &tcp->host_address)) {
 			fm_log_error("Unable to connect TCP socket for %s: %m",
 					fm_address_format(&tcp->host_address));
