@@ -148,7 +148,7 @@ fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 		ignore_id = true;
 	} else
 	if (pkt->family == AF_INET) {
-		fm_ip_info_t ip;
+		fm_ip_header_info_t ip;
 
 		/* PF_RAW sockets will always give us the IPv4 header.
 		 * Funnily, IPv6 packets always come with the header stripped. */

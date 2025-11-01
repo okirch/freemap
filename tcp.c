@@ -229,7 +229,7 @@ fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
 	fm_asset_state_t state = FM_ASSET_STATE_UNDEF;
 	fm_extant_t *extant;
-	fm_ip_info_t ip;
+	fm_ip_header_info_t ip;
 	fm_tcp_header_info_t tcp_info;
 
 	if (!fm_raw_packet_pull_ip_hdr(pkt, &ip))

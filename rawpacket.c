@@ -120,7 +120,7 @@ fm_raw_packet_add_ipv4_header(fm_buffer_t *bp, const fm_address_t *src_addr, con
  * IP header analysis
  */
 static bool
-fm_raw_packet_pull_ipv4_hdr(fm_buffer_t *bp, fm_ip_info_t *info)
+fm_raw_packet_pull_ipv4_hdr(fm_buffer_t *bp, fm_ip_header_info_t *info)
 {
 	const struct iphdr *ip = (const struct iphdr *) fm_buffer_peek(bp, sizeof(struct iphdr));
 	unsigned int hlen;
@@ -140,14 +140,14 @@ fm_raw_packet_pull_ipv4_hdr(fm_buffer_t *bp, fm_ip_info_t *info)
 }
 
 static bool
-fm_raw_packet_pull_ipv6_hdr(fm_buffer_t *bp, fm_ip_info_t *info)
+fm_raw_packet_pull_ipv6_hdr(fm_buffer_t *bp, fm_ip_header_info_t *info)
 {
 	fm_log_error("%s: not yet implemented", __func__);
 	return false;
 }
 
 bool
-fm_raw_packet_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_info_t *info)
+fm_raw_packet_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_header_info_t *info)
 {
 	if (pkt->family == AF_INET)
 		return fm_raw_packet_pull_ipv4_hdr(pkt->payload, info);

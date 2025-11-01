@@ -47,7 +47,7 @@ typedef struct fm_ipproto_request {
 	fm_address_t		host_address;
 	fm_probe_params_t	params;
 
-	fm_ip_info_t		ip;
+	fm_ip_header_info_t	ip;
 	fm_routing_info_t	rtinfo;
 
 	bool			wait_for_ndisc;
@@ -240,7 +240,7 @@ static fm_error_t
 fm_ipproto_request_send(fm_ipproto_request_t *req, fm_ipproto_extant_info_t *extant_info)
 {
 	fm_routing_info_t *rtinfo = &req->rtinfo;
-	fm_ip_info_t *ip = &req->ip;
+	fm_ip_header_info_t *ip = &req->ip;
 	fm_pkt_t *pkt;
 
 	if (rtinfo->nh.link_address.ss_family == AF_UNSPEC) {
@@ -371,7 +371,7 @@ fm_ipproto_host_probe_send(fm_probe_t *probe)
 {
 	struct fm_ipproto_host_probe *ipprobe = (struct fm_ipproto_host_probe *) probe;
 	fm_routing_info_t *rtinfo = &ipprobe->rtinfo;
-	fm_ip_info_t *ip = &ipprobe->ip;
+	fm_ip_header_info_t *ip = &ipprobe->ip;
 	fm_socket_t *sock;
 	fm_buffer_t *bp;
 
