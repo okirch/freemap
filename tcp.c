@@ -23,11 +23,19 @@
 #include <unistd.h>
 #include <poll.h>
 #include <linux/errqueue.h>
+#include <netinet/tcp.h>
 
 #include "scanner.h"
 #include "protocols.h"
 #include "target.h" /* for fm_probe_t */
-#include "socket.h" /* for fm_probe_t */
+#include "socket.h"
+#include "rawpacket.h"
+
+typedef struct fm_tcp_extra_params {
+	unsigned char		flags;
+	uint32_t		sequence;
+	uint32_t		ack;
+} fm_tcp_extra_params_t;
 
 typedef struct fm_tcp_request {
 	fm_protocol_t *		proto;
@@ -36,12 +44,9 @@ typedef struct fm_tcp_request {
 
 	int			family;
 	fm_address_t		host_address;
+	fm_address_t		local_address;
 	fm_probe_params_t	params;
-
-	/* This should be configurable at the probe level, but
-	 * we're not handling that yet.
-	 */
-	bool			use_connected_socket;
+	fm_tcp_extra_params_t	extra_params;
 } fm_tcp_request_t;
 
 typedef struct tcp_extant_info {
@@ -50,6 +55,7 @@ typedef struct tcp_extant_info {
 
 
 static fm_socket_t *	fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af);
+static fm_socket_t *	fm_tcp_create_raw_socket(fm_protocol_t *proto, int af);
 static bool		fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_connecton_established(fm_protocol_t *proto, const fm_address_t *);
@@ -77,10 +83,37 @@ static struct fm_protocol	fm_tcp_bsdsock_ops = {
 
 FM_PROTOCOL_REGISTER(fm_tcp_bsdsock_ops);
 
+static struct fm_protocol	fm_tcp_rawsock_ops = {
+	.obj_size	= sizeof(fm_protocol_t),
+	.name		= "tcp-raw",
+	.id		= FM_PROTO_TCP,
+	.require_raw	= true,
+
+	.supported_parameters = 
+			  FM_PARAM_TYPE_PORT_MASK |
+			  FM_PARAM_TYPE_TOS_MASK |
+			  FM_PARAM_TYPE_TTL_MASK |
+			  FM_PARAM_TYPE_RETRIES_MASK |
+			  FM_FEATURE_STATUS_CALLBACK_MASK,
+
+	.process_packet = fm_tcp_process_packet,
+	.process_error	= fm_tcp_process_error,
+	.create_socket	= fm_tcp_create_raw_socket,
+	.connection_established = fm_tcp_connecton_established,
+};
+
+FM_PROTOCOL_REGISTER(fm_tcp_rawsock_ops);
+
 static fm_socket_t *
 fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af)
 {
 	return fm_socket_create(af, SOCK_STREAM, 0, proto);
+}
+
+static fm_socket_t *
+fm_tcp_create_raw_socket(fm_protocol_t *proto, int af)
+{
+	return fm_socket_create(af, SOCK_RAW, IPPROTO_TCP, proto);
 }
 
 /*
@@ -96,8 +129,22 @@ fm_tcp_request_free(fm_tcp_request_t *tcp)
 	free(tcp);
 }
 
+static inline uint32_t
+fm_tcp_generate_sequence(void)
+{
+	static uint32_t global_seq;
+	uint32_t seq;
+
+	if (global_seq == 0)
+		global_seq = random() & ~0xFF;
+
+	seq = global_seq;
+	global_seq += 0x100;
+	return seq;
+}
+
 static fm_tcp_request_t *
-fm_tcp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params)
+fm_tcp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const fm_tcp_extra_params_t *extra_params)
 {
 	fm_tcp_request_t *tcp;
 
@@ -114,6 +161,15 @@ fm_tcp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_p
 
 	if (tcp->params.retries == 0)
 		tcp->params.retries = fm_global.tcp.retries;
+
+	if (extra_params != NULL)
+		tcp->extra_params = *extra_params;
+	
+	if (tcp->extra_params.flags == 0)
+		tcp->extra_params.flags = TH_SYN;
+	if (tcp->extra_params.sequence == 0)
+		tcp->extra_params.sequence = fm_tcp_generate_sequence();
+	tcp->extra_params.ack = tcp->extra_params.sequence + 0x80;
 
 	tcp->family = target->address.ss_family;
 	tcp->host_address = target->address;
@@ -171,9 +227,51 @@ fm_tcp_locate_probe(int af, const fm_address_t *target_addr, fm_asset_state_t st
 static bool
 fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
+	fm_asset_state_t state = FM_ASSET_STATE_UNDEF;
 	fm_extant_t *extant;
+	fm_ip_info_t ip;
+	fm_tcp_header_info_t tcp_info;
 
-	extant = fm_tcp_locate_probe(pkt->family, &pkt->peer_addr, FM_ASSET_STATE_OPEN);
+	if (!fm_pkt_pull_ip_hdr(pkt, &ip))
+		return false;
+
+	fm_log_debug("%s: packet %s -> %s; proto %d",
+			proto->name,
+			fm_address_format(&ip.src_addr),
+			fm_address_format(&ip.dst_addr),
+			ip.ipproto);
+
+	if (ip.ipproto != IPPROTO_TCP) {
+		/* do we get icmp packets here? */
+		fm_log_warning("%s: weird, unexpected ipproto %d", __func__, ip.ipproto);
+		return false;
+	}
+
+	if (!fm_raw_packet_pull_tcp_header(pkt->payload, &tcp_info)) {
+		fm_log_debug("%s: short or truncated TCP packet", proto->name);
+		return false;
+	}
+
+	fm_log_debug("   tcp hdr %d -> %d: flags=0x%x seq 0x%x ack 0x%x",
+			tcp_info.src_port,
+			tcp_info.dst_port,
+			tcp_info.flags,
+			tcp_info.seq,
+			tcp_info.ack_seq);
+
+	if (tcp_info.flags & TH_RST)
+		state = FM_ASSET_STATE_CLOSED;
+	else
+	if (tcp_info.flags & TH_ACK)
+		state = FM_ASSET_STATE_OPEN;
+	/* else weird */
+
+	if (state == FM_ASSET_STATE_UNDEF) {
+		fm_log_debug("don't know what to think of this packet");
+		return false;
+	}
+
+	extant = fm_tcp_locate_probe(pkt->family, &pkt->peer_addr, state);
 	if (extant != NULL) {
 		fm_extant_received_reply(extant, pkt);
 		fm_extant_free(extant);
@@ -210,6 +308,28 @@ fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 	return true;
 }
 
+static fm_pkt_t *
+fm_tcp_build_raw_packet(fm_tcp_request_t *tcp)
+{
+	fm_tcp_header_info_t hdrinfo;
+	fm_pkt_t *pkt;
+
+	memset(&hdrinfo, 0, sizeof(hdrinfo));
+	hdrinfo.flags = tcp->extra_params.flags;
+	hdrinfo.seq = tcp->extra_params.sequence;
+
+	if (hdrinfo.flags)
+		hdrinfo.ack_seq = tcp->extra_params.ack;
+	hdrinfo.mtu = 576;
+
+	pkt = fm_pkt_alloc(tcp->family, 128);
+	if (!fm_raw_packet_add_tcp_header(pkt->payload, &tcp->local_address, &tcp->host_address, &hdrinfo, 0))
+		return NULL;
+
+	pkt->peer_addr = tcp->host_address;
+	return pkt;
+}
+
 static fm_error_t
 fm_tcp_request_schedule(fm_tcp_request_t *tcp, struct timeval *expires)
 {
@@ -228,7 +348,7 @@ fm_tcp_request_schedule(fm_tcp_request_t *tcp, struct timeval *expires)
 static fm_error_t
 fm_tcp_request_send(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
 {
-	if (tcp->sock != NULL) {
+	if (tcp->sock != NULL && tcp->sock->type == SOCK_STREAM) {
 		fm_socket_free(tcp->sock);
 		tcp->sock = NULL;
 	}
@@ -241,13 +361,41 @@ fm_tcp_request_send(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
 			return FM_SEND_ERROR;
 		}
 
-		/* fm_socket_enable_recverr(tcp->sock); */
+		if (tcp->sock->type == SOCK_RAW) {
+			fm_socket_enable_recverr(tcp->sock);
+		}
+		tcp->sock->trace = true;
 
+#if 0
+		if (tcp->sock->type == SOCK_RAW) {
+			/* FIXME: establish a TCP listening socket.
+			 * For half-open scans, we also need a local TCP port that
+			 * is bound to some larval socket.
+			 */
+		} else
+#endif
 		if (!fm_socket_connect(tcp->sock, &tcp->host_address)) {
 			fm_log_error("Unable to connect TCP socket for %s: %m",
 					fm_address_format(&tcp->host_address));
 			return FM_SEND_ERROR;
 		}
+
+		fm_socket_get_local_address(tcp->sock, &tcp->local_address);
+		fm_log_debug("Created TCP connection %s -> %s",
+					fm_address_format(&tcp->local_address),
+					fm_address_format(&tcp->host_address));
+
+	}
+
+	if (tcp->sock->type == SOCK_RAW) {
+		/* build the TCP packet and transmit */
+		fm_pkt_t *pkt;
+
+		if (!(pkt = fm_tcp_build_raw_packet(tcp)))
+			return FM_SEND_ERROR;
+
+		if (!fm_socket_send_pkt_and_burn(tcp->sock, pkt))
+			return FM_SEND_ERROR;
 	}
 
 	fm_tcp_extant_info_build(tcp, extant_info);
@@ -338,7 +486,7 @@ fm_tcp_create_parameterized_probe(fm_probe_class_t *pclass, fm_target_t *target,
 
 	assert(proto && proto->id == FM_PROTO_TCP);
 
-	if (!(tcp = fm_tcp_request_alloc(proto, target, params)))
+	if (!(tcp = fm_tcp_request_alloc(proto, target, params, extra_params)))
 		return NULL;
 
 	snprintf(name, sizeof(name), "tcp/%u", params->port);
