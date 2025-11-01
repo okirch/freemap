@@ -349,6 +349,89 @@ fm_scanner_add_dummy_probe(void)
 }
 
 /*
+ * Process a port or port range
+ */
+static bool
+fm_scanner_process_ports(fm_probe_class_t *pclass, const char *arg, fm_uint_array_t *array)
+{
+	fm_port_range_t range;
+	unsigned int low_port, high_port;
+
+	if (!fm_parse_port_range(arg, &range)) {
+		fm_log_error("%s: unable to parse port range \"%s\"", pclass->name, arg);
+		return false;
+	}
+
+	low_port = range.first;
+	high_port = range.last;
+
+	if (low_port == 0 || low_port > high_port || high_port > 65535) {
+		fm_log_error("%s: invalid port range %u-%u", pclass->name, low_port, high_port);
+		return false;
+	}
+
+	while (low_port <= high_port)
+		fm_uint_array_append(array, low_port++);
+
+	return true;
+}
+
+/*
+ * Process probe arguments
+ */
+static bool
+fm_scanner_process_arguments(fm_probe_class_t *pclass, int mode, const fm_string_array_t *args,
+			fm_probe_params_t *params, fm_string_array_t *proto_args, fm_uint_array_t *ports)
+{
+	bool randomize = false;
+	unsigned int i;
+
+	if (mode == FM_PROBE_MODE_PORT && !ports) {
+		fm_log_error("%s: trying to parse port scan arguments, but ports argument is NULL", __func__);
+		return false;
+	}
+
+	for (i = 0; i < args->count; ++i) {
+		const char *arg = args->entries[i];
+		fm_param_type_t param_type = FM_PARAM_TYPE_NONE;
+
+		if (isdigit(*arg) && mode == FM_PROBE_MODE_PORT) {
+			if (!fm_scanner_process_ports(pclass, arg, ports))
+				return false;
+		} else
+		if (fm_parse_numeric_argument(arg, "retries", &params->retries)) {
+			param_type = FM_PARAM_TYPE_RETRIES;
+		} else if (fm_parse_numeric_argument(arg, "ttl", &params->ttl)) {
+			param_type = FM_PARAM_TYPE_TTL;
+		} else if (fm_parse_numeric_argument(arg, "tos", &params->tos)) {
+			param_type = FM_PARAM_TYPE_TOS;
+		} else if (!strcmp(arg, "random")) {
+			randomize = true;
+		} else {
+			fm_string_array_append(proto_args, arg);
+		}
+
+		if (param_type != FM_PARAM_TYPE_NONE
+		 && !fm_probe_class_supports(pclass, param_type)) {
+			fm_log_error("probe %s does not support parameter %s", pclass->name, arg);
+			return false;
+		}
+	}
+
+	if (mode == FM_PROBE_MODE_PORT) {
+		if (ports->count == 0) {
+			fm_log_error("%s: port scan request does not specify any ports to scan", pclass->name);
+			return false;
+		}
+
+		if (randomize)
+			fm_uint_array_randomize(ports);
+	}
+
+	return true;
+}
+
+/*
  * Reachability probe
  */
 static fm_scan_action_t *
@@ -357,31 +440,12 @@ fm_scanner_create_host_probe(fm_scanner_t *scanner, const fm_probe_class_t *pcla
 	fm_scan_action_t *action;
 	fm_probe_params_t params;
 	fm_string_array_t proto_args;
-	unsigned int i;
 
 	memset(&params, 0, sizeof(params));
 	memset(&proto_args, 0, sizeof(proto_args));
 
-	for (i = 0; i < args->count; ++i) {
-		const char *arg = args->entries[i];
-		fm_param_type_t param_type = FM_PARAM_TYPE_NONE;
-
-		if (fm_parse_numeric_argument(arg, "retries", &params.retries)) {
-			param_type = FM_PARAM_TYPE_RETRIES;
-		} else if (fm_parse_numeric_argument(arg, "ttl", &params.ttl)) {
-			param_type = FM_PARAM_TYPE_TTL;
-		} else if (fm_parse_numeric_argument(arg, "tos", &params.tos)) {
-			param_type = FM_PARAM_TYPE_TOS;
-		} else {
-			fm_string_array_append(&proto_args, arg);
-		}
-
-		if (param_type != FM_PARAM_TYPE_NONE
-		 && !fm_probe_class_supports(pclass, param_type)) {
-			fm_log_error("probe %s does not support parameter %s", pclass->name, arg);
-			return NULL;
-		}
-	}
+	if (!fm_scanner_process_arguments(pclass, FM_PROBE_MODE_HOST, args, &params, &proto_args, NULL))
+		return NULL;
 
 	action = fm_probe_scan_create(pclass, FM_PROBE_MODE_HOST, &params, NULL);
 
@@ -448,34 +512,6 @@ fm_scanner_add_reachability_check(fm_scanner_t *scanner)
 }
 
 /*
- * Process a port or port range
- */
-static bool
-fm_scanner_process_ports(fm_probe_class_t *pclass, const char *arg, fm_uint_array_t *array)
-{
-	fm_port_range_t range;
-	unsigned int low_port, high_port;
-
-	if (!fm_parse_port_range(arg, &range)) {
-		fm_log_error("%s: unable to parse port range \"%s\"", pclass->name, arg);
-		return false;
-	}
-
-	low_port = range.first;
-	high_port = range.last;
-
-	if (low_port == 0 || low_port > high_port || high_port > 65535) {
-		fm_log_error("%s: invalid port range %u-%u", pclass->name, low_port, high_port);
-		return false;
-	}
-
-	while (low_port <= high_port)
-		fm_uint_array_append(array, low_port++);
-
-	return true;
-}
-
-/*
  * Port scan probes
  */
 fm_scan_action_t *
@@ -485,50 +521,19 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *probe_name, int fla
 	fm_scan_action_t *action = NULL;
 	fm_string_array_t proto_args;
 	fm_uint_array_t ports;
-	bool randomize = false;
 	fm_probe_params_t params;
-	unsigned int i;
 
 	memset(&proto_args, 0, sizeof(proto_args));
 	memset(&params, 0, sizeof(params));
 	memset(&ports, 0, sizeof(ports));
 
-	if (!(pclass = fm_probe_class_find(probe_name, FM_PROBE_MODE_HOST))) {
+	if (!(pclass = fm_probe_class_find(probe_name, FM_PROBE_MODE_PORT))) {
 		fm_log_error("Unknown port probe class %s\n", probe_name);
 		return NULL;
 	}
 
-	for (i = 0; i < args->count; ++i) {
-		const char *arg = args->entries[i];
-		fm_param_type_t param_type = FM_PARAM_TYPE_NONE;
-
-		if (isdigit(*arg)) {
-			if (!fm_scanner_process_ports(pclass, arg, &ports))
-				goto failed;
-		} else if (fm_parse_numeric_argument(arg, "retries", &params.retries)) {
-			param_type = FM_PARAM_TYPE_RETRIES;
-		} else if (fm_parse_numeric_argument(arg, "ttl", &params.ttl)) {
-			param_type = FM_PARAM_TYPE_TTL;
-		} else if (fm_parse_numeric_argument(arg, "tos", &params.tos)) {
-			param_type = FM_PARAM_TYPE_TOS;
-		} else if (!strcmp(arg, "random")) {
-			randomize = true;
-		} else {
-			fm_string_array_append(&proto_args, arg);
-		}
-
-		if (param_type != FM_PARAM_TYPE_NONE
-		 && !fm_probe_class_supports(pclass, param_type)) {
-			fm_log_error("probe class %s does not support parameter %s", pclass->name, arg);
-			return NULL;
-		}
-	}
-
-	if (ports.count == 0)
-		fm_log_error("%s: Port scan call does not specify any ports to scan", pclass->name);
-
-	if (randomize)
-		fm_uint_array_randomize(&ports);
+	if (!fm_scanner_process_arguments(pclass, FM_PROBE_MODE_PORT, args, &params, &proto_args, &ports))
+		return NULL;
 
 	action = fm_probe_scan_create(pclass, FM_PROBE_MODE_PORT, &params, &ports);
 	if (action == NULL)
@@ -618,7 +623,7 @@ fm_probe_scan_create(const fm_probe_class_t *pclass, int mode, const fm_probe_pa
 			return NULL;
 		}
 	} else {
-		if (ports != NULL || ports->count != 0) {
+		if (ports != NULL && ports->count != 0) {
 			fm_log_error("%s: %s scan cannot handle port range", pclass->name, mode_string);
 			return NULL;
 		}
