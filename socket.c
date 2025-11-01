@@ -136,7 +136,7 @@ fm_socket_create(int family, int type, int protocol, fm_protocol_t *driver)
 
 	sock = fm_socket_allocate(fd, family, type, len);
 
-	if (type == SOCK_DGRAM) {
+	if (type == SOCK_DGRAM || type == SOCK_RAW) {
 		/* datagram sockets are ready to receive after
 		 *  (a) we have connected, or
 		 *  (b) we have sent a packet using sendto()
@@ -144,7 +144,8 @@ fm_socket_create(int family, int type, int protocol, fm_protocol_t *driver)
 		 * right from the start.
 		 */
 		sock->rpoll = POLLIN;
-	} else {
+	} else
+	if (type == SOCK_STREAM) {
 		/* For stream sockets, we don't start polling until we have
 		 * initiated a connection. */
 		sock->rpoll = 0;
@@ -376,7 +377,7 @@ fm_socket_connect(fm_socket_t *sock, const fm_address_t *address)
 
 	if (sock->type == SOCK_STREAM) {
 		fm_log_debug("Initiated connection to %s on sock %d\n", fm_address_format(address), sock->fd);
-		sock->rpoll = POLLIN|POLLOUT;
+		sock->rpoll = POLLIN|POLLOUT|POLLERR;
 	} else {
 		sock->rpoll = POLLIN;
 	}
