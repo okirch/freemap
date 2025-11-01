@@ -72,6 +72,18 @@ fm_buffer_append(fm_buffer_t *bp, const void *data, size_t len)
 	return true;
 }
 
+static inline bool
+fm_buffer_put16(fm_buffer_t *bp, u_int16_t word)
+{
+	return fm_buffer_append(bp, &word, 2);
+}
+
+static inline bool
+fm_buffer_put32(fm_buffer_t *bp, u_int32_t word)
+{
+	return fm_buffer_append(bp, &word, 4);
+}
+
 static inline void *
 fm_buffer_peek(fm_buffer_t *pkt, size_t len)
 {
