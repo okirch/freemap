@@ -12,8 +12,8 @@ hosts-scan experimental serialize=strict:
 	port-probe ipproto 33 optional;
 	port-probe ipproto 6 optional;
 
-hosts-scan traceroute serialize=strict:
-	host-probe traceroute udp;
+topology-scan traceroute serialize=strict:
+	topo-probe traceroute udp;
 
 services-scan minimal:
 	port-probe tcp 22 25 80;

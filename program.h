@@ -31,9 +31,10 @@ extern const char *		fm_library_path;
 /* A single action that is part of a scan. Ultimately,
  * this will be translated into an fm_scan_action object.
  *
- * Right now, we support host-probe and port-probe steps.
+ * Right now, we support topo, host and port probe steps.
  */
 enum {
+	FM_SCAN_STEP_TOPO_PROBE,
 	FM_SCAN_STEP_HOST_PROBE,
 	FM_SCAN_STEP_PORT_PROBE,
 };
@@ -108,6 +109,7 @@ typedef struct fm_scan_library {
 
 extern fm_scan_program_t *	fm_scan_program_alloc(const char *name);
 extern fm_scan_program_t *	fm_scan_program_build(const char *name,
+					const char *topology_scan,
 					const char *reachability_scan,
 					const char *service_scan);
 extern void			fm_scan_program_free(fm_scan_program_t *);

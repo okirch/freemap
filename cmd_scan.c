@@ -121,6 +121,7 @@ fm_command_perform_scan(fm_command_t *cmd)
 			fm_log_fatal("Could not find scan program \"%s\"\n", scan_options.program);
 	} else {
 		program = fm_scan_program_build("scan",
+				project->topology_probe?: NULL,
 				project->reachability_probe?: "default",
 				project->service_probe?: "default");
 		if (program == NULL)

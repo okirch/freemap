@@ -160,6 +160,11 @@ fm_command_perform_configure(fm_command_t *cmd)
 
 	key = cmd->values[0];
 	value = cmd->values[1];
+	if (!strcmp(key, "topology-probe")) {
+		if (!sanity_check_probe_name(key, FM_SCAN_ROUTINE_TOPOLOGY, value))
+			return 1;
+		assign_string(&project->topology_probe, value);
+	} else
 	if (!strcmp(key, "reachability-probe")) {
 		if (!sanity_check_probe_name(key, FM_SCAN_ROUTINE_HOSTS, value))
 			return 1;

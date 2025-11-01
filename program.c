@@ -299,6 +299,9 @@ parse_routine_definition(struct file_scanner *fs, fm_scan_library_t *lib, int ty
 	while ((arg = file_scanner_continue_entry(fs)) != NULL) {
 		fm_scan_step_t *step = NULL;
 
+		if (!strcmp(arg, "topo-probe")) {
+			step = parse_step_definition(fs, FM_SCAN_STEP_TOPO_PROBE);
+		} else
 		if (!strcmp(arg, "host-probe")) {
 			step = parse_step_definition(fs, FM_SCAN_STEP_HOST_PROBE);
 		} else if (!strcmp(arg, "port-probe")) {
@@ -345,6 +348,9 @@ parse_program_definition(struct file_scanner *fs, fm_scan_library_t *lib)
 	while ((arg = file_scanner_continue_entry(fs)) != NULL) {
 		bool okay;
 
+		if (!strcmp(arg, "topology-scan")) {
+			okay = parse_call(fs, lib, program, FM_SCAN_ROUTINE_TOPOLOGY);
+		} else
 		if (!strcmp(arg, "hosts-scan")) {
 			okay = parse_call(fs, lib, program, FM_SCAN_ROUTINE_HOSTS);
 		} else
@@ -493,11 +499,15 @@ fm_scan_program_attach(fm_scan_program_t *program, int type, const char *routine
 }
 
 extern fm_scan_program_t *
-fm_scan_program_build(const char *name, const char *reachability_scan, const char *service_scan)
+fm_scan_program_build(const char *name, const char *topology_scan, const char *reachability_scan, const char *service_scan)
 {
 	fm_scan_program_t *program;
 
 	program = fm_scan_program_alloc(name);
+	if (topology_scan != NULL
+	 && !fm_scan_program_attach(program, FM_SCAN_ROUTINE_TOPOLOGY, topology_scan, true))
+		goto fail;
+
 	if (reachability_scan != NULL
 	 && !fm_scan_program_attach(program, FM_SCAN_ROUTINE_HOSTS, reachability_scan, true))
 		goto fail;
@@ -522,6 +532,9 @@ fm_scan_step_compile(const fm_scan_exec_t *exec, fm_scanner_t *scanner)
 	const fm_scan_step_t *step = exec->step;
 
 	switch (step->type) {
+	case FM_SCAN_STEP_TOPO_PROBE:
+		return fm_scanner_add_topo_probe(scanner, step->proto, step->action_flags, &step->args);
+
 	case FM_SCAN_STEP_HOST_PROBE:
 		return fm_scanner_add_host_probe(scanner, step->proto, step->action_flags, &step->args);
 
@@ -579,6 +592,8 @@ static inline const char *
 fm_scan_step_type_to_string(int type)
 {
 	switch (type) {
+	case FM_SCAN_STEP_TOPO_PROBE:
+		return "topo-probe";
 	case FM_SCAN_STEP_HOST_PROBE:
 		return "host-probe";
 	case FM_SCAN_STEP_PORT_PROBE:

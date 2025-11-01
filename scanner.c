@@ -498,6 +498,18 @@ failed:
 }
 
 fm_scan_action_t *
+fm_scanner_add_topo_probe(fm_scanner_t *scanner, const char *probe_name, int flags, const fm_string_array_t *args)
+{
+	fm_scan_action_t *action;
+
+	action = fm_scanner_create_probe_action(probe_name, FM_PROBE_MODE_TOPO, flags, args);
+	if (action != NULL)
+		fm_scan_action_array_append(&scanner->requests, action);
+
+	return action;
+}
+
+fm_scan_action_t *
 fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *probe_name, int flags, const fm_string_array_t *args)
 {
 	fm_scan_action_t *action;

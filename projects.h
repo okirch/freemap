@@ -27,6 +27,7 @@
 
 struct fm_project {
 	char *			name;
+	char *			topology_probe;
 	char *			reachability_probe;
 	char *			service_probe;
 	fm_string_array_t	targets;
