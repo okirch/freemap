@@ -24,6 +24,7 @@
 
 #include "freemap.h"
 #include "lists.h"
+#include "utils.h"
 
 typedef struct fm_scan_dummy	fm_scan_state_t;
 
@@ -33,6 +34,7 @@ typedef struct fm_scan_dummy	fm_scan_state_t;
 struct fm_scan_action {
 	char *			id;
 
+	unsigned int		mode;
 	unsigned int		flags;
 
 	/* if barrier is true, wait for this and all previous scan actions
@@ -58,6 +60,9 @@ struct fm_scan_action {
 	fm_probe_class_t *	probe_class;
 	fm_probe_params_t	probe_params;
 	void *			extra_params;
+
+	/* ports, protocol numbers, etc */
+	fm_uint_array_t		numeric_params;
 };
 
 typedef struct fm_scan_action_array {
@@ -87,7 +92,7 @@ struct fm_scanner {
 	const fm_protocol_engine_t *proto;
 };
 
-extern fm_scan_action_t *	fm_scan_action_create(const struct fm_scan_action_ops *ops, const char *id);
+extern fm_scan_action_t *	fm_scan_action_create(int mode, const struct fm_scan_action_ops *ops, const char *id, fm_probe_class_t *);
 
 #endif /* FREEMAP_SCANNER_H */
 
