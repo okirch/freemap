@@ -22,6 +22,7 @@
 #include <linux/if_packet.h>
 #include <linux/if_arp.h>
 #include <netinet/ip.h>
+#include <netinet/tcp.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -60,7 +61,6 @@ fm_raw_packet_add_link_header(fm_buffer_t *bp, const fm_address_t *src_addr, con
 	if (!ok)
 		return false;
 
-	fm_log_debug("%s: hatype=%u", __func__, dst_lladdr->sll_hatype);
 	if (dst_lladdr->sll_hatype == ARPHRD_ETHER) {
 		unsigned char *eth = fm_buffer_push(bp, 2 * ETH_ALEN + 2);
 		uint16_t eth_proto = htons(ETH_P_IP);
@@ -141,3 +141,112 @@ fm_raw_packet_add_network_header(fm_buffer_t *bp, const fm_address_t *src_addr, 
 	return false;
 }
 
+/*
+ * Perform TCP checksum
+ */
+static bool
+fm_raw_packet_tcp_checksum(const fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr, struct tcphdr *th)
+{
+	fm_buffer_t *csum = fm_buffer_alloc(128);
+	unsigned int len = th->th_off << 2;
+
+	if (src_addr->ss_family == AF_INET && dst_addr->ss_family == AF_INET) {
+		if (!fm_buffer_append(csum, &((struct sockaddr_in *) src_addr)->sin_addr, 4)
+		 || !fm_buffer_append(csum, &((struct sockaddr_in *) dst_addr)->sin_addr, 4))
+			goto failed;
+	} else
+	if (src_addr->ss_family == AF_INET6 && dst_addr->ss_family == AF_INET6) {
+		if (!fm_buffer_append(csum, &((struct sockaddr_in6 *) src_addr)->sin6_addr, 16)
+		 || !fm_buffer_append(csum, &((struct sockaddr_in6 *) dst_addr)->sin6_addr, 16))
+			goto failed;
+	}
+
+	if (!fm_buffer_put16(csum, htons(len))
+	 || !fm_buffer_put16(csum, htons(IPPROTO_TCP))
+	 || !fm_buffer_append(csum, th, len))
+		goto failed;
+
+	th->th_sum = in_csum(fm_buffer_head(csum), fm_buffer_available(csum));
+	fm_buffer_free(csum);
+
+	return true;
+
+failed:
+	fm_buffer_free(csum);
+	return false;
+}
+
+/*
+ * Add TCP header to packet
+ */
+bool
+fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
+					fm_tcp_header_info_t *tcp_info, unsigned int payload_len)
+{
+	struct tcphdr *th;
+	uint16_t window;
+	unsigned int len;
+
+	if (src_addr->ss_family == AF_INET && dst_addr->ss_family == AF_INET) {
+		tcp_info->src_port = ((struct sockaddr_in *) src_addr)->sin_port;
+		tcp_info->dst_port = ((struct sockaddr_in *) dst_addr)->sin_port;
+	} else
+	if (src_addr->ss_family == AF_INET6 && dst_addr->ss_family == AF_INET6) {
+		tcp_info->src_port = ((struct sockaddr_in6 *) src_addr)->sin6_port;
+		tcp_info->dst_port = ((struct sockaddr_in6 *) dst_addr)->sin6_port;
+	} else
+		return false;
+
+	th = fm_buffer_push(bp, sizeof(*th));
+	memset(th, 0, sizeof(*th));
+
+	th->th_sport = tcp_info->src_port;
+	th->th_dport = tcp_info->dst_port;
+
+	th->th_seq = tcp_info->seq;
+	th->th_ack = tcp_info->ack_seq;
+	th->th_flags = tcp_info->flags;
+
+	window = tcp_info->window;
+	if (window == 0)
+		window = tcp_info->mss? : tcp_info->mtu;
+	if (window == 0)
+		window = 6000;
+	th->th_win = htons(window);
+
+	/* Maybe add a couple of TCP options here */
+
+	/* Set the length */
+	len = fm_buffer_len(bp, th);
+	if (len & 3)
+		return false;
+
+	th->th_off = len >> 2;
+	th->th_sum = 0;
+
+	/* Then do the checksum */
+	fm_raw_packet_tcp_checksum(bp, src_addr, dst_addr, th);
+
+	return true;
+}
+
+bool
+fm_raw_packet_pull_tcp_header(fm_buffer_t *bp, fm_tcp_header_info_t *tcp_info)
+{
+	struct tcphdr *th;
+
+	if (!(th = fm_buffer_peek(bp, sizeof(*th))))
+		return false;
+
+	if (!fm_buffer_pull(bp, th->th_off << 2))
+		return false;
+
+	tcp_info->src_port = ntohs(th->th_sport);
+	tcp_info->dst_port = ntohs(th->th_dport);
+	tcp_info->seq = th->th_seq;
+	tcp_info->ack_seq = th->th_ack;
+	tcp_info->flags = th->th_flags;
+	tcp_info->window = htons(th->th_win);
+
+	return true;
+}

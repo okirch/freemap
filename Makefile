@@ -1,4 +1,4 @@
-CFLAGS	= -Wall -g -D_GNU_SOURCE -I. -lcurlies
+CFLAGS	= -Wall -g -D_GNU_SOURCE -D_MISC_SOURCE -I. -lcurlies
 
 OBJS	= projects.o \
 	  scanner.o \
