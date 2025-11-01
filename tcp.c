@@ -232,7 +232,7 @@ fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 	fm_ip_info_t ip;
 	fm_tcp_header_info_t tcp_info;
 
-	if (!fm_pkt_pull_ip_hdr(pkt, &ip))
+	if (!fm_raw_packet_pull_ip_hdr(pkt, &ip))
 		return false;
 
 	fm_log_debug("%s: packet %s -> %s; proto %d",

@@ -102,16 +102,6 @@ extern fm_pkt_t *	fm_pkt_alloc(int family, unsigned int size);
 extern void		fm_pkt_apply_probe_params(fm_pkt_t *, const fm_probe_params_t *, unsigned int mask);
 extern void		fm_pkt_free(fm_pkt_t *pkt);
 
-/*
- * IP header information
- */
-typedef struct fm_ip_info {
-	fm_address_t		src_addr, dst_addr;
-	int			ipproto;
-} fm_ip_info_t;
-
-
-extern bool		fm_pkt_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_info_t *info);
 
 #endif /* FREEMAP_PROTOCOLS_H */
 

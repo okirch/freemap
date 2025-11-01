@@ -152,7 +152,7 @@ fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 
 		/* PF_RAW sockets will always give us the IPv4 header.
 		 * Funnily, IPv6 packets always come with the header stripped. */
-		if (!fm_pkt_pull_ip_hdr(pkt, &ip)) {
+		if (!fm_raw_packet_pull_ip_hdr(pkt, &ip)) {
 			fm_log_debug("%s: bad IP header", proto->name);
 			return false;
 		}

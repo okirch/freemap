@@ -23,6 +23,14 @@
 #include <stdint.h>
 #include "freemap.h"
 
+/*
+ * IP header information
+ */
+typedef struct fm_ip_info {
+	fm_address_t		src_addr, dst_addr;
+	int			ipproto;
+} fm_ip_info_t;
+
 typedef struct fm_tcp_header_info {
 	unsigned char		flags;
 	uint32_t		seq;
@@ -49,6 +57,7 @@ extern bool		fm_raw_packet_add_ipv4_header(fm_buffer_t *bp, const fm_address_t *
 extern bool		fm_raw_packet_add_network_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
 					int ipproto, unsigned int ttl, unsigned int tos,
 					unsigned int transport_len);
+extern bool		fm_raw_packet_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_info_t *info);
 extern bool		fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
 					fm_tcp_header_info_t *, unsigned int payload_len);
 extern bool		fm_raw_packet_pull_tcp_header(fm_buffer_t *bp, fm_tcp_header_info_t *tcp);
