@@ -33,6 +33,7 @@
 #include "buffer.h"
 #include "utils.h"
 #include "icmp.h"
+#include "rawpacket.h"
 
 static fm_socket_t *	fm_icmp_create_bsd_socket(fm_protocol_t *proto, int ipproto);
 static bool		fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);

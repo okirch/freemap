@@ -93,30 +93,6 @@ fm_protocol_supports_param(fm_protocol_t *proto, fm_param_type_t type)
 	return !!(proto->supported_parameters & (1 << type));
 }
 
-static inline uint16_t
-in_csum(const void *data, size_t noctets)
-{
-        const uint16_t *p = (const uint16_t *) data;
-        size_t nwords = noctets / 2;
-        uint32_t csum = 0;
-        uint16_t res;
-
-        while (nwords--)
-		csum += *p++;
-
-        if (noctets & 0x1)
-		csum += htons (*((unsigned char *) p) << 8);
-
-        csum = (csum >> 16) + (csum & 0xffff);
-        csum += (csum >> 16);
-
-        res = ~csum;
-        if (!res)
-		res = ~0;
-
-        return res;
-}
-
 /*
  * Utility functions for packet assembly and parsing
  */
