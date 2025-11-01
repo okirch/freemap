@@ -63,8 +63,8 @@ struct fm_protocol_ops {
 struct fm_protocol_engine {
 	fm_protocol_t *	driver[__FM_PROTO_MAX];
 
-	unsigned int	num_other;
-	fm_protocol_t *	other[FM_PROTOCOL_ENGINE_MAX];
+	unsigned int	num_alt;
+	fm_protocol_t *	alt_driver[FM_PROTOCOL_ENGINE_MAX];
 };
 
 extern fm_protocol_engine_t *fm_protocol_engine_create_default(void);
@@ -76,6 +76,7 @@ extern void		fm_protocol_directory_add(struct fm_protocol_ops *ops);
 extern void		fm_protocol_directory_display(void);
 
 extern fm_protocol_t *	fm_protocol_engine_get_protocol(fm_protocol_engine_t *, const char *);
+extern fm_protocol_t *	fm_protocol_engine_get_protocol_alt(fm_protocol_engine_t *engine, const char *name);
 extern fm_protocol_t *	fm_protocol_by_name(const char *);
 extern fm_protocol_t *	fm_protocol_by_id(unsigned int);
 

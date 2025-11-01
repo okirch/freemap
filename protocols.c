@@ -35,6 +35,7 @@ static struct fm_protocol_ops *fm_protocol_directory[256];
 void
 fm_protocol_directory_add(struct fm_protocol_ops *ops)
 {
+	assert(ops->id != FM_PROTO_NONE);
 	if (fm_protocol_directory_count < 256)
 		fm_protocol_directory[fm_protocol_directory_count++] = ops;
 }
@@ -48,12 +49,7 @@ fm_protocol_directory_display(void)
 	for (i = 0; i < fm_protocol_directory_count; ++i) {
 		struct fm_protocol_ops *ops = fm_protocol_directory[i];
 
-		printf("%-12s", ops->name);
-
-		if (ops->id != FM_PROTO_NONE)
-			printf("; implements %s", fm_protocol_id_to_string(ops->id));
-
-		printf("\n");
+		printf("%-12s; implements %s\n", ops->name, fm_protocol_id_to_string(ops->id));
 	}
 }
 
@@ -145,15 +141,15 @@ fm_protocol_engine_create_other(struct fm_protocol_engine *engine)
 	for (i = 0; i < fm_protocol_directory_count; ++i) {
 		struct fm_protocol_ops *ops = fm_protocol_directory[i];
 
-		if (ops->id != FM_PROTO_NONE)
+		if (ops->id == FM_PROTO_NONE)
 			continue;
 		if (ops->require_raw && !have_raw)
 			continue;
 
-		if (engine->num_other >= FM_PROTOCOL_ENGINE_MAX)
+		if (engine->num_alt >= FM_PROTOCOL_ENGINE_MAX)
 			fm_log_fatal("%s: too many protocol drivers", __func__);
 
-		engine->other[engine->num_other++] = fm_protocol_create(ops);
+		engine->alt_driver[engine->num_alt++] = fm_protocol_create(ops);
 	}
 }
 
@@ -185,17 +181,32 @@ fm_protocol_engine_create_default(void)
 	return engine;
 }
 
+/*
+ * Get the best protocol driver that implements protocol arp, icmp, udp, tcp, ...
+ */
 fm_protocol_t *
 fm_protocol_engine_get_protocol(fm_protocol_engine_t *engine, const char *name)
 {
-	unsigned int id, k;
+	unsigned int id;
 
 	id = fm_protocol_string_to_id(name);
 	if (id != FM_PROTO_NONE)
 		return engine->driver[id];
+	return NULL;
+}
 
-	for (k = 0; k < engine->num_other; ++k) {
-		fm_protocol_t *proto = engine->other[k];
+/*
+ * Get the protocol driver with the given name.
+ * For instance, "icmp" will give you the icmp implementation using the standard
+ * BSD socket interface, whereas "icmp-raw" may give you the one based on SOCK_RAW sockets.
+ */
+fm_protocol_t *
+fm_protocol_engine_get_protocol_alt(fm_protocol_engine_t *engine, const char *name)
+{
+	unsigned int k;
+
+	for (k = 0; k < engine->num_alt; ++k) {
+		fm_protocol_t *proto = engine->alt_driver[k];
 
 		if (!strcmp(proto->ops->name, name))
 			return proto;
