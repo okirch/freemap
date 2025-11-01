@@ -40,7 +40,7 @@ fm_uint_array_destroy(fm_uint_array_t *array)
 }
 
 int
-fm_uint_array_get(fm_uint_array_t *array, unsigned int index)
+fm_uint_array_get(const fm_uint_array_t *array, unsigned int index)
 {
 	if (index >= array->count)
 		return -1;

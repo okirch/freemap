@@ -582,46 +582,39 @@ fm_scan_action_reachability_check(void)
 /*
  * Probe for a tcp or udp port
  */
-struct fm_simple_port_scan {
-	fm_scan_action_t	base;
-
-	fm_uint_array_t		ports;
-};
-
 static fm_probe_t *
 fm_simple_port_scan_get_next_probe(const fm_scan_action_t *action, fm_target_t *target, unsigned int index)
 {
-	struct fm_simple_port_scan *portscan = (struct fm_simple_port_scan *) action;
 	int port;
 
-	if ((port = fm_uint_array_get(&portscan->ports, index)) < 0)
+	if ((port = fm_uint_array_get(&action->numeric_params, index)) < 0)
 		return NULL;
 
-	return fm_create_port_probe(portscan->base.probe_class, target, port, &portscan->base.probe_params);
+	return fm_create_port_probe(action->probe_class, target, port, &action->probe_params);
 }
 
 static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
-	.obj_size	= sizeof(struct fm_simple_port_scan),
+	.obj_size	= sizeof(fm_scan_action_t),
 	.get_next_probe	= fm_simple_port_scan_get_next_probe,
 };
 
 fm_scan_action_t *
 fm_scan_action_port_scan(const fm_probe_class_t *pclass, const fm_probe_params_t *params, const fm_uint_array_t *ports)
 {
-	struct fm_simple_port_scan *portscan;
+	fm_scan_action_t *action;
 	char idbuf[128];
 
 	snprintf(idbuf, sizeof(idbuf), "portscan/%s", pclass->name);
 
-	portscan = (struct fm_simple_port_scan *) fm_scan_action_create(FM_PROBE_MODE_PORT, &fm_simple_port_scan_ops, idbuf, pclass);
-	portscan->base.probe_params = *params;
+	action = fm_scan_action_create(FM_PROBE_MODE_PORT, &fm_simple_port_scan_ops, idbuf, pclass);
+	action->probe_params = *params;
 
 	/* simple assign the port array. The caller better not free their copy */
-	portscan->ports = *ports;
+	action->numeric_params = *ports;
 
-	portscan->base.nprobes = portscan->ports.count;
+	action->nprobes = action->numeric_params.count;
 
-	return &portscan->base;
+	return action;
 }
 
 /*
