@@ -432,69 +432,91 @@ fm_scanner_process_arguments(fm_probe_class_t *pclass, int mode, const fm_string
 }
 
 /*
- * Reachability probe
+ * Create a topo, host or port scan action
  */
 static fm_scan_action_t *
-fm_scanner_create_host_probe(fm_scanner_t *scanner, const fm_probe_class_t *pclass, const fm_string_array_t *args)
+fm_scanner_create_probe_action(const char *probe_name, int mode, int flags, const fm_string_array_t *args)
 {
+	fm_probe_class_t *pclass;
 	fm_scan_action_t *action;
 	fm_probe_params_t params;
 	fm_string_array_t proto_args;
+	fm_uint_array_t ports;
 
-	memset(&params, 0, sizeof(params));
 	memset(&proto_args, 0, sizeof(proto_args));
+	memset(&params, 0, sizeof(params));
+	memset(&ports, 0, sizeof(ports));
 
-	if (!fm_scanner_process_arguments(pclass, FM_PROBE_MODE_HOST, args, &params, &proto_args, NULL))
+	pclass = fm_probe_class_find(probe_name, mode);
+	if (pclass == NULL) {
+		if (!(flags & FM_SCAN_ACTION_FLAG_OPTIONAL)) {
+			fm_log_error("Unknown host %s class %s\n",
+					fm_probe_mode_to_string(mode),
+					probe_name);
+			goto failed;
+		}
+
+		fm_log_debug("Ignoring optional %s %s probe - creating dummy action",
+				fm_probe_mode_to_string(mode), probe_name);
+		action = fm_scanner_add_dummy_probe();
+		return action;
+	}
+
+	if (!fm_scanner_process_arguments(pclass, mode, args, &params, &proto_args, &ports))
 		return NULL;
 
-	action = fm_probe_scan_create(pclass, FM_PROBE_MODE_HOST, &params, NULL);
+	action = fm_probe_scan_create(pclass, mode, &params, &ports);
 
 	if (pclass->process_extra_parameters != NULL) {
 		void *extra_params;
 
 		extra_params = pclass->process_extra_parameters(pclass, &proto_args);
-		if (extra_params == NULL) {
-			/* FIXME: memory leak: we should free action */
-			return NULL;
-		}
+		if (extra_params == NULL)
+			goto failed;
 
 		action->extra_params = extra_params;
 	} else
 	if (proto_args.count != 0) {
-		fm_log_error("found %u unrecognized parameters in host probe for %s", proto_args.count, pclass->name);
+		fm_log_error("found %u unrecognized parameters in %s probe for %s", proto_args.count,
+				fm_probe_mode_to_string(mode), pclass->name);
 		fm_string_array_destroy(&proto_args);
-		/* FIXME: memory leak: we should free action */
-		return NULL;
+		goto failed;
 	}
 
 	assert(action->nprobes >= 1);
+	action->flags |= flags;
 
 	return action;
+
+failed:
+	if (action) {
+		/* no fm_action_free() yet, leak */
+	}
+
+	fm_uint_array_destroy(&ports);
+	return NULL;
 }
 
 fm_scan_action_t *
 fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *probe_name, int flags, const fm_string_array_t *args)
 {
-	const fm_probe_class_t *pclass;
 	fm_scan_action_t *action;
 
-	if (!(pclass = fm_probe_class_find(probe_name, FM_PROBE_MODE_HOST))) {
-		if (!(flags & FM_SCAN_ACTION_FLAG_OPTIONAL)) {
-			fm_log_error("Unknown host probe class %s\n", probe_name);
-			return NULL;
-		}
-
-		fm_log_debug("Ignoring optional %s host probe - creating dummy action", probe_name);
-		action = fm_scanner_add_dummy_probe();
-	} else {
-		action = fm_scanner_create_host_probe(scanner, pclass, args);
-	}
-
-	if (action != NULL) {
-		action->flags |= flags;
-
+	action = fm_scanner_create_probe_action(probe_name, FM_PROBE_MODE_HOST, flags, args);
+	if (action != NULL)
 		fm_scan_action_array_append(&scanner->requests, action);
-	}
+
+	return action;
+}
+
+fm_scan_action_t *
+fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *probe_name, int flags, const fm_string_array_t *args)
+{
+	fm_scan_action_t *action;
+
+	action = fm_scanner_create_probe_action(probe_name, FM_PROBE_MODE_PORT, flags, args);
+	if (action != NULL)
+		fm_scan_action_array_append(&scanner->requests, action);
 
 	return action;
 }
@@ -510,51 +532,6 @@ fm_scanner_add_reachability_check(fm_scanner_t *scanner)
 	}
 	return action;
 }
-
-/*
- * Port scan probes
- */
-fm_scan_action_t *
-fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *probe_name, int flags, const fm_string_array_t *args)
-{
-	const fm_probe_class_t *pclass;
-	fm_scan_action_t *action = NULL;
-	fm_string_array_t proto_args;
-	fm_uint_array_t ports;
-	fm_probe_params_t params;
-
-	memset(&proto_args, 0, sizeof(proto_args));
-	memset(&params, 0, sizeof(params));
-	memset(&ports, 0, sizeof(ports));
-
-	if (!(pclass = fm_probe_class_find(probe_name, FM_PROBE_MODE_PORT))) {
-		fm_log_error("Unknown port probe class %s\n", probe_name);
-		return NULL;
-	}
-
-	if (!fm_scanner_process_arguments(pclass, FM_PROBE_MODE_PORT, args, &params, &proto_args, &ports))
-		return NULL;
-
-	action = fm_probe_scan_create(pclass, FM_PROBE_MODE_PORT, &params, &ports);
-	if (action == NULL)
-		goto failed;
-
-	action->flags |= flags;
-	assert(action->nprobes >= 1);
-
-	fm_scan_action_array_append(&scanner->requests, action);
-
-	return action;
-
-failed:
-	if (action) {
-		/* no fm_action_free() yet, leak */
-	}
-
-	fm_uint_array_destroy(&ports);
-	return NULL;
-}
-
 
 /*
  * After executing a number of probes, chech whether at least one has reached the target host
@@ -635,8 +612,8 @@ fm_probe_scan_create(const fm_probe_class_t *pclass, int mode, const fm_probe_pa
 	action = fm_scan_action_create(mode, &fm_probe_scan_action_ops, idbuf, pclass);
 	action->probe_params = *params;
 
-	if (ports) {
-		/* simple assign the port array. The caller better not free their copy */
+	if (mode == FM_PROBE_MODE_PORT) {
+		/* simply assign the port array. The caller better not free their copy */
 		action->numeric_params = *ports;
 		action->nprobes = action->numeric_params.count;
 	} else {
