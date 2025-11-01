@@ -410,9 +410,9 @@ fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *probe_name, int fla
 	const fm_probe_class_t *pclass;
 	fm_scan_action_t *action;
 
-	if (!(pclass = fm_probe_class_find(probe_name))) {
+	if (!(pclass = fm_probe_class_find(probe_name, FM_PROBE_MODE_HOST))) {
 		if (!(flags & FM_SCAN_ACTION_FLAG_OPTIONAL)) {
-			fm_log_error("Cannot create host probe: unknown probe class %s\n", probe_name);
+			fm_log_error("Unknown host probe class %s\n", probe_name);
 			return NULL;
 		}
 
@@ -461,7 +461,7 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *probe_name, int fla
 	memset(&proto_args, 0, sizeof(proto_args));
 	memset(&params, 0, sizeof(proto_args));
 
-	if (!(pclass = fm_probe_class_find(probe_name))) {
+	if (!(pclass = fm_probe_class_find(probe_name, FM_PROBE_MODE_HOST))) {
 		fm_log_error("Unknown port probe class %s\n", probe_name);
 		return NULL;
 	}

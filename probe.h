@@ -30,11 +30,15 @@ typedef bool			fm_probe_status_callback_t(const fm_probe_t *probe,
 						const fm_pkt_t *, double rtt,
 						void *user_data);
 
+#define FM_PROBE_MODE_TOPO	0x0001
+#define FM_PROBE_MODE_HOST	0x0002
+#define FM_PROBE_MODE_PORT	0x0004
+
 struct fm_probe_class {
 	const char *		name;
 	int			action_flags;
+	int			modes;		/* bitwise OR of FM_PROBE_MODE_ values */
 	int			features;	/* usually a copy of proto->supported_parameters */
-	bool			disabled;
 
 	unsigned int		proto_id;
 	fm_protocol_t *		proto;
@@ -144,8 +148,8 @@ struct fm_extant_list {
 };
 
 extern void		fm_probe_class_register(struct fm_probe_class *);
-extern fm_probe_class_t *fm_probe_class_find(const char *name);
-extern fm_probe_class_t *fm_probe_class_by_proto_id(unsigned int proto_id);
+extern fm_probe_class_t *fm_probe_class_find(const char *name, int mode);
+extern fm_probe_class_t *fm_probe_class_by_proto_id(unsigned int proto_id, int mode);
 
 extern fm_probe_t *	fm_create_host_probe(const fm_probe_class_t *, fm_target_t *, const fm_probe_params_t *, const void *extra_params);
 extern fm_probe_t *	fm_create_port_probe(const fm_probe_class_t *, fm_target_t *, uint16_t, const fm_probe_params_t *);

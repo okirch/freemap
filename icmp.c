@@ -782,7 +782,7 @@ fm_icmp_create_host_probe(fm_probe_class_t *pclass, fm_target_t *target, const f
 static struct fm_probe_class fm_icmp_host_probe_class = {
 	.name		= "icmp",
 	.proto_id	= FM_PROTO_ICMP,
-
+	.modes		= FM_PROBE_MODE_TOPO|FM_PROBE_MODE_HOST,
 	.process_extra_parameters = fm_icmp_process_extra_parameters,
 	.create_probe	= fm_icmp_create_host_probe,
 };

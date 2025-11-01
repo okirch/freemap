@@ -356,6 +356,7 @@ fm_tcp_create_parameterized_probe(fm_probe_class_t *pclass, fm_target_t *target,
 static struct fm_probe_class	fm_tcp_port_probe_class = {
 	.name		= "tcp",
 	.proto_id	= FM_PROTO_TCP,
+	.modes		= FM_PROBE_MODE_TOPO|FM_PROBE_MODE_HOST|FM_PROBE_MODE_PORT,
 	.create_probe	= fm_tcp_create_parameterized_probe,
 };
 

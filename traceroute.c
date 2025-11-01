@@ -135,7 +135,7 @@ fm_topo_get_packet_probe_class(const char *proto_name)
 	}
 
 	/* Now get a corresponding probe for this protocol */
-	probe_class = fm_probe_class_by_proto_id(proto->ops->id);
+	probe_class = fm_probe_class_by_proto_id(proto->ops->id, FM_PROBE_MODE_TOPO);
 	if (probe_class == NULL) {
 		fm_log_error("traceroute: no (host) probe for packet protocol %s", proto_name);
 		return NULL;
@@ -825,8 +825,8 @@ fm_topo_create_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_pro
 static struct fm_probe_class fm_traceroute_host_probe_class = {
 	.name		= "traceroute",
 	.proto_id	= FM_PROTO_NONE,
-
-	.features =	FM_PARAM_TYPE_PORT_MASK |
+	.modes		= FM_PROBE_MODE_TOPO|FM_PROBE_MODE_HOST,
+	.features	= FM_PARAM_TYPE_PORT_MASK |
 			  FM_PARAM_TYPE_TOS_MASK |
 			  FM_PARAM_TYPE_RETRIES_MASK,
 

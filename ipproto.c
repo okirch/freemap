@@ -611,7 +611,7 @@ fm_ipproto_create_host_probe(fm_probe_class_t *pclass, fm_target_t *target, cons
 static struct fm_probe_class fm_ipproto_host_probe_class = {
 	.name		= "ipproto",
 	.proto_id	= FM_PROTO_IP,
-
+	.modes		= FM_PROBE_MODE_HOST,
 	.create_probe	= fm_ipproto_create_host_probe,
 };
 

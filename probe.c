@@ -107,7 +107,9 @@ fm_probe_classes_init(void)
 			if (proto == NULL) {
 				fm_log_debug("probe class %s requires protocol %s, which is not available",
 						pclass->name, fm_protocol_id_to_string(pclass->proto_id));
-				pclass->disabled = true;
+
+				/* disable by cleaning out the mask of supported modes */
+				pclass->modes = 0;
 				continue;
 			}
 
@@ -119,7 +121,7 @@ fm_probe_classes_init(void)
 }
 
 const fm_probe_class_t *
-fm_probe_class_find(const char *name)
+fm_probe_class_find(const char *name, int mode)
 {
 	struct fm_probe_class *pclass;
 	unsigned int i;
@@ -128,7 +130,10 @@ fm_probe_class_find(const char *name)
 	for (i = 0; i < probe_class_count; ++i) {
 		pclass = probe_class_registry[i];
 
-		if (!pclass->disabled && !strcmp(pclass->name, name))
+		if (!(pclass->modes & mode))
+			continue;
+
+		if (!strcmp(pclass->name, name))
 			return pclass;
 	}
 
@@ -136,7 +141,7 @@ fm_probe_class_find(const char *name)
 }
 
 fm_probe_class_t *
-fm_probe_class_by_proto_id(unsigned int proto_id)
+fm_probe_class_by_proto_id(unsigned int proto_id, int mode)
 {
 	struct fm_probe_class *pclass;
 	unsigned int i;
@@ -145,7 +150,10 @@ fm_probe_class_by_proto_id(unsigned int proto_id)
 	for (i = 0; i < probe_class_count; ++i) {
 		pclass = probe_class_registry[i];
 
-		if (!pclass->disabled && pclass->proto_id == proto_id)
+		if (!(pclass->modes & mode))
+			continue;
+
+		if (pclass->proto_id == proto_id)
 			return pclass;
 	}
 

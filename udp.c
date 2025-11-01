@@ -512,7 +512,7 @@ fm_udp_create_parameterized_probe(fm_probe_class_t *pclass, fm_target_t *target,
 static struct fm_probe_class fm_udp_port_probe_class = {
 	.name		= "udp",
 	.proto_id	= FM_PROTO_UDP,
-
+	.modes		= FM_PROBE_MODE_TOPO|FM_PROBE_MODE_HOST|FM_PROBE_MODE_PORT,
 	.create_probe	= fm_udp_create_parameterized_probe,
 };
 

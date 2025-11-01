@@ -403,7 +403,7 @@ static struct fm_probe_class fm_arp_host_probe_class = {
 	.name		= "arp",
 	.proto_id	= FM_PROTO_ARP,
 	.action_flags	= FM_SCAN_ACTION_FLAG_LOCAL_ONLY,
-
+	.modes		= FM_PROBE_MODE_HOST,
 	.create_probe	= fm_arp_create_host_probe,
 };
 
