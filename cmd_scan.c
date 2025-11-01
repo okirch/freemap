@@ -71,6 +71,9 @@ void
 fm_command_register_scan(fm_cmdparser_t *parser)
 {
 	fm_cmdparser_add_subcommand(parser, "scan", FM_CMDID_SCAN, NULL, scan_long_options, handle_scan_options);
+	fm_cmdparser_add_subcommand(parser, "topology-scan", FM_CMDID_TOPO_SCAN, NULL, scan_long_options, handle_scan_options);
+	fm_cmdparser_add_subcommand(parser, "host-scan", FM_CMDID_HOST_SCAN, NULL, scan_long_options, handle_scan_options);
+	fm_cmdparser_add_subcommand(parser, "port-scan", FM_CMDID_PORT_SCAN, NULL, scan_long_options, handle_scan_options);
 }
 
 int
@@ -115,6 +118,24 @@ fm_command_perform_scan(fm_command_t *cmd)
 		fm_report_add_logfile(report, scan_options.logfile);
 	}
 
+	if (cmd->cmdid == FM_CMDID_TOPO_SCAN) {
+		program = fm_scan_program_build("scan",
+				project->topology_probe?: "traceroute",
+				NULL,
+				NULL);
+	} else
+	if (cmd->cmdid == FM_CMDID_HOST_SCAN) {
+		program = fm_scan_program_build("scan",
+				NULL,
+				project->reachability_probe?: "default",
+				NULL);
+	} else
+	if (cmd->cmdid == FM_CMDID_PORT_SCAN) {
+		program = fm_scan_program_build("scan",
+				NULL,
+				NULL,
+				project->service_probe?: "default");
+	} else
 	if (scan_options.program != NULL) {
 		program = fm_scan_library_load_program(scan_options.program);
 		if (program == NULL)

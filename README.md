@@ -27,6 +27,7 @@ configure your scan:
 
 ```
   freemap add-targets 192.168.1.0/24
+  freemap set topology-scan traceroute
   freemap set reachability-scan magicscan
   freemap set service-scan thorough
 ```
@@ -37,12 +38,12 @@ You can then run the entire scan process at once, as most other scanners will do
   freemap scan
 ```
 
-Alternatively (and this code is not there yet), you could run individual steps
+Alternatively, you could run individual steps
 
 ```
-  freemap topology
-  freemap hosts
-  freemap services
+  freemap topology-scan
+  freemap host-scan
+  freemap port-scan
 ```
 
 A topology scan performs traceroute-like probes to understand which hops lie between
@@ -54,3 +55,6 @@ at all. Typically, this would be an ICMP ping or an ARP lookup, but other, more
 exotic probes are possible as well.
 
 Finally, the services scan will probe whether services are listening on UDP and TCP ports.
+
+Note, the goal is for freemap to save reachability information (and additional stuff,
+like topology, rtt estimates etc) across invocations. This is not implemented yet, however.

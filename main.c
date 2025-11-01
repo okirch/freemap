@@ -124,6 +124,9 @@ main(int argc, char **argv)
 
 	switch (cmd->cmdid) {
 	case FM_CMDID_SCAN:
+	case FM_CMDID_TOPO_SCAN:
+	case FM_CMDID_HOST_SCAN:
+	case FM_CMDID_PORT_SCAN:
 		return fm_command_perform_scan(cmd);
 
 	case FM_CMDID_INIT:
