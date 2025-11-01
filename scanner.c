@@ -27,8 +27,7 @@
 
 
 static fm_scan_action_t *	fm_host_scan_action_create(const fm_probe_class_t *pclass, const fm_probe_params_t *params);
-static fm_scan_action_t *	fm_scan_action_port_scan(const fm_probe_class_t *pclass, const fm_probe_params_t *,
-					unsigned int nranges, const fm_port_range_t *range, bool randomize);
+static fm_scan_action_t *	fm_scan_action_port_scan(const fm_probe_class_t *pclass, const fm_probe_params_t *, const fm_uint_array_t *);
 static fm_scan_action_t *	fm_scan_action_reachability_check(void);
 
 static inline void
@@ -450,22 +449,50 @@ fm_scanner_add_reachability_check(fm_scanner_t *scanner)
 }
 
 /*
+ * Process a port or port range
+ */
+static bool
+fm_scanner_process_ports(fm_probe_class_t *pclass, const char *arg, fm_uint_array_t *array)
+{
+	fm_port_range_t range;
+	unsigned int low_port, high_port;
+
+	if (!fm_parse_port_range(arg, &range)) {
+		fm_log_error("%s: unable to parse port range \"%s\"", pclass->name, arg);
+		return false;
+	}
+
+	low_port = range.first;
+	high_port = range.last;
+
+	if (low_port == 0 || low_port > high_port || high_port > 65535) {
+		fm_log_error("%s: invalid port range %u-%u", pclass->name, low_port, high_port);
+		return false;
+	}
+
+	while (low_port <= high_port)
+		fm_uint_array_append(array, low_port++);
+
+	return true;
+}
+
+/*
  * Port scan probes
  */
 fm_scan_action_t *
 fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *probe_name, int flags, const fm_string_array_t *args)
 {
-	static const unsigned int MAXRANGE=32;
-	fm_port_range_t ranges[MAXRANGE];
-	unsigned int i, nranges = 0;
 	const fm_probe_class_t *pclass;
 	fm_scan_action_t *action = NULL;
 	fm_string_array_t proto_args;
+	fm_uint_array_t ports;
 	bool randomize = false;
 	fm_probe_params_t params;
+	unsigned int i;
 
 	memset(&proto_args, 0, sizeof(proto_args));
-	memset(&params, 0, sizeof(proto_args));
+	memset(&params, 0, sizeof(params));
+	memset(&ports, 0, sizeof(ports));
 
 	if (!(pclass = fm_probe_class_find(probe_name, FM_PROBE_MODE_HOST))) {
 		fm_log_error("Unknown port probe class %s\n", probe_name);
@@ -477,19 +504,8 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *probe_name, int fla
 		fm_param_type_t param_type = FM_PARAM_TYPE_NONE;
 
 		if (isdigit(*arg)) {
-			fm_port_range_t *r;
-
-			if (nranges >= MAXRANGE) {
-				fm_log_error("Too many port ranges in port scan call");
-				return NULL;
-			}
-
-			r = &ranges[nranges++];
-
-			if (!fm_parse_port_range(arg, r)) {
-                                fm_log_error("Unable to parse port range \"%s\"", arg);
-                                return NULL;
-                        }
+			if (!fm_scanner_process_ports(pclass, arg, &ports))
+				goto failed;
 		} else if (fm_parse_numeric_argument(arg, "retries", &params.retries)) {
 			param_type = FM_PARAM_TYPE_RETRIES;
 		} else if (fm_parse_numeric_argument(arg, "ttl", &params.ttl)) {
@@ -509,11 +525,14 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *probe_name, int fla
 		}
 	}
 
-	if (nranges == 0)
-		fm_log_error("Port scan call does not specify any ports to scan");
+	if (ports.count == 0)
+		fm_log_error("%s: Port scan call does not specify any ports to scan", pclass->name);
 
-	if (!(action = fm_scan_action_port_scan(pclass, &params, nranges, ranges, randomize)))
-		return NULL;
+	if (randomize)
+		fm_uint_array_randomize(&ports);
+
+	if (!(action = fm_scan_action_port_scan(pclass, &params, &ports)))
+		goto failed;
 
 	action->flags |= flags;
 	assert(action->nprobes >= 1);
@@ -521,6 +540,14 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *probe_name, int fla
 	fm_scan_action_array_append(&scanner->requests, action);
 
 	return action;
+
+failed:
+	if (action) {
+		/* no fm_action_free() yet, leak */
+	}
+
+	fm_uint_array_destroy(&ports);
+	return NULL;
 }
 
 
@@ -579,42 +606,18 @@ static const struct fm_scan_action_ops	fm_simple_port_scan_ops = {
 };
 
 fm_scan_action_t *
-fm_scan_action_port_scan(const fm_probe_class_t *pclass, const fm_probe_params_t *params, unsigned int nranges, const fm_port_range_t *range, bool randomize)
+fm_scan_action_port_scan(const fm_probe_class_t *pclass, const fm_probe_params_t *params, const fm_uint_array_t *ports)
 {
 	struct fm_simple_port_scan *portscan;
-	unsigned int i;
 	char idbuf[128];
-
-	if (nranges == 0) {
-		fm_log_error("%s: no port ranges given", pclass->name);
-		return NULL;
-	}
-
-	for (i = 0; i < nranges; ++i) {
-		unsigned int low_port = range[i].first;
-		unsigned int high_port = range[i].last;
-
-		if (low_port == 0 || low_port > high_port || high_port > 65535) {
-			fm_log_error("%s: invalid port range %u-%u", pclass->name, low_port, high_port);
-			return NULL;
-		}
-	}
 
 	snprintf(idbuf, sizeof(idbuf), "portscan/%s", pclass->name);
 
 	portscan = (struct fm_simple_port_scan *) fm_scan_action_create(FM_PROBE_MODE_PORT, &fm_simple_port_scan_ops, idbuf, pclass);
 	portscan->base.probe_params = *params;
 
-	for (i = 0; i < nranges; ++i) {
-		unsigned int low_port = range[i].first;
-		unsigned int high_port = range[i].last;
-
-		while (low_port <= high_port)
-			fm_uint_array_append(&portscan->ports, low_port++);
-	}
-
-	if (randomize)
-		fm_uint_array_randomize(&portscan->ports);
+	/* simple assign the port array. The caller better not free their copy */
+	portscan->ports = *ports;
 
 	portscan->base.nprobes = portscan->ports.count;
 
