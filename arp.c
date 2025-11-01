@@ -60,7 +60,7 @@ static int		fm_arp_probe_original_ifindex(const fm_probe_t *);
 static fm_arp_request_t *fm_arp_probe_get_request(const fm_probe_t *probe);
 static void		fm_arp_probe_set_request(fm_probe_t *probe, fm_arp_request_t *arp);
 
-static struct fm_protocol_ops	fm_arp_ops = {
+static struct fm_protocol	fm_arp_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "arp",
 	.id		= FM_PROTO_ARP,
@@ -134,7 +134,7 @@ fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 		return false;
 
 	if (!(arp = fm_pkt_pull(pkt, sizeof(*arp) + 2 * ETH_ALEN + 2 * 4))) {
-		fm_log_debug("%s: bad ARP header", proto->ops->name);
+		fm_log_debug("%s: bad ARP header", proto->name);
 		return false;
 	}
 
@@ -386,7 +386,7 @@ fm_arp_create_host_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm
 	fm_arp_request_t *arp;
 	fm_probe_t *probe;
 
-	assert(proto && proto->ops->id == FM_PROTO_ARP);
+	assert(proto && proto->id == FM_PROTO_ARP);
 
 	arp = fm_arp_request_alloc(proto, target, params, extra_params);
 	if (arp == NULL)

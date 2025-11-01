@@ -86,7 +86,7 @@ fm_topo_state_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_pa
 	for (ttl = 0; ttl < FM_MAX_TOPO_DEPTH; ++ttl)
 		topo->hop[ttl].distance = ttl;
 
-	if (topo->packet_proto->ops->supported_parameters & FM_FEATURE_SOCKET_SHARING_MASK) {
+	if (topo->packet_proto->supported_parameters & FM_FEATURE_SOCKET_SHARING_MASK) {
 		topo->shared_socks = fm_topo_shared_sockets_get(topo->packet_proto, topo->family);
 
 		if (extra_params->packet_proto_params) {
@@ -129,13 +129,13 @@ fm_topo_get_packet_probe_class(const char *proto_name)
 		fm_log_error("traceroute: unknown packet protocol %s", proto_name);
 		return NULL;
 	}
-	if (proto->ops->id == FM_PROTO_NONE) {
+	if (proto->id == FM_PROTO_NONE) {
 		fm_log_error("traceroute: not packet protocol: %s", proto_name);
 		return NULL;
 	}
 
 	/* Now get a corresponding probe for this protocol */
-	probe_class = fm_probe_class_by_proto_id(proto->ops->id, FM_PROBE_MODE_TOPO);
+	probe_class = fm_probe_class_by_proto_id(proto->id, FM_PROBE_MODE_TOPO);
 	if (probe_class == NULL) {
 		fm_log_error("traceroute: no (host) probe for packet protocol %s", proto_name);
 		return NULL;
@@ -438,7 +438,7 @@ fm_topo_state_send_probe(fm_topo_state_t *topo, fm_topo_hop_state_t *hop, double
 
 	probe = fm_create_host_probe(topo->packet_probe_class, topo->target, &params, NULL);
 	if (probe == NULL) {
-		fm_log_error("%s: unable to create %s probe", fm_address_format(&topo->target->address), packet_proto->ops->name);
+		fm_log_error("%s: unable to create %s probe", fm_address_format(&topo->target->address), packet_proto->name);
 		return FM_SEND_ERROR;
 	}
 
@@ -618,7 +618,7 @@ fm_topo_shared_socket_open(fm_topo_shared_sockets_t *shared, unsigned ttl)
 		if (!fm_socket_bind(sock, &local_addr))
 			fm_log_fatal("%s: cannot bind socket", __func__);
 
-		fm_log_debug("Created shared %s socket", shared->packet_proto->ops->name);
+		fm_log_debug("Created shared %s socket", shared->packet_proto->name);
 		shared->socks[ttl] = sock;
 	}
 
@@ -810,7 +810,7 @@ fm_topo_create_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_pro
 	if (topo == NULL)
 		return NULL;
 
-	snprintf(name, sizeof(name), "topo/%s", topo->packet_proto->ops->name);
+	snprintf(name, sizeof(name), "topo/%s", topo->packet_proto->name);
 	probe = fm_probe_alloc(name, &fm_topo_probe_ops, target);
 
 	fm_topo_probe_set_request(probe, topo);

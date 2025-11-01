@@ -64,7 +64,7 @@ static bool		fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static fm_udp_request_t *fm_udp_probe_get_request(const fm_probe_t *probe);
 static void		fm_udp_probe_set_request(fm_probe_t *probe, fm_udp_request_t *udp);
 
-static struct fm_protocol_ops	fm_udp_bsdsock_ops = {
+static struct fm_protocol	fm_udp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "udp",
 	.id		= FM_PROTO_UDP,
@@ -376,7 +376,7 @@ fm_udp_request_send(fm_udp_request_t *udp, fm_udp_extant_info_t *extant_info)
 	pkt = fm_udp_build_packet(&udp->host_address, udp->params.port);
 
 	/* apply ttl, tos etc */
-	fm_pkt_apply_probe_params(pkt, &udp->params, udp->proto->ops->supported_parameters);
+	fm_pkt_apply_probe_params(pkt, &udp->params, udp->proto->supported_parameters);
 
 	if (!fm_socket_send_pkt_and_burn(sock, pkt)) {
 		fm_log_error("Unable to send UDP packet: %m");
@@ -491,7 +491,7 @@ fm_udp_create_parameterized_probe(fm_probe_class_t *pclass, fm_target_t *target,
 	fm_probe_t *probe;
 	char name[32];
 
-	assert(proto && proto->ops->id == FM_PROTO_UDP);
+	assert(proto && proto->id == FM_PROTO_UDP);
 
 	udp = fm_udp_request_alloc(proto, target, params, extra_params);
 	if (udp == NULL)

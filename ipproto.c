@@ -62,10 +62,11 @@ static bool		fm_ipproto_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static fm_ipproto_request_t *fm_ipproto_probe_get_request(const fm_probe_t *probe);
 static void		fm_ipproto_probe_set_request(fm_probe_t *probe, fm_ipproto_request_t *req);
 
-static struct fm_protocol_ops	fm_ipproto_ops = {
+static struct fm_protocol	fm_ipproto_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "ipproto",
 	.require_raw	= true,
+	.id		= FM_PROTO_IP,
 
 	.create_socket	= fm_ipproto_create_socket,
 	/* We do not expect to receive a response, so no response handler for now */

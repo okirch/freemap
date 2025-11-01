@@ -36,7 +36,7 @@ typedef struct fm_scanner fm_scanner_t;
 typedef struct fm_scan_action	fm_scan_action_t;
 typedef struct fm_scan_program	fm_scan_program_t;
 typedef struct fm_scan_exec fm_scan_exec_t;
-typedef struct fm_protocol fm_protocol_t;
+typedef const struct fm_protocol fm_protocol_t;
 typedef const struct fm_protocol_engine fm_protocol_engine_t;
 typedef struct fm_probe fm_probe_t;
 typedef const struct fm_probe_class	fm_probe_class_t;

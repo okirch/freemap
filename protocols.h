@@ -27,10 +27,6 @@
 #include "protocols.h"
 
 struct fm_protocol {
-	const struct fm_protocol_ops *ops;
-};
-
-struct fm_protocol_ops {
 	size_t		obj_size;
 	const char *	name;
 
@@ -72,7 +68,7 @@ extern fm_protocol_engine_t *fm_protocol_engine_create_default(void);
 extern const char *	fm_protocol_id_to_string(unsigned int id);
 extern unsigned int	fm_protocol_string_to_id(const char *name);
 
-extern void		fm_protocol_directory_add(struct fm_protocol_ops *ops);
+extern void		fm_protocol_directory_add(struct fm_protocol *ops);
 extern void		fm_protocol_directory_display(void);
 
 extern fm_protocol_t *	fm_protocol_engine_get_protocol(fm_protocol_engine_t *, const char *);
@@ -80,7 +76,6 @@ extern fm_protocol_t *	fm_protocol_engine_get_protocol_alt(fm_protocol_engine_t 
 extern fm_protocol_t *	fm_protocol_by_name(const char *);
 extern fm_protocol_t *	fm_protocol_by_id(unsigned int);
 
-extern fm_protocol_t *	fm_protocol_create(const struct fm_protocol_ops *ops);
 extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);
 extern fm_socket_t *	fm_protocol_create_host_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 
@@ -95,7 +90,7 @@ fm_protocol_register_ ## ops(void) \
 static inline bool
 fm_protocol_supports_param(fm_protocol_t *proto, fm_param_type_t type)
 {
-	return !!(proto->ops->supported_parameters & (1 << type));
+	return !!(proto->supported_parameters & (1 << type));
 }
 
 static inline uint16_t

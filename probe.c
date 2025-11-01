@@ -114,7 +114,7 @@ fm_probe_classes_init(void)
 			}
 
 			pclass->proto = proto;
-			pclass->features |= proto->ops->supported_parameters;
+			pclass->features |= proto->supported_parameters;
 		}
 		initialized = true;
 	}

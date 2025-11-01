@@ -25,7 +25,7 @@
 #include "buffer.h"
 
 static unsigned int	fm_protocol_directory_count;
-static struct fm_protocol_ops *fm_protocol_directory[256];
+static struct fm_protocol *fm_protocol_directory[256];
 
 /*
  * Using gcc constructors, all our protocol drivers come here when the
@@ -33,11 +33,12 @@ static struct fm_protocol_ops *fm_protocol_directory[256];
  * We inspect and vet them later.
  */
 void
-fm_protocol_directory_add(struct fm_protocol_ops *ops)
+fm_protocol_directory_add(struct fm_protocol *proto)
 {
-	assert(ops->id != FM_PROTO_NONE);
+	if (proto->id == FM_PROTO_NONE)
+		fm_log_fatal("Attempt to add protocol %s without protocol id", proto->name);
 	if (fm_protocol_directory_count < 256)
-		fm_protocol_directory[fm_protocol_directory_count++] = ops;
+		fm_protocol_directory[fm_protocol_directory_count++] = proto;
 }
 
 void
@@ -47,20 +48,20 @@ fm_protocol_directory_display(void)
 
 	printf("Found %d protocol drivers:\n", fm_protocol_directory_count);
 	for (i = 0; i < fm_protocol_directory_count; ++i) {
-		struct fm_protocol_ops *ops = fm_protocol_directory[i];
+		struct fm_protocol *ops = fm_protocol_directory[i];
 
 		printf("%-12s; implements %s\n", ops->name, fm_protocol_id_to_string(ops->id));
 	}
 }
 
-static const struct fm_protocol_ops *
+static const struct fm_protocol *
 fm_protocol_directory_select(unsigned int proto_id, bool have_raw)
 {
 	unsigned int i, best_rating = 0;
-	const struct fm_protocol_ops *best = NULL;
+	const struct fm_protocol *best = NULL;
 
 	for (i = 0; i < fm_protocol_directory_count; ++i) {
-		struct fm_protocol_ops *ops = fm_protocol_directory[i];
+		struct fm_protocol *ops = fm_protocol_directory[i];
 		unsigned int rating;
 
 		if (ops->id != proto_id)
@@ -113,19 +114,19 @@ fm_protocol_engine_create_standard(struct fm_protocol_engine *engine)
 	have_raw = fm_socket_have_raw();
 
 	for (id = 0; id < __FM_PROTO_MAX; ++id) {
-		const struct fm_protocol_ops *ops;
+		fm_protocol_t *proto;
 		const char *proto_name;
 
 		proto_name = fm_protocol_id_to_string(id);
 
-		ops = fm_protocol_directory_select(id, have_raw);
-		if (ops == NULL) {
+		proto = fm_protocol_directory_select(id, have_raw);
+		if (proto == NULL) {
 			fm_log_debug("%02u %-10s no driver", id, proto_name);
 			continue;
 		}
 
-		fm_log_debug("%02u %-10s use driver %s", id, proto_name, ops->name);
-		engine->driver[id] = fm_protocol_create(ops);
+		fm_log_debug("%02u %-10s use driver %s", id, proto_name, proto->name);
+		engine->driver[id] = proto;
 		assert(engine->driver[id]);
 	}
 }
@@ -139,17 +140,17 @@ fm_protocol_engine_create_other(struct fm_protocol_engine *engine)
 	have_raw = fm_socket_have_raw();
 
 	for (i = 0; i < fm_protocol_directory_count; ++i) {
-		struct fm_protocol_ops *ops = fm_protocol_directory[i];
+		fm_protocol_t *proto = fm_protocol_directory[i];
 
-		if (ops->id == FM_PROTO_NONE)
+		if (proto->id == FM_PROTO_NONE)
 			continue;
-		if (ops->require_raw && !have_raw)
+		if (proto->require_raw && !have_raw)
 			continue;
 
 		if (engine->num_alt >= FM_PROTOCOL_ENGINE_MAX)
 			fm_log_fatal("%s: too many protocol drivers", __func__);
 
-		engine->alt_driver[engine->num_alt++] = fm_protocol_create(ops);
+		engine->alt_driver[engine->num_alt++] = proto;
 	}
 }
 
@@ -168,11 +169,11 @@ fm_protocol_engine_create_default(void)
 		for (id = 0; id < __FM_PROTO_MAX; ++id) {
 			fm_protocol_t *driver = engine->driver[id];
 
-			if (driver != NULL && driver->ops->id != id) {
+			if (driver != NULL && driver->id != id) {
 				fm_log_error("created %s protocol driver \"%s\", but it provides protocol id %u",
 						fm_protocol_id_to_string(id),
-						driver->ops->name,
-						driver->ops->id);
+						driver->name,
+						driver->id);
 				abort();
 			}
 		}
@@ -208,7 +209,7 @@ fm_protocol_engine_get_protocol_alt(fm_protocol_engine_t *engine, const char *na
 	for (k = 0; k < engine->num_alt; ++k) {
 		fm_protocol_t *proto = engine->alt_driver[k];
 
-		if (!strcmp(proto->ops->name, name))
+		if (!strcmp(proto->name, name))
 			return proto;
 	}
 
@@ -271,13 +272,9 @@ fm_protocol_string_to_id(const char *name)
  * fm_protocol API
  */
 fm_protocol_t *
-fm_protocol_create(const struct fm_protocol_ops *ops)
+fm_protocol_create(const struct fm_protocol *proto)
 {
-	fm_protocol_t *prot;
-
-	prot = calloc(1, ops->obj_size);
-	prot->ops = ops;
-	return prot;
+	return proto;
 }
 
 static void
@@ -369,12 +366,12 @@ fm_protocol_create_socket(fm_protocol_t *proto, int ipproto)
 {
 	fm_socket_t *sock;
 
-	if (proto->ops->create_socket == NULL)
+	if (proto->create_socket == NULL)
 		return NULL;
-	sock = proto->ops->create_socket(proto, ipproto);
+	sock = proto->create_socket(proto, ipproto);
 
 	if (sock && sock->proto == NULL) {
-		fm_log_warning("protocol driver %s forgot to attach itself to new socket", proto->ops->name);
+		fm_log_warning("protocol driver %s forgot to attach itself to new socket", proto->name);
 		fm_socket_attach_protocol(sock, proto);
 	}
 
@@ -384,10 +381,10 @@ fm_protocol_create_socket(fm_protocol_t *proto, int ipproto)
 fm_socket_t *
 fm_protocol_create_host_shared_socket(fm_protocol_t *proto, fm_target_t *target)
 {
-	if (target == NULL || proto->ops->create_host_shared_socket == NULL)
+	if (target == NULL || proto->create_host_shared_socket == NULL)
 		return NULL;
 
-	return proto->ops->create_host_shared_socket(proto, target);
+	return proto->create_host_shared_socket(proto, target);
 }
 
 /*

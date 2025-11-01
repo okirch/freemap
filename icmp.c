@@ -47,7 +47,7 @@ static fm_extant_t *	fm_icmp_locate_probe(const struct sockaddr_storage *target_
 static fm_icmp_request_t *fm_icmp_probe_get_request(const fm_probe_t *probe);
 static void		fm_icmp_probe_set_request(fm_probe_t *probe, fm_icmp_request_t *icmp);
 
-static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
+static struct fm_protocol	fm_icmp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "icmp",
 	.id		= FM_PROTO_ICMP,
@@ -64,7 +64,7 @@ static struct fm_protocol_ops	fm_icmp_bsdsock_ops = {
 	.process_error	= fm_icmp_process_error,
 };
 
-static struct fm_protocol_ops	fm_icmp_rawsock_ops = {
+static struct fm_protocol	fm_icmp_rawsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "icmp-raw",
 	.id		= FM_PROTO_ICMP,
@@ -140,7 +140,7 @@ fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 
 	fm_host_asset_update_state_by_address(&pkt->peer_addr, FM_ASSET_STATE_OPEN);
 
-	if (proto->ops == &fm_icmp_bsdsock_ops) {
+	if (proto == &fm_icmp_bsdsock_ops) {
 		/* When using dgram/icmp sockets, the kernel will overwrite the icmp sequence
 		 * number that we picked. So ignore that in our search for a matching
 		 * probe */
@@ -152,7 +152,7 @@ fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 		/* PF_RAW sockets will always give us the IPv4 header.
 		 * Funnily, IPv6 packets always come with the header stripped. */
 		if (!fm_pkt_pull_ip_hdr(pkt, &ip)) {
-			fm_log_debug("%s: bad IP header", proto->ops->name);
+			fm_log_debug("%s: bad IP header", proto->name);
 			return false;
 		}
 
@@ -184,7 +184,7 @@ fm_icmp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 
 	/* fm_print_hexdump(pkt->data, pkt->len); */
 
-	if (proto->ops == &fm_icmp_bsdsock_ops) {
+	if (proto == &fm_icmp_bsdsock_ops) {
 		/* When using dgram/icmp sockets, the kernel will overwrite the icmp sequence
 		 * number that we picked. So ignore that in our search for a matching
 		 * probe */
@@ -471,7 +471,7 @@ fm_icmp_request_build_packet(fm_icmp_request_t *icmp)
         }
 
 	/* apply ttl, tos etc */
-	fm_pkt_apply_probe_params(pkt, &icmp->params, icmp->proto->ops->supported_parameters);
+	fm_pkt_apply_probe_params(pkt, &icmp->params, icmp->proto->supported_parameters);
 
 	icmp->icmp.seq += 1;
 
@@ -764,7 +764,7 @@ fm_icmp_create_host_probe(fm_probe_class_t *pclass, fm_target_t *target, const f
 	fm_probe_t *probe;
 	char name[32];
 
-	assert(proto && proto->ops->id == FM_PROTO_ICMP);
+	assert(proto && proto->id == FM_PROTO_ICMP);
 
 	icmp = fm_icmp_request_alloc(proto, target, params, extra_params);
 	if (icmp == NULL)

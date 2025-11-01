@@ -57,7 +57,7 @@ static bool		fm_tcp_connecton_established(fm_protocol_t *proto, const fm_address
 static fm_tcp_request_t *fm_tcp_probe_get_request(const fm_probe_t *probe);
 static void		fm_tcp_probe_set_request(fm_probe_t *probe, fm_tcp_request_t *tcp);
 
-static struct fm_protocol_ops	fm_tcp_bsdsock_ops = {
+static struct fm_protocol	fm_tcp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "tcp",
 	.id		= FM_PROTO_TCP,
@@ -336,7 +336,7 @@ fm_tcp_create_parameterized_probe(fm_probe_class_t *pclass, fm_target_t *target,
 	fm_probe_t *probe;
 	char name[32];
 
-	assert(proto && proto->ops->id == FM_PROTO_TCP);
+	assert(proto && proto->id == FM_PROTO_TCP);
 
 	if (!(tcp = fm_tcp_request_alloc(proto, target, params)))
 		return NULL;

@@ -955,10 +955,10 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 	 * Instead we get an EAGAIN here, and the recvmsg for the regular
 	 * POLLIN below will see ECONNREFUSED.
 	 */
-	if ((bits & POLLERR) && proto->ops->process_error != NULL) {
+	if ((bits & POLLERR) && proto->process_error != NULL) {
 		pkt = fm_socket_recv_packet(sock, MSG_ERRQUEUE);
 		if (pkt != NULL) {
-			proto->ops->process_error(proto, pkt);
+			proto->process_error(proto, pkt);
 			fm_pkt_free(pkt);
 		} else if (errno != EAGAIN) {
 			fm_log_error("socket %d: POLLERR set but recvmsg failed: %m", sock->fd);
@@ -967,18 +967,18 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		bits &= ~POLLERR;
 	}
 
-	if ((bits & POLLIN) && proto->ops->process_packet != NULL) {
+	if ((bits & POLLIN) && proto->process_packet != NULL) {
 		pkt = fm_socket_recv_packet(sock, 0);
 
 		if (pkt == NULL && errno == ECONNREFUSED
 		 && fm_socket_is_connected(sock)
-		 && proto->ops->process_error != NULL) {
+		 && proto->process_error != NULL) {
 			pkt = fm_socket_build_error_packet(&sock->peer_address, errno);
-			proto->ops->process_error(proto, pkt);
+			proto->process_error(proto, pkt);
 			fm_pkt_free(pkt);
 		} else
 		if (pkt != NULL) {
-			proto->ops->process_packet(proto, pkt);
+			proto->process_packet(proto, pkt);
 			fm_pkt_free(pkt);
 		} else if (errno != EAGAIN) {
 			fm_log_error("socket %d: POLLIN set but recvmsg failed: %m", sock->fd);
@@ -987,17 +987,17 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		bits &= ~POLLIN;
 	}
 
-	if ((bits & POLLOUT) && proto->ops->connection_established != NULL) {
+	if ((bits & POLLOUT) && proto->connection_established != NULL) {
 		/* POLLOUT being asserted does not mean the remote port is there;
 		 * it just means the kernel can tell us whether the connection attempt
 		 * succeeded. So go and reap the status */
 		if (connect(sock->fd, (struct sockaddr *) &sock->peer_address, sock->addrlen) < 0) {
 			/* fm_log_debug("  connect error sock %d: %m", sock->fd); */
 			pkt = fm_socket_build_error_packet(&sock->peer_address, errno);
-			proto->ops->process_error(proto, pkt);
+			proto->process_error(proto, pkt);
 			fm_pkt_free(pkt);
 		} else {
-			proto->ops->connection_established(proto, &sock->peer_address);
+			proto->connection_established(proto, &sock->peer_address);
 		}
 
 		bits &= ~POLLOUT;
