@@ -186,6 +186,10 @@ extern fm_error_t	fm_probe_set_socket(fm_probe_t *probe, fm_socket_t *sock);
 extern void		fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt);
 extern void		fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt);
 
+extern bool		fm_sched_stats_update_timeout_min(fm_sched_stats_t *, const struct timeval *, const char *);
+extern bool		fm_sched_stats_update_timeout_max(fm_sched_stats_t *, const struct timeval *, const char *);
+extern void		fm_sched_stats_update_from_nested(fm_sched_stats_t *, const fm_sched_stats_t *);
+
 static inline bool
 fm_probe_class_supports(const fm_probe_class_t *pclass, fm_param_type_t type)
 {

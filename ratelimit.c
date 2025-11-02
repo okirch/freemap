@@ -122,6 +122,9 @@ fm_timestamp_older(const struct timeval *expiry, const struct timeval *now)
 
 	if (now == NULL)
 		now = fm_timestamp_now();
+	else if (!timerisset(now))
+		return true;
+
 	return timercmp(expiry, now, <=);
 }
 

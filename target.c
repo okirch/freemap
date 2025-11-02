@@ -598,23 +598,28 @@ fm_target_get_next_schedule_time(fm_target_t *target, fm_sched_stats_t *stats)
 	hlist_iterator_t wait_iter;
 	fm_probe_t *probe;
 
+	if (target->ready_probes.hlist.first != NULL) {
+		fm_sched_stats_update_timeout_min(stats, fm_timestamp_now(), "runnable jobs");
+		return;
+	}
+
 	hlist_iterator_init(&wait_iter, &target->pending_probes.hlist);
 	while ((probe = hlist_iterator_next(&wait_iter)) != NULL) {
-		const struct timeval *expiry = &probe->expires;
-
-		if (fm_timestamp_is_set(expiry) && fm_timestamp_older(expiry, &stats->timeout))
-			stats->timeout = *expiry;
+		fm_sched_stats_update_timeout_min(stats, &probe->expires, probe->name);
 	}
 
 	if (!fm_ratelimit_available(&target->host_rate_limit)) {
+		const char *name = NULL;
 		struct timeval target_come_back;
 		double delay;
 
-		delay = fm_ratelimit_wait_until(&target->host_rate_limit, 1);
-		fm_timestamp_set_timeout(&target_come_back, delay);
+		if (fm_debug_level)
+			name = fm_address_format(&target->address);
 
-		if (fm_timestamp_older(&target_come_back, &stats->timeout))
-			stats->timeout = target_come_back;
+		delay = fm_ratelimit_wait_until(&target->host_rate_limit, 1);
+
+		fm_timestamp_set_timeout(&target_come_back, delay);
+		fm_sched_stats_update_timeout_max(stats, &target_come_back, name);
 	}
 }
 

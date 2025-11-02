@@ -218,3 +218,45 @@ fm_linear_scheduler_create(fm_scanner_t *scanner)
 {
 	return fm_scheduler_alloc(scanner, &fm_linear_scheduler_ops);
 }
+
+/*
+ * Helper functions
+ */
+bool
+fm_sched_stats_update_timeout_min(fm_sched_stats_t *stats, const struct timeval *expiry, const char *who)
+{
+	if (!fm_timestamp_is_set(&stats->timeout)
+	 || (fm_timestamp_is_set(expiry) && fm_timestamp_older(expiry, &stats->timeout))) {
+		stats->timeout = *expiry;
+
+		if (fm_debug_level && fm_timestamp_is_set(&stats->timeout)) {
+			double delay = fm_timestamp_expires_when(&stats->timeout, NULL);
+			fm_log_debug("%s: new timeout is %f", who, delay);
+			assert(delay >= 0);
+		}
+		return true;
+	}
+	return false;
+}
+
+bool
+fm_sched_stats_update_timeout_max(fm_sched_stats_t *stats, const struct timeval *expiry, const char *who)
+{
+	if (fm_timestamp_is_set(&stats->timeout)
+	 && fm_timestamp_is_set(expiry) && fm_timestamp_older(&stats->timeout, expiry)) {
+		stats->timeout = *expiry;
+
+		fm_log_debug("%s: new timeout is %f", who, fm_timestamp_expires_when(&stats->timeout, NULL));
+		return true;
+	}
+	return false;
+}
+
+void
+fm_sched_stats_update_from_nested(fm_sched_stats_t *stats, const fm_sched_stats_t *nested)
+{
+	fm_sched_stats_update_timeout_min(stats, &nested->timeout, __func__);
+	stats->num_sent += nested->num_sent;
+	stats->num_processed += nested->num_processed;
+}
+

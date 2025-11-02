@@ -219,7 +219,6 @@ void
 fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 {
 	unsigned int num_visited = 0;
-	struct timeval global_timeout;
 
 	while (true) {
 		fm_target_t *target;
@@ -236,23 +235,12 @@ fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 
 		memset(&sched_stats, 0, sizeof(sched_stats));
 		sched_stats.job_quota = fm_target_get_send_quota(target, global_stats->job_quota);
-		if (sched_stats.job_quota != 0)
+		if (sched_stats.job_quota != 0) {
 			fm_target_schedule(target, &sched_stats);
 
-		/* now update the global timeout */
-		if (!fm_timestamp_is_set(&global_timeout)) {
-			global_timeout = sched_stats.timeout;
-		} else {
-			const struct timeval *now = fm_timestamp_now();
-			double target_delay, global_delay;
-
-			target_delay = fm_timestamp_expires_when(&sched_stats.timeout, now);
-			global_delay = fm_timestamp_expires_when(&global_timeout, now);
-			if (target_delay < global_delay)
-				global_timeout = sched_stats.timeout;
+			fm_sched_stats_update_from_nested(global_stats, &sched_stats);
+			fm_ratelimit_consume(&scanner->send_rate_limit, sched_stats.num_sent);
 		}
-
-		fm_ratelimit_consume(&scanner->send_rate_limit, sched_stats.num_sent);
 	}
 }
 
