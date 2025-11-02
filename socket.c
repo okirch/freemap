@@ -1084,12 +1084,13 @@ fm_socket_purge(void)
 }
 
 bool
-fm_socket_poll_all(void)
+fm_socket_poll_all(const struct timeval *timeout)
 {
 	unsigned int max_fds = 0, nfds = 0;
 	fm_socket_t *sock;
 	struct pollfd *pfd;
 	fm_socket_t **socks;
+	long timeout_ms;
 	int rv;
 
 	fm_socket_foreach(&socket_list, sock) {
@@ -1112,7 +1113,18 @@ fm_socket_poll_all(void)
 		}
 	}
 
-	rv = poll(pfd, nfds, 10);
+	timeout_ms = 100;
+	if (timeout != NULL && fm_timestamp_is_set(timeout)) {
+		timeout_ms = 1000 * fm_timestamp_expires_when(timeout, NULL) + .5;
+		assert(timeout_ms >= 0);
+
+		if (timeout_ms > 2000) {
+			fm_log_warning("%s: excessively large timeout %f", fm_timestamp_expires_when(timeout, NULL));
+			timeout_ms = 2000;
+		}
+	}
+
+	rv = poll(pfd, nfds, timeout_ms);
 	if (rv >= 0) {
 		while (nfds--) {
 			struct pollfd *rp = &pfd[nfds];

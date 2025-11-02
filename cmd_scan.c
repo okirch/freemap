@@ -164,13 +164,15 @@ fm_command_perform_scan(fm_command_t *cmd)
 	}
 
 	while (true) {
-		if (!fm_scanner_transmit(scanner)) {
-			printf("All probes completed (%.2f msec)\n",
+		struct timeval timeout;
+
+		if (!fm_scanner_transmit(scanner, &timeout)) {
+			fm_log_notice("All probes completed (%.2f msec)\n",
 					fm_scanner_elapsed(scanner));
 			break;
 		}
 
-		fm_socket_poll_all();
+		fm_socket_poll_all(&timeout);
 	}
 
 	return 0;

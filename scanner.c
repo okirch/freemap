@@ -273,7 +273,7 @@ fm_scanner_process_completed(fm_scanner_t *scanner)
 }
 
 bool
-fm_scanner_transmit(fm_scanner_t *scanner)
+fm_scanner_transmit(fm_scanner_t *scanner, struct timeval *timeout)
 {
 	fm_sched_stats_t scan_stats;
 
@@ -310,6 +310,9 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 
 	/* This loops over the entire pool and reaps the status of completed probes */
 	fm_target_pool_reap_completed(scanner->target_pool);
+
+	if (timeout)
+		*timeout = scan_stats.timeout;
 
 	return true;
 }

@@ -99,7 +99,7 @@ extern fm_scan_action_t *fm_scanner_add_topo_probe(fm_scanner_t *, const char *p
 extern fm_scan_action_t *fm_scanner_add_host_probe(fm_scanner_t *, const char *proto, int flags, const fm_string_array_t *args);
 extern fm_scan_action_t *fm_scanner_add_port_probe(fm_scanner_t *, const char *proto, int flags, const fm_string_array_t *args);
 extern fm_scan_action_t *fm_scanner_add_reachability_check(fm_scanner_t *);
-extern bool		fm_scanner_transmit(fm_scanner_t *);
+extern bool		fm_scanner_transmit(fm_scanner_t *, struct timeval *);
 extern double		fm_scanner_elapsed(fm_scanner_t *);
 extern void		fm_scanner_dump_program(fm_scanner_t *);
 extern fm_scan_action_t *fm_scanner_get_action(fm_scanner_t *, unsigned int);
@@ -170,7 +170,7 @@ extern bool		fm_socket_send_buffer(fm_socket_t *sock, const fm_address_t *dstadd
 extern bool		fm_socket_send_pkt(fm_socket_t *sock, fm_pkt_t *pkt);
 extern bool		fm_socket_send_pkt_and_burn(fm_socket_t *sock, fm_pkt_t *pkt);
 extern void		fm_socket_close(fm_socket_t *);
-extern bool		fm_socket_poll_all(void);
+extern bool		fm_socket_poll_all(const struct timeval *);
 extern void		fm_socket_timestamp_update(fm_socket_timestamp_t *);
 extern double		fm_pkt_rtt(const fm_pkt_t *pkt, const fm_socket_timestamp_t *send_ts);
 
