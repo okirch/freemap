@@ -36,15 +36,23 @@ typedef struct fm_topo_extra_params {
 	void *			packet_proto_params;
 } fm_topo_extra_params_t;
 
+#define FM_TOPO_HOP_GW_CHANGED	0x0001
+#define FM_TOPO_HOP_GW_FLAP	0x0002
 typedef struct fm_topo_hop_state {
-	unsigned int		distance;
+	unsigned short		distance;
+	unsigned short		flags;
 	fm_asset_state_t	state;
 
+	unsigned int		probes_sent;
+
+	fm_ratelimit_t *	ratelimit;
 	fm_probe_t *		pending;
 	fm_completion_t *	completion;
 
-	/* used for rate limiting */
+	/* Set when we learn about a new gateway.
+	 */
 	fm_tgateway_t *		gateway;
+	fm_tgateway_t *		alt_gateway;
 } fm_topo_hop_state_t;
 
 typedef struct fm_topo_shared_sockets {
@@ -71,6 +79,8 @@ typedef struct fm_topo_state {
 	unsigned int		next_ttl;
 	unsigned int		destination_ttl;
 
+	fm_tgateway_t *		unknown_gateway;
+
 	fm_topo_hop_state_t	hop[FM_MAX_TOPO_DEPTH];
 
 	/* share across probes */
@@ -81,10 +91,8 @@ struct fm_tgateway {
 	unsigned int		nhops;
 	fm_address_t		address;
 
-	fm_tgateway_t *		previous_hop;
-	fm_tgateway_t *		unknown_next_hop;
+	fm_ratelimit_t		unknown_next_hop_rate[FM_MAX_TOPO_DEPTH];
 
-	fm_ratelimit_t		ratelimit;
 	fm_rtt_stats_t		rtt;
 };
 
@@ -93,5 +101,9 @@ typedef struct fm_tgateway_array {
 	fm_tgateway_t **	entries;
 } fm_tgateway_array_t;
 
+/* These are hard-coded for now, but should eventually have a home in fm_global */
+#define FM_TOPO_SEND_RATE		10
+#define FM_TOPO_SEND_BURST		3	/* must be <= min(UNKNOWN_RATE, SEND_RATE - UNKNOWN_RATE) */
+#define FM_TOPO_UNKNOWN_RATE		5
 
 #endif /* FREEMAP_TRACEROUTE_H */

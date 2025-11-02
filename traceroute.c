@@ -39,7 +39,6 @@ static void			fm_topo_state_free(fm_topo_state_t *topo);
 static fm_probe_class_t *	fm_topo_get_packet_probe_class(const char *proto_name);
 
 static fm_tgateway_t *		fm_tgateway_default(void);
-static fm_tgateway_t *		fm_tgateway_unknown_next_hop(fm_tgateway_t *);
 static fm_tgateway_t *		fm_tgateway_for_address(unsigned int, const fm_address_t *);
 
 static fm_topo_shared_sockets_t *fm_topo_shared_sockets_get(fm_protocol_t *packet_proto, int af);
@@ -82,9 +81,15 @@ fm_topo_state_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_pa
 
 	topo->packet_proto = topo->packet_probe_class->proto;
 
+	/* Set the globally unknown gateway and its rate limiters. */
+	topo->unknown_gateway = fm_tgateway_default();
 
-	for (ttl = 0; ttl < FM_MAX_TOPO_DEPTH; ++ttl)
-		topo->hop[ttl].distance = ttl;
+	for (ttl = 0; ttl < FM_MAX_TOPO_DEPTH; ++ttl) {
+		fm_topo_hop_state_t *hop = &topo->hop[ttl];
+
+		hop->distance = ttl;
+		hop->ratelimit = &topo->unknown_gateway->unknown_next_hop_rate[ttl];
+	}
 
 	if (topo->packet_proto->supported_parameters & FM_FEATURE_SOCKET_SHARING_MASK) {
 		topo->shared_socks = fm_topo_shared_sockets_get(topo->packet_proto, topo->family);
@@ -176,6 +181,50 @@ fm_topo_state_free(fm_topo_state_t *topo)
 }
 
 /*
+ * Assign a gateway to a hop
+ */
+static void
+fm_topo_hop_set_gateway(fm_topo_hop_state_t *hop, const fm_address_t *gw_addr)
+{
+	fm_tgateway_t *gw;
+
+	gw = fm_tgateway_for_address(hop->distance, gw_addr);
+	if (hop->gateway == gw)
+		return;
+	if (hop->gateway != NULL) {
+		if (hop->alt_gateway != NULL)
+			hop->alt_gateway = gw;
+		return;
+	}
+
+	hop->flags |= FM_TOPO_HOP_GW_CHANGED;
+	hop->gateway = gw;
+}
+
+static void
+fm_topo_state_report_flapping_gateways(fm_topo_state_t *topo)
+{
+	unsigned int ttl;
+
+	for (ttl = 0; ttl < FM_MAX_TOPO_DEPTH; ++ttl) {
+		fm_topo_hop_state_t *hop = &topo->hop[ttl];
+
+		if (hop->alt_gateway && !(hop->flags & FM_TOPO_HOP_GW_FLAP)) {
+			fm_log_notice("%s: gateway at ttl=%u is not stable (%s vs %s)",
+					fm_address_format(&topo->host_address),
+					hop->distance,
+					fm_address_format(&hop->gateway->address),
+					fm_address_format(&hop->alt_gateway->address));
+			/* report just once */
+			hop->flags |= FM_TOPO_HOP_GW_FLAP;
+		}
+
+		/* FIXME: we could also report routers sending responses from
+		 * a private IP address, like 10.* */
+	}
+}
+
+/*
  * Callback from the packet protocol when it received a response, or an error
  * Returning true means: please keep going.
  */
@@ -192,7 +241,7 @@ fm_topo_hop_probe_pkt_callback(const fm_probe_t *probe, const fm_pkt_t *pkt, dou
 				fm_address_format(&pkt->peer_addr),
 				probe->name);
 
-		hop->gateway = fm_tgateway_for_address(hop->distance, &pkt->peer_addr);
+		fm_topo_hop_set_gateway(hop, &pkt->peer_addr);
 	} else {
 		if (ee->ee_origin != SO_EE_ORIGIN_ICMP && ee->ee_origin != SO_EE_ORIGIN_LOCAL)
 			return true;
@@ -220,7 +269,7 @@ fm_topo_hop_probe_pkt_callback(const fm_probe_t *probe, const fm_pkt_t *pkt, dou
 			return true;
 		}
 
-		hop->gateway = fm_tgateway_for_address(hop->distance, pkt->info.offender);
+		fm_topo_hop_set_gateway(hop, pkt->info.offender);
 	}
 
 	hop->state = FM_ASSET_STATE_OPEN;
@@ -275,6 +324,8 @@ fm_topo_state_max_ttl(fm_topo_state_t *topo)
 	max_ttl = topo->next_ttl + topo->topo_params.max_hole_size;
 	if (max_ttl > topo->topo_params.max_depth)
 		max_ttl = topo->topo_params.max_depth;
+	if (topo->destination_ttl != 0 && max_ttl > topo->destination_ttl)
+		max_ttl = topo->destination_ttl;
 	return max_ttl;
 }
 
@@ -310,76 +361,143 @@ fm_topo_state_check_pending(fm_topo_state_t *topo, double *delay_ret)
 }
 
 /*
+ * Check for gateway changes
+ * The point of this exercise is that we need to be mindful of stuff like
+ * ICMP send rate limits in gateways.
+ * Assume that gateway, *if* they do send any ICMP packets at all, they
+ * are willing and able of sending at least RATE (which is N packet per
+ * second).
+ *
+ * Initially, we treat all gateways at distance TTL the same way; ie we
+ * do not send more than N pkt/s. This is limited by global rate limiters,
+ * one for each TTL value. Call them the "global unknown router limits",
+ * or GlobalLimit(TTL).
+ *
+ * However, we learn. So assume we are tracing hosts A and B, and their
+ * paths are different - let's say we learned that at TTL=4, the path
+ * to A goes through Router RouterA, and the one to B goes through RouterB.
+ * Then it's fair to assume that packets with TTL=5 will not be handled
+ * by the same router; IOW we can use distinct rate limit objects for
+ * limiting our probe packets: RouterALimit(+1) and RouterBLimit(+1).
+ *
+ * Things become a bit complicated by the fact that we do not proceed
+ * one TTL at a time, but that we have a probing window where we transmit
+ * several probes simultaneously. So what happens if we start probing
+ * host C, and transmit probes for TTL=1,2,3,4,5?
+ *
+ * The probe with TTL=5 could hit a gateway one hop behind RouterA (call it RouterA'),
+ * but it could also hit RouterB' or some as yet unknown RC'. As we do not
+ * know, we use the global unknown limit for TTL=5 when sending the
+ * probe. But that means, to begin with, that sending actually needs to
+ * be controlled by the combination of GobalLimit(5) and RouterALimit(+1),
+ * as well as GlobalLimit(5) and RouterBLimit(+1), respectively.
+ * We achieve this by granting a fraction of RATE to global limits,
+ * and a fraction to each router limit, so that
+ * GlobalLimit(x) + Router*Limit(y) == RATE.
+ *
+ * The other part of the problem is what happens after we receive a
+ * response from RouterB in response to our probe packet to C with TTL=5?
+ * In order to improve throughput, we can now transfer 1 token from
+ * RouterBLimit(+1) to GlobalLimit(5), because we know that the
+ * response really came back from the next hop behind RouterB
+ * rather than some unknown RouterC'.
+ *
+ * This is what this algorithm tries to do.
+ */
+static void
+fm_topo_state_check_gateways(fm_topo_state_t *topo)
+{
+	unsigned int ttl, max_ttl;
+	fm_tgateway_t *gw;
+	unsigned gw_ttl = 0;
+	bool changed = false;
+
+	gw = topo->unknown_gateway;
+
+	fm_topo_state_report_flapping_gateways(topo);
+
+	max_ttl = fm_topo_state_max_ttl(topo);
+	for (ttl = 1; ttl < max_ttl; ++ttl) {
+		fm_topo_hop_state_t *hop = &topo->hop[ttl];
+
+		if (changed) {
+			fm_ratelimit_t *old_ratelimit = hop->ratelimit;
+
+			/* Set the new rate limit to RouterLimit(+X) */
+			hop->ratelimit = &gw->unknown_next_hop_rate[ttl - gw_ttl];
+
+			/* transfer one token from our new rate limiter to
+			 * the one we used to send the probe. */
+			fm_ratelimit_transfer(hop->ratelimit, old_ratelimit, hop->probes_sent);
+			hop->probes_sent = 0;
+		}
+
+		if (hop->gateway != NULL) {
+			gw = hop->gateway;
+			if (hop->flags & FM_TOPO_HOP_GW_CHANGED) {
+				hop->flags &= ~FM_TOPO_HOP_GW_CHANGED;
+				changed = true;
+			}
+		}
+	}
+}
+
+/*
  * Select the next distance to probe
  */
 static fm_error_t
 fm_topo_state_select_ttl(fm_topo_state_t *topo, double *delay_ret, fm_topo_hop_state_t **next_hop_ret)
 {
 	unsigned int ttl, max_ttl;
-	fm_tgateway_t *previous_gw;
 	bool have_pending = false;
 	bool done = false;
 
 	*next_hop_ret = NULL;
 
-	previous_gw = NULL;
-	max_ttl = fm_topo_state_max_ttl(topo);
-	for (ttl = topo->next_ttl; ttl < max_ttl; ++ttl) {
+	/* Check for any changed gateway, and adjust ratelimits etc */
+	fm_topo_state_check_gateways(topo);
+
+	/* First, check whether we can advance next_ttl */
+	while ((ttl = topo->next_ttl) < FM_MAX_TOPO_DEPTH) {
 		fm_topo_hop_state_t *hop = &topo->hop[ttl];
+		fm_tgateway_t *gw;
 
-		if (hop->gateway == NULL || hop->gateway->address.ss_family == AF_UNSPEC) {
-			if (ttl <= 1) {
-				hop->gateway = fm_tgateway_default();
-			} else {
-				if (previous_gw == NULL)
-					previous_gw = topo->hop[ttl - 1].gateway;
+		if ((gw = hop->gateway) == NULL)
+			break;
 
-				hop->gateway = fm_tgateway_unknown_next_hop(previous_gw);
-			}
-		} else
 		if (fm_address_equal(&topo->host_address, &hop->gateway->address, false)) {
 			fm_log_debug("  %2u reached destination", ttl);
 			topo->destination_ttl = ttl;
 			break;
-		} else {
-			fm_log_debug("  %2u addr=%s; we can progress", ttl, fm_address_format(&hop->gateway->address));
-			topo->next_ttl = ttl + 1;
-			max_ttl = fm_topo_state_max_ttl(topo);
 		}
-		previous_gw = hop->gateway;
+
+		fm_log_debug("  %2u addr=%s; we can progress", ttl, fm_address_format(&hop->gateway->address));
+		topo->next_ttl += 1;
 	}
 
+	max_ttl = fm_topo_state_max_ttl(topo);
 	for (ttl = topo->next_ttl; ttl < max_ttl; ++ttl) {
 		fm_topo_hop_state_t *hop = &topo->hop[ttl];
-		fm_tgateway_t *gw;
-
-		if (ttl == topo->destination_ttl)
-			break;
 
 		if (hop->pending != NULL)
 			continue; /* we've dealt with you already */
-
-		if (done)
-			break;
 
 		if (hop->state != FM_ASSET_STATE_UNDEF) {
 			fm_log_debug("  %2u state=%d", ttl, hop->state);
 			continue;
 		}
 
-		gw = hop->gateway;
-
 		/* Consult the rate limit
 		 * Can we consume 1 token, or would we have to wait?
 		 */
-		fm_ratelimit_update(&gw->ratelimit);
-		if (fm_ratelimit_available(&gw->ratelimit) >= 1) {
+		fm_ratelimit_update(hop->ratelimit);
+		if (fm_ratelimit_available(hop->ratelimit) >= 1) {
 			fm_log_debug("  %2u ready to create new probe", ttl);
 
 			if (*next_hop_ret == NULL)
 				*next_hop_ret = hop;
 		} else {
-			double delay = fm_ratelimit_wait_until(&gw->ratelimit, 1);
+			double delay = fm_ratelimit_wait_until(hop->ratelimit, 1);
 
 			fm_log_debug("  %2u delay=%f sec", ttl, delay);
 			if (delay < *delay_ret)
@@ -466,7 +584,7 @@ fm_topo_state_send_probe(fm_topo_state_t *topo, fm_topo_hop_state_t *hop, double
 	if (error == 0) {
 		double delay;
 
-		fm_ratelimit_consume(&hop->gateway->ratelimit, 1);
+		fm_ratelimit_consume(hop->ratelimit, 1);
 		hop->state = FM_ASSET_STATE_PROBE_SENT;
 		hop->pending = probe;
 
@@ -483,23 +601,28 @@ fm_topo_state_send_probe(fm_topo_state_t *topo, fm_topo_hop_state_t *hop, double
 static void
 fm_topo_state_display(fm_topo_state_t *topo)
 {
-	unsigned int ttl, max_ttl = FM_MAX_TOPO_DEPTH;;
+	unsigned int ttl, max_ttl;
 
 	fm_log_debug("traceroute results for %s", fm_address_format(&topo->host_address));
+	fm_log_debug(" %4s %5s %8s %s", "ttl", "nresp", "rtt/ms", "address");
 
 	if (topo->destination_ttl != 0)
 		max_ttl = topo->destination_ttl + 1;
+
+	max_ttl = fm_topo_state_max_ttl(topo);
 	for (ttl = 1; ttl < max_ttl; ++ttl) {
 		fm_topo_hop_state_t *hop = &topo->hop[ttl];
 		fm_tgateway_t *gw;
 
-		if ((gw = hop->gateway) == NULL)
-			break;
-
-		if (gw->address.ss_family == AF_UNSPEC) {
-			fm_log_debug("  %2u:        * ?", hop->distance);
+		gw = hop->gateway;
+		if (gw == NULL) {
+			fm_log_debug(" %3u: %5u        * ?", hop->distance, 0);
 		} else {
-			fm_log_debug("  %2u: %5lu ms %s", hop->distance, gw->rtt.rtt, fm_address_format(&gw->address));
+			fm_log_debug(" %3u: %5u %8.5f %s%s", hop->distance,
+							gw->rtt.nsamples,
+							gw->rtt.rtt_sum / gw->rtt.nsamples,
+							fm_address_format(&gw->address),
+							(hop->flags & FM_TOPO_HOP_GW_FLAP)? ", flapping": "");
 		}
 	}
 }
@@ -508,15 +631,23 @@ static fm_tgateway_t *
 fm_tgateway_alloc(unsigned int distance, const fm_address_t *addr)
 {
 	fm_tgateway_t *gw;
+	unsigned int i, rate;
 
 	gw = calloc(1, sizeof(*gw));
 	gw->nhops = distance;
 
-	if (addr != NULL)
+	if (addr == NULL) {
+		rate = FM_TOPO_UNKNOWN_RATE;
+	} else {
+		rate = FM_TOPO_SEND_RATE - FM_TOPO_UNKNOWN_RATE;
 		gw->address = *addr;
 
-	/* For now, set burstiness to 10, initial value 1 */
-	fm_ratelimit_init(&gw->ratelimit, 10, 1);
+		/* FIXME: we should look up the host_asset here, so that
+		 * we can prime its rtt estimates etc. */
+	}
+
+	for (i = 0; i < FM_MAX_TOPO_DEPTH; ++i)
+		fm_ratelimit_init(&gw->unknown_next_hop_rate[i], rate, FM_TOPO_UNKNOWN_RATE);
 	return gw;
 }
 
@@ -531,14 +662,6 @@ fm_tgateway_default(void)
 	if (first == NULL)
 		first = fm_tgateway_alloc(1, NULL);
 	return first;
-}
-
-static fm_tgateway_t *
-fm_tgateway_unknown_next_hop(fm_tgateway_t *tgw)
-{
-	if (tgw->unknown_next_hop == NULL)
-		tgw->unknown_next_hop = fm_tgateway_alloc(tgw->nhops + 1, NULL);
-	return tgw->unknown_next_hop;
 }
 
 static void
