@@ -504,6 +504,8 @@ fm_target_process_runnable(fm_target_t *target, fm_sched_stats_t *stats)
 
 		first_transmission = !fm_timestamp_is_set(&probe->sent);
 
+		fm_timestamp_clear(&probe->expires);
+
 		error = fm_probe_send(probe);
 		if (error == FM_TRY_AGAIN) {
 			/* the probe asked to be postponed. */
@@ -531,8 +533,10 @@ fm_target_process_runnable(fm_target_t *target, fm_sched_stats_t *stats)
 			continue;
 		}
 
-		assert(fm_timestamp_is_set(&probe->expires));
-		fm_probe_insert(&target->pending_probes, probe);
+		if (fm_timestamp_is_set(&probe->expires))
+			fm_probe_insert(&target->pending_probes, probe);
+		else
+			fm_probe_insert(&target->ready_probes, probe);
 	}
 
 	if (runnable.first != NULL)
