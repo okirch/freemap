@@ -190,6 +190,7 @@ extern void		fm_trace(const char *fmt, ...);
 extern void		fm_log_fatal(const char *fmt, ...);
 extern void		fm_log_error(const char *fmt, ...);
 extern void		fm_log_warning(const char *fmt, ...);
+extern void		fm_log_notice(const char *fmt, ...);
 
 extern unsigned int	fm_debug_level;
 

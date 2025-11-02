@@ -100,6 +100,20 @@ fm_log_warning(const char *fmt, ...)
 	va_end(ap);
 }
 
+void
+fm_log_notice(const char *fmt, ...)
+{
+	FILE *fp = fm_logfp();
+	va_list ap;
+
+	va_start(ap, fmt);
+	fprintf(fp, "Warning: ");
+	vfprintf(fp, fmt, ap);
+	if (strchr(fmt, '\n') == NULL)
+		fputc('\n', fp);
+	va_end(ap);
+}
+
 #define FM_MAX_ERROR_INDEX 18 /* for now */
 static const char *strings[FM_MAX_ERROR_INDEX] = {
 	[0] = "Succcess",
