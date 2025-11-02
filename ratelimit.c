@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #include "freemap.h"
 
@@ -201,4 +202,23 @@ fm_ratelimit_consume(fm_ratelimit_t *rl, unsigned int ntokens)
 		rl->value -= ntokens;
 	else
 		rl->value = 0;
+}
+
+/*
+ * Used by the traceroute code.
+ */
+double
+fm_ratelimit_transfer(fm_ratelimit_t *from, fm_ratelimit_t *to, unsigned int ntokens)
+{
+	double transfer = ntokens;
+
+	if (transfer > from->value)
+		transfer = from->value;
+	if (transfer + to->value > to->max_burst)
+		transfer -= to->max_burst - to->value;
+
+	assert(transfer >= 0);
+	from->value -= transfer;
+	to->value += transfer;
+	return transfer;
 }
