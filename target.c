@@ -362,9 +362,14 @@ fm_target_get_local_bind_address(fm_target_t *target, fm_address_t *bind_address
 
 
 unsigned int
-fm_target_get_send_quota(fm_target_t *target)
+fm_target_get_send_quota(fm_target_t *target, unsigned int max_quota)
 {
-	return fm_ratelimit_available(&target->host_rate_limit);
+	unsigned int quota;
+
+	quota = fm_ratelimit_available(&target->host_rate_limit);
+	if (quota > max_quota)
+		quota = max_quota;
+	return quota;
 }
 
 /*
@@ -427,15 +432,19 @@ fm_target_continue_probe(fm_target_t *target, fm_probe_t *probe)
  * A new probe has been created. Schedule it.
  */
 fm_error_t
-fm_target_add_new_probe(fm_target_t *tgt, fm_probe_t *probe)
+fm_target_add_new_probe(fm_target_t *target, fm_probe_t *probe)
 {
-	fm_probe_insert(&tgt->ready_probes, probe);
+	if (probe->event_listener == NULL) {
+		fm_probe_insert(&target->ready_probes, probe);
+	} else {
+		fm_target_postpone_probe(target, probe);
+	}
 
 	/* If the probe is marked as blocking, do not allow
-	 * any further probes to be transmitted until we've
+	 * any further probes to be created until we've
 	 * processed everything that is in the queue. */
 	if (probe->blocking)
-		tgt->plugged = true;
+		target->plugged = true;
 
 	return 0;
 }

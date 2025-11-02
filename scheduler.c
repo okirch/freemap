@@ -86,13 +86,6 @@ fm_scheduler_create_new_probes(fm_scheduler_t *sched, fm_sched_stats_t *stats)
 fm_probe_t *
 fm_scheduler_get_next_probe(fm_scheduler_t *sched, fm_target_t *target)
 {
-	fm_probe_t *probe;
-
-	if ((probe = fm_probe_list_get_first(&target->ready_probes)) != NULL) {
-		fm_probe_unlink(probe);
-		return probe;
-	}
-
 	return sched->ops->get_next_probe(sched, target);
 }
 
@@ -107,35 +100,6 @@ fm_scheduler_detach_target(fm_scheduler_t *sched, fm_target_t *target)
 {
 	sched->ops->detach(sched, target);
 }
-
-static inline fm_probe_t *
-fm_scheduler_get_next_probe_for_target(fm_scheduler_t *sched, fm_target_t *target)
-{
-	fm_probe_t *probe;
-
-	if (target->scan_done)
-		return NULL;
-
-	/* FIXME: which is the right place and time to detach? */
-	if (target->sched_state == NULL)
-		fm_scheduler_attach_target(sched, target);
-
-again:
-	probe = fm_scheduler_get_next_probe(sched, target);
-	if (probe == NULL) {
-		fm_scheduler_detach_target(sched, target);
-		target->scan_done = true;
-	} else
-	if (probe->event_listener != NULL) {
-		/* FIXME: we should not create hundreds of probes if all of them
-		 * are waiting for the same event. */
-		fm_target_postpone_probe(target, probe);
-		goto again;
-	}
-
-	return probe;
-}
-
 
 /*
  * Linear scheduler
@@ -208,7 +172,7 @@ fm_linear_scheduler_create_new_probes(fm_scheduler_t *sched, fm_sched_stats_t *s
 
 	max_create = stats->job_quota - stats->num_sent;
 	while (num_created < max_create) {
-		unsigned int target_quota;
+		unsigned int target_quota, target_created = 0;
 		fm_target_t *target;
 
 		target = fm_target_pool_get_next(sched->target_pool, &num_visited);
@@ -216,15 +180,25 @@ fm_linear_scheduler_create_new_probes(fm_scheduler_t *sched, fm_sched_stats_t *s
 			break;
 
 		target_quota = fm_target_get_send_quota(target, max_create - num_created);
-		while (num_sent < target_quota && !target->plugged) {
+		while (target_created < target_quota) {
 			fm_probe_t *probe;
 
-			probe = fm_scheduler_get_next_probe_for_target(sched, target);
-			if (probe == NULL)
+			if (target->scan_done || target->plugged)
 				break;
 
-			if (fm_target_add_new_probe(target, probe) == 0)
-				num_created += 1;
+			/* FIXME: which is the right place and time to detach? */
+			if (target->sched_state == NULL)
+				fm_scheduler_attach_target(sched, target);
+
+			probe = fm_scheduler_get_next_probe(sched, target);
+			if (probe == NULL) {
+				fm_scheduler_detach_target(sched, target);
+				target->scan_done = true;
+				break;
+			}
+
+			fm_target_add_new_probe(target, probe);
+			target_created += 1;
 		}
 	}
 }
