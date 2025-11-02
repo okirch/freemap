@@ -317,7 +317,7 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 	fm_event_process_all();
 
 	/* Schedule and transmit a few additional probes */
-	fm_scheduler_transmit_some(scanner->scheduler, fm_ratelimit_available(&scanner->send_rate_limit));
+	fm_scheduler_create_new_probes(scanner->scheduler, fm_ratelimit_available(&scanner->send_rate_limit));
 
 	/* Reap any targets that we're done with, making room in the pool for
 	 * the next batch of targets. */

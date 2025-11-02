@@ -39,7 +39,7 @@ struct fm_scheduler {
 
 		bool		(*attach)(fm_scheduler_t *, fm_target_t *);
 		void		(*detach)(fm_scheduler_t *, fm_target_t *);
-		void		(*transmit_some)(fm_scheduler_t *, unsigned int quota);
+		void		(*create_new_probes)(fm_scheduler_t *, unsigned int quota);
 		fm_probe_t *	(*get_next_probe)(fm_scheduler_t *, fm_target_t *);
 		void		(*destroy)(fm_scheduler_t *);
 	} *ops;
@@ -78,9 +78,9 @@ fm_scheduler_free(fm_scheduler_t *sched)
 }
 
 void
-fm_scheduler_transmit_some(fm_scheduler_t *sched, unsigned int quota)
+fm_scheduler_create_new_probes(fm_scheduler_t *sched, unsigned int quota)
 {
-	sched->ops->transmit_some(sched, quota);
+	sched->ops->create_new_probes(sched, quota);
 }
 
 fm_probe_t *
@@ -201,7 +201,7 @@ skip_this_action:
 }
 
 static void
-fm_linear_scheduler_transmit_some(fm_scheduler_t *sched, unsigned int quota)
+fm_linear_scheduler_create_new_probes(fm_scheduler_t *sched, unsigned int quota)
 {
 	unsigned int num_visited = 0;
 
@@ -244,7 +244,7 @@ static struct fm_scheduler_ops		fm_linear_scheduler_ops = {
 	.attach		= fm_linear_scheduler_attach,
 	.detach		= fm_linear_scheduler_detach,
 	.get_next_probe	= fm_linear_scheduler_get_next_probe,
-	.transmit_some	= fm_linear_scheduler_transmit_some,
+	.create_new_probes	= fm_linear_scheduler_create_new_probes,
 };
 
 fm_scheduler_t *
