@@ -31,6 +31,8 @@ struct hlist_head {
 	struct hlist *		first;
 };
 
+#define HLIST_HEAD_NIL		{ .first = NULL }
+
 static inline void
 __hlist_insert(struct hlist **prevp, struct hlist *entry)
 {
@@ -85,6 +87,19 @@ static inline void *
 hlist_head_get_first(struct hlist_head *head)
 {
 	return head->first;
+}
+
+static inline void
+hlist_head_reassign(struct hlist_head *src_head, struct hlist_head *dst_head)
+{
+	struct hlist *entry;
+
+	assert(dst_head->first == NULL);
+	if ((entry = src_head->first) != NULL) {
+		dst_head->first = entry;
+		entry->prevp = &dst_head->first;
+	}
+	src_head->first = NULL;
 }
 
 typedef struct list_iterator {
