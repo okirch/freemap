@@ -134,5 +134,90 @@ hlist_iterator_next(hlist_iterator_t *iter)
 	return cur;
 }
 
-#endif /* FREEMAP_LISTS_H */
+/*
+ * An insertion iterator walks a list, referencing the prev pointer.
+ * When the iterator is at the tail tail of the list, splice another list
+ * into it and advance to the new end
+ */
+typedef struct list_insertion_iterator {
+	struct hlist **prevp;
+} hlist_insertion_iterator_t;
 
+static inline void
+hlist_insertion_iterator_init(hlist_insertion_iterator_t *iter, struct hlist_head *list_head)
+{
+	iter->prevp = &list_head->first;
+}
+
+static inline void *
+hlist_insertion_iterator_next(hlist_insertion_iterator_t *iter)
+{
+	struct hlist *cur;
+
+	if ((cur = *(iter->prevp)) != NULL)
+		iter->prevp = &cur->next;
+	return cur;
+}
+
+static inline void
+hlist_insertion_iterator_init_tail(hlist_insertion_iterator_t *iter, struct hlist_head *list_head)
+{
+	hlist_insertion_iterator_init(iter, list_head);
+	while (hlist_insertion_iterator_next(iter) != NULL)
+		;
+}
+
+/*
+ * Insert a new entry at the current position (ie after the entry we saw last, and before the
+ * entry we will see next).
+ */
+static inline void
+hlist_insertion_iterator_insert(hlist_insertion_iterator_t *iter, struct hlist *entry)
+{
+	__hlist_insert(iter->prevp, entry);
+}
+
+static inline void
+hlist_insertion_iterator_insert_and_advance(hlist_insertion_iterator_t *iter, struct hlist *entry)
+{
+	__hlist_insert(iter->prevp, entry);
+	iter->prevp = &entry->next;
+}
+
+/*
+ * Insert an entire list at the current position. If move_to_new_end is true, move the iterator
+ * to the new tail of the list.
+ */
+static inline void
+hlist_insertion_iterator_splice(hlist_insertion_iterator_t *iter, struct hlist_head *list_head, bool move_to_new_end)
+{
+	struct hlist *entry, *old_next = *(iter->prevp);
+	struct hlist **tail;
+
+	/* The list to be spliced is empty - easy. */
+	if (list_head->first == NULL)
+		return;
+
+	/* find the end of the list to be inserted */
+	for (tail = &list_head->first; (entry = *tail) != NULL; tail = &entry->next)
+		;
+
+	/* Establish links between the first entry of the list at the iterator's current position */
+	*(iter->prevp) = list_head->first;
+	list_head->first->prevp = iter->prevp;
+
+	/* If the iterator wasn't already at the tail of its list, establish links with the
+	 * last entry of the new list. */
+	if (old_next != NULL) {
+		old_next->prevp = tail;
+		*tail = old_next;
+	}
+
+	if (move_to_new_end)
+		iter->prevp = tail;
+
+	/* clear the list we just spliced, it's no longer valid */
+	list_head->first = NULL;
+}
+
+#endif /* FREEMAP_LISTS_H */
