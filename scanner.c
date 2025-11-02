@@ -224,19 +224,18 @@ fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 	while (true) {
 		fm_target_t *target;
 		fm_sched_stats_t sched_stats;
-		unsigned int quota;
 
-		quota = fm_ratelimit_available(&scanner->send_rate_limit);
-		if (quota == 0)
+		if (global_stats->job_quota == 0)
 			break; /* we exhausted our global send quota */
 
 		target = fm_target_pool_get_next(scanner->target_pool, &num_visited);
 		if (target == NULL)
 			break;
 
-		memset(&sched_stats, 0, sizeof(sched_stats));
+		fm_ratelimit_update(&target->host_rate_limit);
 
-		sched_stats.job_quota = fm_target_get_send_quota(target, quota);
+		memset(&sched_stats, 0, sizeof(sched_stats));
+		sched_stats.job_quota = fm_target_get_send_quota(target, global_stats->job_quota);
 		if (sched_stats.job_quota != 0)
 			fm_target_schedule(target, &sched_stats);
 
@@ -306,6 +305,7 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 	fm_ratelimit_update(&scanner->send_rate_limit);
 
 	memset(&scan_stats, 0, sizeof(scan_stats));
+	scan_stats.job_quota = fm_ratelimit_available(&scanner->send_rate_limit);
 
 	/* Run all runnable jobs (to the degree rate limits allow) */
 	fm_scanner_schedule(scanner, &scan_stats);

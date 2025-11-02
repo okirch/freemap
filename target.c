@@ -612,8 +612,6 @@ fm_target_get_next_schedule_time(fm_target_t *target, fm_sched_stats_t *stats)
 void
 fm_target_schedule(fm_target_t *target, fm_sched_stats_t *stats)
 {
-	fm_ratelimit_update(&target->host_rate_limit);
-
 	fm_target_process_timeouts(target);
 	fm_target_process_runnable(target, stats);
 	fm_target_get_next_schedule_time(target, stats);
