@@ -120,6 +120,7 @@ fm_scheduler_get_next_probe_for_target(fm_scheduler_t *sched, fm_target_t *targe
 	if (target->sched_state == NULL)
 		fm_scheduler_attach_target(sched, target);
 
+again:
 	probe = fm_scheduler_get_next_probe(sched, target);
 	if (probe == NULL) {
 		fm_scheduler_detach_target(sched, target);
@@ -129,7 +130,7 @@ fm_scheduler_get_next_probe_for_target(fm_scheduler_t *sched, fm_target_t *targe
 		/* FIXME: we should not create hundreds of probes if all of them
 		 * are waiting for the same event. */
 		fm_target_postpone_probe(target, probe);
-		return NULL;
+		goto again;
 	}
 
 	return probe;

@@ -92,6 +92,7 @@ struct fm_target_manager {
 };
 
 extern void		fm_target_forget_pending(fm_target_t *target, const fm_probe_t *probe);
+extern void		fm_target_schedule(fm_target_t *, fm_sched_stats_t *);
 
 extern void		fm_target_postpone_probe(fm_target_t *, fm_probe_t *);
 extern void		fm_target_continue_probe(fm_target_t *, fm_probe_t *);

@@ -212,28 +212,51 @@ fm_scanner_insert_barrier(fm_scanner_t *scanner)
 }
 
 /*
- * Process the timeouts for all probes.
- * Note that retransmission of probes is subject to rate limiting constraints.
+ * Process the timeouts for all probes. This does not actually invoke any
+ * of the probes, it just moves them to the list of runnable probes.
  */
 void
-fm_scanner_process_timeouts(fm_scanner_t *scanner)
+fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 {
 	unsigned int num_visited = 0;
-	unsigned int quota, target_quota;
+	struct timeval global_timeout;
 
 	while (true) {
 		fm_target_t *target;
+		fm_sched_stats_t sched_stats;
+		unsigned int quota;
+
+		quota = fm_ratelimit_available(&scanner->send_rate_limit);
+		if (quota == 0)
+			break; /* we exhausted our global send quota */
 
 		target = fm_target_pool_get_next(scanner->target_pool, &num_visited);
 		if (target == NULL)
 			break;
 
-		quota = fm_ratelimit_available(&scanner->send_rate_limit);
-		target_quota = fm_target_get_send_quota(target);
-		if (target_quota > quota)
-			target_quota = quota;
+		memset(&sched_stats, 0, sizeof(sched_stats));
 
-		fm_target_process_timeouts(target, target_quota);
+		sched_stats.job_quota = fm_target_get_send_quota(target);
+		if (sched_stats.job_quota > quota)
+			sched_stats.job_quota = quota;
+
+		if (sched_stats.job_quota != 0)
+			fm_target_schedule(target, &sched_stats);
+
+		/* now update the global timeout */
+		if (!fm_timestamp_is_set(&global_timeout)) {
+			global_timeout = sched_stats.timeout;
+		} else {
+			const struct timeval *now = fm_timestamp_now();
+			double target_delay, global_delay;
+
+			target_delay = fm_timestamp_expires_when(&sched_stats.timeout, now);
+			global_delay = fm_timestamp_expires_when(&global_timeout, now);
+			if (target_delay < global_delay)
+				global_timeout = sched_stats.timeout;
+		}
+
+		fm_ratelimit_consume(&scanner->send_rate_limit, sched_stats.num_sent);
 	}
 }
 
@@ -268,6 +291,9 @@ fm_scanner_process_completed(fm_scanner_t *scanner)
 bool
 fm_scanner_transmit(fm_scanner_t *scanner)
 {
+	fm_sched_stats_t scan_stats;
+
+	/* This should probably also be a job... */
 	if (fm_timestamp_older(&scanner->next_pool_resize, NULL)) {
 		fm_log_debug("Trying to resize target pool\n");
 		fm_target_pool_auto_resize(scanner->target_pool, FM_TARGET_POOL_MAX_SIZE);
@@ -282,8 +308,10 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 
 	fm_ratelimit_update(&scanner->send_rate_limit);
 
-	/* Handle probes that have timed out */
-	fm_scanner_process_timeouts(scanner);
+	memset(&scan_stats, 0, sizeof(scan_stats));
+
+	/* Run all runnable jobs (to the degree rate limits allow) */
+	fm_scanner_schedule(scanner, &scan_stats);
 
 	/* Process events */
 	fm_event_process_all();
@@ -505,6 +533,9 @@ fm_scanner_add_topo_probe(fm_scanner_t *scanner, const char *probe_name, int fla
 	action = fm_scanner_create_probe_action(probe_name, FM_PROBE_MODE_TOPO, flags, args);
 	if (action != NULL)
 		fm_scan_action_array_append(&scanner->requests, action);
+
+	/* FIXME: for a topo probe, we do not want to scan each and every address in the scan range,
+	 * but usually just 1-2 per assumed target network size */
 
 	return action;
 }

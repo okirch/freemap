@@ -125,7 +125,6 @@ extern const char *	fm_target_get_id(const fm_target_t *);
 extern bool		fm_target_is_done(const fm_target_t *);
 extern unsigned int	fm_target_get_send_quota(fm_target_t *);
 extern fm_error_t	fm_target_send_new_probe(fm_target_t *, fm_probe_t *);
-extern unsigned int	fm_target_process_timeouts(fm_target_t *, unsigned int quota);
 extern bool		fm_target_get_local_bind_address(fm_target_t *, fm_address_t *);
 extern void		fm_target_update_port_state(fm_target_t *, unsigned int proto_id, unsigned int port, fm_asset_state_t state);
 extern void		fm_target_update_host_state(fm_target_t *target, unsigned int proto_id, fm_asset_state_t state);

@@ -420,7 +420,10 @@ fm_target_continue_probe(fm_target_t *target, fm_probe_t *probe)
 {
 	fm_probe_unlink(probe);
 	fm_probe_insert(&target->ready_probes, probe);
-	fm_log_debug("%s: moved to ready", probe->name);
+	fm_timestamp_clear(&probe->expires);
+
+	if (fm_debug_level >= 2)
+		fm_log_debug("%s: moved to ready", probe->name);
 }
 
 /*
@@ -430,85 +433,142 @@ fm_target_continue_probe(fm_target_t *target, fm_probe_t *probe)
 fm_error_t
 fm_target_send_new_probe(fm_target_t *tgt, fm_probe_t *probe)
 {
-	fm_error_t error;
+	fm_probe_insert(&tgt->ready_probes, probe);
 
-	error = fm_probe_send(probe);
-	if (error < 0 && error != FM_TRY_AGAIN) {
-		fm_log_warning("%s: probe %s is DOA", fm_address_format(&tgt->address), probe->name);
-		fm_probe_free(probe);
-	} else {
-		/* Record when we sent the first packet */
-		fm_timestamp_init(&probe->sent);
+	/* If the probe is marked as blocking, do not allow
+	 * any further probes to be transmitted until we've
+	 * processed everything that is in the queue. */
+	if (probe->blocking)
+		tgt->plugged = true;
 
-		fm_probe_insert(&tgt->pending_probes, probe);
-
-		/* If the probe is marked as blocking, do not allow
-		 * any further probes to be transmitted until we've
-		 * processed everything that is in the queue. */
-		if (probe->blocking)
-			tgt->plugged = true;
-	}
-
-	return error;
+	return 0;
 }
 
-unsigned int
-fm_target_process_timeouts(fm_target_t *target, unsigned int quota)
+static void
+fm_target_process_timeouts(fm_target_t *target)
 {
 	const struct timeval *now = fm_timestamp_now();
-	unsigned int num_sent = 0;
-	fm_probe_t *probe, *next;
-	unsigned int nprocessed = 0;
+	hlist_insertion_iterator_t ready_tail_iter;
+	hlist_iterator_t wait_iter;
+	fm_probe_t *probe;
 
-        for (probe = (fm_probe_t *) (target->pending_probes.hlist.first); probe != NULL; probe = next) {
-                next = (fm_probe_t *) probe->link.next;
+	hlist_iterator_init(&wait_iter, &target->pending_probes.hlist);
 
+	hlist_insertion_iterator_init_tail(&ready_tail_iter, &target->ready_probes.hlist);
+
+	while ((probe = hlist_iterator_next(&wait_iter)) != NULL) {
 		if (fm_timestamp_older(&probe->expires, now)) {
-			fm_error_t error;
-
-			/* Check whether we're permitted to send anything at all. */
-			if (num_sent >= quota) {
-				/* This is not the right approach, but a stupid band-aid caused
-				 * by the fact that the main scheduling loop is essentially
-				 * busy-waiting. */
-				double delay = fm_ratelimit_wait_until(&target->host_rate_limit, 1);
-				if (delay == 0)
-					delay = .5;
-
-				fm_log_debug("%s: delay by %f", probe->name, delay);
-				fm_probe_set_expiry(probe, delay);
-				continue;
-			}
-
-			error = fm_probe_send(probe);
-			if (error != FM_SEND_ERROR && error != FM_TRY_AGAIN)
-				num_sent += 1;
-
-			if (error != FM_TRY_AGAIN)
-				nprocessed += 1;
+			hlist_remove(&probe->link);
+			hlist_insertion_iterator_insert_and_advance(&ready_tail_iter, &probe->link);
 		}
 	}
+}
 
+/*
+ * Insert the remaining probes at the head of the runnable list again
+ */
+static void
+fm_target_postpone_remaining_runnable(fm_target_t *target, hlist_iterator_t *iter)
+{
+	hlist_insertion_iterator_t insert_iter;
+	fm_probe_t *probe;
+
+	hlist_insertion_iterator_init(&insert_iter, &target->ready_probes.hlist);
+	while ((probe = hlist_iterator_next(iter)) != NULL) {
+		hlist_remove(&probe->link);
+		hlist_insertion_iterator_insert_and_advance(&insert_iter, &probe->link);
+	}
+}
+
+static void
+fm_target_process_runnable(fm_target_t *target, fm_sched_stats_t *stats)
+{
+	struct hlist_head runnable = HLIST_HEAD_NIL;
+	hlist_iterator_t runnable_iter;
+	fm_probe_t *probe;
+
+	/* reassign runnable probes to a temporary list. This allows any probes to
+	 * become runnable without interfering with our processing, such as resulting
+	 * in endless loops. */
+	hlist_head_reassign(&target->ready_probes.hlist, &runnable);
+
+	/* Now process the list of probes that are ready to run.
+	 * Note that we don't use an iterator, we always refer to the first runnable
+	 * job at the head of the ready_list. The reason is that any pending probe
+	 * may disappear from that list at any point in time (eg traceroute will
+	 * actively cancel pending packet probes after the first reply).
+	 *
+	 * NB we could implement a "greedy" scheduling mode that does not return
+	 * as long as probes on this host are ready to run (and making progress)
+	 */
+	hlist_iterator_init(&runnable_iter, &runnable);
+	while (stats->num_sent < stats->job_quota && (probe = hlist_iterator_next(&runnable_iter)) != NULL) {
+		bool first_transmission;
+		fm_error_t error;
+
+		first_transmission = !fm_timestamp_is_set(&probe->sent);
+
+		error = fm_probe_send(probe);
+		if (error == FM_TRY_AGAIN) {
+			/* the probe asked to be postponed. */
+		} else {
+			if (error != FM_SEND_ERROR)
+				stats->num_sent += 1;
+
+			if (error != 0) {
+				/* complain about probes that are so broken they don't even manage to
+				 * send a single package. */
+				if (first_transmission)
+					fm_log_warning("%s: probe %s is DOA", fm_address_format(&target->address), probe->name);
+
+				fm_probe_set_error(probe, error);
+			} else if (first_transmission)
+				fm_timestamp_init(&probe->sent);
+
+			stats->num_processed += 1;
+		}
+
+		hlist_remove(&probe->link);
+		if (probe->done) {
+			/* rather than freeing it immediately, should we have a recycler list? */
+			fm_probe_free(probe);
+			continue;
+		}
+
+		assert(fm_timestamp_is_set(&probe->expires));
+		fm_probe_insert(&target->pending_probes, probe);
+	}
+
+	if (runnable.first != NULL)
+		fm_target_postpone_remaining_runnable(target, &runnable_iter);
+}
+
+static void
+fm_target_check_for_hung_state(fm_target_t *target, const fm_sched_stats_t *stats)
+{
 	if (fm_debug_level) {
+		const struct timeval *now = fm_timestamp_now();
 		static struct timeval next_ps;
 		bool update_ts = false;
+		fm_probe_t *probe;
 
-		if (nprocessed != 0) {
+		if (stats->num_processed != 0) {
 			fm_timestamp_clear(&next_ps);
 		} else if (!fm_timestamp_is_set(&next_ps)) {
 			update_ts = true;
 		} else
 		if (fm_timestamp_older(&next_ps, now)) {
+			struct list_iterator wait_iter;
+
 			if (target->pending_probes.hlist.first == NULL) {
 				fm_log_debug("%s: no pending probes", fm_address_format(&target->address));
 			} else {
 				fm_log_debug("%s: *** pending ***", fm_address_format(&target->address));
 			}
 
-			for (probe = (fm_probe_t *) (target->pending_probes.hlist.first); probe != NULL; probe = next) {
+			hlist_iterator_init(&wait_iter, &target->pending_probes.hlist);
+			while ((probe = hlist_iterator_next(&wait_iter)) != NULL) {
 				double probe_wait;
-
-				next = (fm_probe_t *) probe->link.next;
 
 				probe_wait = fm_timestamp_expires_when(&probe->expires, NULL);
 				fm_log_debug("   %4u ms %s", (unsigned int) (1000 * probe_wait), probe->name);
@@ -521,8 +581,43 @@ fm_target_process_timeouts(fm_target_t *target, unsigned int quota)
 		}
 
 	}
+}
 
-	return num_sent;
+static void
+fm_target_get_next_schedule_time(fm_target_t *target, fm_sched_stats_t *stats)
+{
+	hlist_iterator_t wait_iter;
+	fm_probe_t *probe;
+
+	hlist_iterator_init(&wait_iter, &target->pending_probes.hlist);
+	while ((probe = hlist_iterator_next(&wait_iter)) != NULL) {
+		const struct timeval *expiry = &probe->expires;
+
+		if (fm_timestamp_is_set(expiry) && fm_timestamp_older(expiry, &stats->timeout))
+			stats->timeout = *expiry;
+	}
+
+	if (!fm_ratelimit_available(&target->host_rate_limit)) {
+		struct timeval target_come_back;
+		double delay;
+
+		delay = fm_ratelimit_wait_until(&target->host_rate_limit, 1);
+		fm_timestamp_set_timeout(&target_come_back, delay);
+
+		if (fm_timestamp_older(&target_come_back, &stats->timeout))
+			stats->timeout = target_come_back;
+	}
+}
+
+void
+fm_target_schedule(fm_target_t *target, fm_sched_stats_t *stats)
+{
+	fm_target_process_timeouts(target);
+	fm_target_process_runnable(target, stats);
+	fm_target_get_next_schedule_time(target, stats);
+
+	if (fm_debug_level)
+		fm_target_check_for_hung_state(target, stats);
 }
 
 bool
