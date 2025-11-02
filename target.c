@@ -361,12 +361,9 @@ fm_target_get_local_bind_address(fm_target_t *target, fm_address_t *bind_address
 }
 
 
-/* FIXME: split update and query into separate functions
- */
 unsigned int
 fm_target_get_send_quota(fm_target_t *target)
 {
-	fm_ratelimit_update(&target->host_rate_limit);
 	return fm_ratelimit_available(&target->host_rate_limit);
 }
 
@@ -427,11 +424,10 @@ fm_target_continue_probe(fm_target_t *target, fm_probe_t *probe)
 }
 
 /*
- * A new probe has been created.
- * Transmit its first packet and put it on the list of pending probes.
+ * A new probe has been created. Schedule it.
  */
 fm_error_t
-fm_target_send_new_probe(fm_target_t *tgt, fm_probe_t *probe)
+fm_target_add_new_probe(fm_target_t *tgt, fm_probe_t *probe)
 {
 	fm_probe_insert(&tgt->ready_probes, probe);
 
@@ -612,6 +608,8 @@ fm_target_get_next_schedule_time(fm_target_t *target, fm_sched_stats_t *stats)
 void
 fm_target_schedule(fm_target_t *target, fm_sched_stats_t *stats)
 {
+	fm_ratelimit_update(&target->host_rate_limit);
+
 	fm_target_process_timeouts(target);
 	fm_target_process_runnable(target, stats);
 	fm_target_get_next_schedule_time(target, stats);

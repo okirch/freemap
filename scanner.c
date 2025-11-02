@@ -236,10 +236,7 @@ fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 
 		memset(&sched_stats, 0, sizeof(sched_stats));
 
-		sched_stats.job_quota = fm_target_get_send_quota(target);
-		if (sched_stats.job_quota > quota)
-			sched_stats.job_quota = quota;
-
+		sched_stats.job_quota = fm_target_get_send_quota(target, quota);
 		if (sched_stats.job_quota != 0)
 			fm_target_schedule(target, &sched_stats);
 
@@ -317,7 +314,7 @@ fm_scanner_transmit(fm_scanner_t *scanner)
 	fm_event_process_all();
 
 	/* Schedule and transmit a few additional probes */
-	fm_scheduler_create_new_probes(scanner->scheduler, fm_ratelimit_available(&scanner->send_rate_limit));
+	fm_scheduler_create_new_probes(scanner->scheduler, &scan_stats);
 
 	/* Reap any targets that we're done with, making room in the pool for
 	 * the next batch of targets. */

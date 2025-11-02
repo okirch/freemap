@@ -39,7 +39,7 @@ struct fm_scheduler {
 
 		bool		(*attach)(fm_scheduler_t *, fm_target_t *);
 		void		(*detach)(fm_scheduler_t *, fm_target_t *);
-		void		(*create_new_probes)(fm_scheduler_t *, unsigned int quota);
+		void		(*create_new_probes)(fm_scheduler_t *, fm_sched_stats_t *);
 		fm_probe_t *	(*get_next_probe)(fm_scheduler_t *, fm_target_t *);
 		void		(*destroy)(fm_scheduler_t *);
 	} *ops;
@@ -78,9 +78,9 @@ fm_scheduler_free(fm_scheduler_t *sched)
 }
 
 void
-fm_scheduler_create_new_probes(fm_scheduler_t *sched, unsigned int quota)
+fm_scheduler_create_new_probes(fm_scheduler_t *sched, fm_sched_stats_t *stats)
 {
-	sched->ops->create_new_probes(sched, quota);
+	sched->ops->create_new_probes(sched, stats);
 }
 
 fm_probe_t *
@@ -201,27 +201,21 @@ skip_this_action:
 }
 
 static void
-fm_linear_scheduler_create_new_probes(fm_scheduler_t *sched, unsigned int quota)
+fm_linear_scheduler_create_new_probes(fm_scheduler_t *sched, fm_sched_stats_t *stats)
 {
 	unsigned int num_visited = 0;
+	unsigned int num_created = 0, max_create;
 
-	while (quota) {
-		unsigned int num_sent = 0, target_quota;
+	max_create = stats->job_quota - stats->num_sent;
+	while (num_created < max_create) {
+		unsigned int target_quota;
 		fm_target_t *target;
 
 		target = fm_target_pool_get_next(sched->target_pool, &num_visited);
 		if (target == NULL)
 			break;
 
-		target_quota = fm_target_get_send_quota(target);
-		if (target_quota > quota)
-			target_quota = quota;
-
-#if 0
-		fm_log_debug("Try to send probes to %s (quota=%u)\n", 
-				fm_target_get_id(target), target_quota);
-#endif
-
+		target_quota = fm_target_get_send_quota(target, max_create - num_created);
 		while (num_sent < target_quota && !target->plugged) {
 			fm_probe_t *probe;
 
@@ -229,11 +223,9 @@ fm_linear_scheduler_create_new_probes(fm_scheduler_t *sched, unsigned int quota)
 			if (probe == NULL)
 				break;
 
-			if (fm_target_send_new_probe(target, probe) == 0)
-				num_sent += 1;
+			if (fm_target_add_new_probe(target, probe) == 0)
+				num_created += 1;
 		}
-
-		quota -= num_sent;
 	}
 }
 
@@ -244,7 +236,7 @@ static struct fm_scheduler_ops		fm_linear_scheduler_ops = {
 	.attach		= fm_linear_scheduler_attach,
 	.detach		= fm_linear_scheduler_detach,
 	.get_next_probe	= fm_linear_scheduler_get_next_probe,
-	.create_new_probes	= fm_linear_scheduler_create_new_probes,
+	.create_new_probes = fm_linear_scheduler_create_new_probes,
 };
 
 fm_scheduler_t *

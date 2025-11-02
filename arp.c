@@ -422,7 +422,7 @@ fm_arp_discover(fm_protocol_t *proto, fm_target_t *target, int retries)
 	if (probe == NULL)
 		return false;
 
-	fm_target_send_new_probe(target, probe);
+	fm_target_add_new_probe(target, probe);
 	return true;
 }
 

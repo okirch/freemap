@@ -113,18 +113,11 @@ extern void		fm_scan_exec_set_abort_on_fail(fm_scan_exec_t *, bool);
 extern void		fm_scan_program_dump(const fm_scan_program_t *program);
 extern bool		fm_scan_program_compile(const fm_scan_program_t *, fm_scanner_t *);
 
-extern void		fm_scheduler_create_new_probes(fm_scheduler_t *, unsigned int);
-extern fm_probe_t *	fm_scheduler_get_next_probe(fm_scheduler_t *, fm_target_t *);
-extern bool		fm_scheduler_attach_target(fm_scheduler_t *, fm_target_t *);
-extern void		fm_scheduler_detach_target(fm_scheduler_t *, fm_target_t *);
-extern fm_scheduler_t *	fm_linear_scheduler_create(fm_scanner_t *);
-
 extern fm_target_t *	fm_target_create(const fm_address_t *, fm_network_t *);
 extern void		fm_target_free(fm_target_t *);
 extern const char *	fm_target_get_id(const fm_target_t *);
 extern bool		fm_target_is_done(const fm_target_t *);
-extern unsigned int	fm_target_get_send_quota(fm_target_t *);
-extern fm_error_t	fm_target_send_new_probe(fm_target_t *, fm_probe_t *);
+extern fm_error_t	fm_target_add_new_probe(fm_target_t *, fm_probe_t *);
 extern bool		fm_target_get_local_bind_address(fm_target_t *, fm_address_t *);
 extern void		fm_target_update_port_state(fm_target_t *, unsigned int proto_id, unsigned int port, fm_asset_state_t state);
 extern void		fm_target_update_host_state(fm_target_t *target, unsigned int proto_id, fm_asset_state_t state);

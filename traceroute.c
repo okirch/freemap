@@ -579,7 +579,7 @@ fm_topo_state_send_probe(fm_topo_state_t *topo, fm_topo_hop_state_t *hop, double
 
 	fm_probe_install_status_callback(probe, fm_topo_hop_probe_pkt_callback, hop);
 
-	error = fm_target_send_new_probe(topo->target, probe);
+	error = fm_target_add_new_probe(topo->target, probe);
 
 	if (error == 0) {
 		double delay;
