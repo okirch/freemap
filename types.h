@@ -41,7 +41,7 @@ typedef struct fm_target_pool fm_target_pool_t;
 typedef struct fm_scheduler fm_scheduler_t;
 typedef struct fm_scanner fm_scanner_t;
 typedef struct fm_scan_action	fm_scan_action_t;
-typedef struct fm_scan_program	fm_scan_program_t;
+typedef struct fm_config_program	fm_config_program_t;
 typedef struct fm_scan_exec fm_scan_exec_t;
 typedef const struct fm_protocol fm_protocol_t;
 typedef const struct fm_protocol_engine fm_protocol_engine_t;

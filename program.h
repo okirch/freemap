@@ -85,7 +85,7 @@ struct fm_config_service {
 };
 
 
-struct fm_scan_program {
+struct fm_config_program {
 	fm_config_routine_t *	topo_scan;
 	fm_config_routine_t *	host_scan;
 	fm_config_routine_t *	port_scan;
@@ -93,13 +93,13 @@ struct fm_scan_program {
 };
 
 
-extern fm_scan_program_t *	fm_scan_program_alloc(const char *name);
-extern fm_scan_program_t *	fm_scan_program_build(const char *name,
+extern fm_config_program_t *	fm_config_program_alloc(const char *name);
+extern fm_config_program_t *	fm_config_program_build(const char *name,
 					const char *topology_scan,
 					const char *reachability_scan,
 					const char *service_scan);
-extern bool			fm_scan_program_set_service_catalog(fm_scan_program_t *, const char *);
-extern void			fm_scan_program_free(fm_scan_program_t *);
+extern bool			fm_config_program_set_service_catalog(fm_config_program_t *, const char *);
+extern void			fm_config_program_free(fm_config_program_t *);
 
 extern fm_config_library_t *	fm_config_library_alloc(const char * const *search_paths);
 extern fm_config_module_t *	fm_config_library_load_module(fm_config_library_t *, const char *name);

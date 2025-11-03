@@ -80,7 +80,7 @@ int
 fm_command_perform_scan(fm_command_t *cmd)
 {
 	fm_project_t *project;
-	fm_scan_program_t *program = NULL;
+	fm_config_program_t *program = NULL;
 	fm_scanner_t *scanner;
 	unsigned int k;
 
@@ -119,19 +119,19 @@ fm_command_perform_scan(fm_command_t *cmd)
 	}
 
 	if (cmd->cmdid == FM_CMDID_TOPO_SCAN) {
-		program = fm_scan_program_build("scan",
+		program = fm_config_program_build("scan",
 				project->topology_probe?: "traceroute",
 				NULL,
 				NULL);
 	} else
 	if (cmd->cmdid == FM_CMDID_HOST_SCAN) {
-		program = fm_scan_program_build("scan",
+		program = fm_config_program_build("scan",
 				NULL,
 				project->reachability_probe?: "default",
 				NULL);
 	} else
 	if (cmd->cmdid == FM_CMDID_PORT_SCAN) {
-		program = fm_scan_program_build("scan",
+		program = fm_config_program_build("scan",
 				NULL,
 				NULL,
 				project->service_probe?: "default");
@@ -139,7 +139,7 @@ fm_command_perform_scan(fm_command_t *cmd)
 	if (scan_options.program != NULL) {
 		fm_log_fatal("the entire program mess is gone.");
 	} else {
-		program = fm_scan_program_build("scan",
+		program = fm_config_program_build("scan",
 				project->topology_probe?: NULL,
 				project->reachability_probe?: "default",
 				project->service_probe?: "default");
@@ -147,13 +147,13 @@ fm_command_perform_scan(fm_command_t *cmd)
 			fm_log_fatal("Could not build scan program");
 	}
 
-	if (!fm_scan_program_set_service_catalog(program, "default"))
+	if (!fm_config_program_set_service_catalog(program, "default"))
 		fm_log_fatal("Unknown service catalog \"%s\"", "default");
 
 	if (scan_options.dump)
-		fm_scan_program_dump(program);
+		fm_config_program_dump(program);
 
-	if (!fm_scan_program_compile(program, scanner))
+	if (!fm_config_program_compile(program, scanner))
 		fm_log_fatal("Failed to compile scan program");
 
 	if (scan_options.dump)

@@ -897,10 +897,10 @@ fm_config_catalog_resolve_services(fm_config_catalog_t *catalog, fm_service_cata
 	return true;
 }
 
-fm_scan_program_t *
-fm_scan_program_build(const char *name, const char *topology_scan, const char *host_scan, const char *port_scan)
+fm_config_program_t *
+fm_config_program_build(const char *name, const char *topology_scan, const char *host_scan, const char *port_scan)
 {
-	fm_scan_program_t *program;
+	fm_config_program_t *program;
 
 	program = calloc(1, sizeof(*program));
 	if (topology_scan != NULL
@@ -920,18 +920,18 @@ fm_scan_program_build(const char *name, const char *topology_scan, const char *h
 	return program;
 
 fail:
-	fm_scan_program_free(program);
+	fm_config_program_free(program);
 	return NULL;
 }
 
 void
-fm_scan_program_free(fm_scan_program_t *program)
+fm_config_program_free(fm_config_program_t *program)
 {
 	free(program);
 }
 
 void
-fm_scan_program_dump(const fm_scan_program_t *program)
+fm_config_program_dump(const fm_config_program_t *program)
 {
 	/* this does not do anything right now */
 }
@@ -941,7 +941,7 @@ fm_scan_program_dump(const fm_scan_program_t *program)
  * Attach service catalog
  */
 bool
-fm_scan_program_set_service_catalog(fm_scan_program_t *program, const char *name)
+fm_config_program_set_service_catalog(fm_config_program_t *program, const char *name)
 {
 	fm_config_module_t *context = NULL;
 	fm_config_catalog_t *catalog;
@@ -989,7 +989,7 @@ fm_config_routine_compile(const fm_config_routine_t *routine, fm_scanner_t *scan
 }
 
 bool
-fm_scan_program_compile(const fm_scan_program_t *program, fm_scanner_t *scanner)
+fm_config_program_compile(const fm_config_program_t *program, fm_scanner_t *scanner)
 {
 	fm_scanner_set_service_catalog(scanner, program->service_catalog);
 
