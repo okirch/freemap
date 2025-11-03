@@ -33,7 +33,6 @@
 #include "program.h"
 #include "scanner.h"
 
-struct file_scanner;
 
 typedef struct fm_config_child	fm_config_child_t;
 typedef struct fm_config_attr	fm_config_attr_t;
@@ -90,14 +89,5 @@ struct fm_config_proc {
 
 extern void			fm_config_complain(curly_node_t *node, const char *fmt, ...);
 extern bool			fm_config_process_node(curly_node_t *node, fm_config_proc_t *prov, void *data);
-
-
-extern struct file_scanner *	file_scanner_open(const char *path);
-extern void			file_scanner_close(struct file_scanner *fs);
-extern void			file_scanner_free(struct file_scanner *fs);
-extern bool			file_scanner_error(struct file_scanner *fs, const char *fmt, ...);
-extern char *			file_scanner_next_entry(struct file_scanner *fs);
-extern char *			file_scanner_continue_entry(struct file_scanner *fs);
-extern bool			file_scanner_has_error(const struct file_scanner *fs);
 
 #endif /* FREEMAP_FILEFMT_H */

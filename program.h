@@ -39,10 +39,6 @@ struct fm_config_probe {
 	fm_string_array_t	extra_args;
 };
 
-/* FIXME: remove crap */
-
-extern const char *		fm_library_path;
-
 typedef struct fm_new_routine	fm_new_routine_t;
 
 typedef struct fm_new_routine_array {
@@ -50,85 +46,12 @@ typedef struct fm_new_routine_array {
 	fm_new_routine_t **	entries;
 } fm_new_routine_array_t;
 
-/* A single action that is part of a scan. Ultimately,
- * this will be translated into an fm_scan_action object.
- *
- * Right now, we support topo, host and port probe steps.
- */
-enum {
-	FM_SCAN_STEP_TOPO_PROBE,
-	FM_SCAN_STEP_HOST_PROBE,
-	FM_SCAN_STEP_PORT_PROBE,
-};
-
-typedef struct fm_scan_step {
-	char *			proto;
-	int			type;
-	int			action_flags;
-	fm_string_array_t	args;
-} fm_scan_step_t;
-
-/*
- * A scan program is a tree of executable objects,
- * which can be either a single probe, or a routine (ie
- * sequence of executable objects).
- */
-typedef struct fm_scan_exec fm_scan_exec_t;
-
-typedef struct fm_scan_exec_array {
-	unsigned int		count;
-	fm_scan_exec_t *	entries;
-} fm_scan_exec_array_t;
-
-enum {
-	FM_SCAN_ROUTINE_TOPOLOGY,
-	FM_SCAN_ROUTINE_HOSTS,
-	FM_SCAN_ROUTINE_SERVICES,
-};
-
-typedef struct fm_scan_routine {
-	int			type;
-	const char *		name;
-
-	/* scan scheduler is allowed to execute requests in random order. */
-	bool			allow_random_order;
-
-	/* scan scheduler is allowed to mix requests from this program
-	 * with requests from other programs. */
-	bool			allow_parallel_scan;
-
-	fm_scan_exec_array_t	body;
-} fm_scan_routine_t;
-
 struct fm_scan_program {
 	fm_new_routine_t *	topo_scan;
 	fm_new_routine_t *	host_scan;
 	fm_new_routine_t *	port_scan;
 };
 
-enum {
-	FM_SCAN_EXEC_STEP,
-	FM_SCAN_EXEC_ROUTINE,
-	FM_SCAN_EXEC_PROGRAM,
-};
-
-struct fm_scan_exec {
-	int			type;
-
-	/* abort the program when this routine fails */
-	bool			abort_on_fail;
-
-	union {
-		const fm_scan_step_t *step;
-		const fm_scan_routine_t *routine;
-		const fm_scan_program_t *program;
-	};
-};
-
-typedef struct fm_scan_library {
-	/* it's called "routines" but it also holds other exec types, such as programs */
-	fm_scan_exec_array_t	routines;
-} fm_scan_library_t;
 
 extern fm_scan_program_t *	fm_scan_program_alloc(const char *name);
 extern fm_scan_program_t *	fm_scan_program_build(const char *name,

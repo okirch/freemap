@@ -24,7 +24,6 @@ OBJS	= projects.o \
 	  assets.o \
 	  report.o \
 	  program.o \
-	  filefmt.o \
 	  config.o \
 	  defaults.o \
 	  wellknown.o \
