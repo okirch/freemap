@@ -73,16 +73,8 @@ struct fm_scan_module {
 struct fm_scan_routine {
 	const char *		name;
 	int			mode;
-
-	bool			processed;
-	bool			bad;
-
-	curly_node_t *		unparsed;
-	struct fm_scan_routine_parsed {
-		char *			name;
-		bool			optional;
-		fm_config_probe_array_t	probes;
-	} parsed;
+	bool			optional;
+	fm_config_probe_array_t	probes;
 };
 
 struct fm_scan_library {
@@ -91,12 +83,10 @@ struct fm_scan_library {
 };
 
 
-static bool		fm_scan_routine_process(fm_scan_routine_t *routine);
+static fm_scan_catalog_t *fm_scan_catalog_alloc(const char *name, const fm_scan_module_t *module, fm_scan_catalog_array_t *array);
+static bool		fm_scan_module_process(fm_scan_module_t *module, curly_node_t *node);
 static fm_scan_module_t *fm_scan_library_find_module(fm_scan_library_t *lib, const char *name, bool load_if_missing);
 static bool		fm_scan_module_load(fm_scan_module_t *module, const char *path);
-static fm_scan_catalog_t *fm_scan_catalog_alloc(const char *name, const fm_scan_module_t *);
-static bool		fm_scan_service_process(fm_scan_service_t *, curly_node_t *);
-static bool		fm_scan_catalog_process(fm_scan_catalog_t *, curly_node_t *);
 
 
 /*
@@ -341,14 +331,16 @@ fm_scan_library_find_module(fm_scan_library_t *lib, const char *name, bool load_
  * Handling of routine objects
  */
 static fm_scan_routine_t *
-fm_scan_routine_alloc(int mode, const char *name, curly_node_t *curly)
+fm_scan_routine_alloc(int mode, const char *name, fm_scan_routine_array_t *array)
 {
 	fm_scan_routine_t *routine;
 
 	routine = calloc(1, sizeof(*routine));
 	routine->mode = mode;
 	routine->name = strdup(name);
-	routine->unparsed = curly;
+
+	if (array)
+		fm_scan_routine_array_append(array, routine);
 
 	return routine;
 }
@@ -452,21 +444,6 @@ fm_scan_library_resolve_routine(fm_scan_library_t *lib, int mode, const char *na
 		}
 	}
 
-	if (routine == NULL)
-		return NULL;
-
-	if (routine->processed) {
-		if (routine->bad)
-			return NULL;
-		return routine;
-	}
-
-	routine->processed = true;
-	if (!fm_scan_routine_process(routine)) {
-		routine->bad = true;
-		return NULL;
-	}
-
 	return routine;
 }
 
@@ -527,12 +504,15 @@ fm_library_resolve_service_catalog(fm_scan_library_t *lib, const char *name, con
  * standard ports on which you would normally suspect this service.
  */
 static fm_scan_service_t *
-fm_scan_service_alloc(const char *name)
+fm_scan_service_alloc(const char *name, fm_scan_service_array_t *array)
 {
 	fm_scan_service_t *service;
 
 	service = calloc(1, sizeof(*service));
 	service->name = strdup(name);
+
+	if (array)
+		fm_scan_service_array_append(array, service);
 	return service;
 }
 
@@ -542,8 +522,8 @@ fm_scan_service_alloc(const char *name)
 static bool
 fm_scan_module_load(fm_scan_module_t *module, const char *path)
 {
-	curly_node_t *top, *node;
-	curly_iter_t *iter;
+	curly_node_t *top;
+	unsigned int i;
 	bool rv;
 
 	if (access(path, F_OK) < 0)
@@ -555,74 +535,16 @@ fm_scan_module_load(fm_scan_module_t *module, const char *path)
 		return false;
 	}
 
-	/* Silently ignore empty module files. */
-	if ((iter = curly_node_iterate(top)) == NULL) {
-		curly_node_free(top);
-		return true;
+	rv = fm_scan_module_process(module, top);
+
+	curly_node_free(top);
+
+	/* Make the newly created service catalogs point back to the
+	 * module that contains them */
+	for (i = 0; i < module->service_catalogs.count; ++i) {
+		fm_scan_catalog_t *catalog = module->service_catalogs.entries[i];
+		catalog->containing_module = module;
 	}
-
-	if (curly_iter_next_attr(iter) != NULL) {
-		fm_config_complain(top, "unexpected attributes in top-level node");
-		return false;
-	}
-
-	rv = true;
-	while ((node = curly_iter_next_node(iter)) != NULL) {
-		const char *type = curly_node_type(node);
-		const char *name = curly_node_name(node);
-		fm_scan_routine_t *routine;
-		int mode;
-
-		if (name == NULL) {
-			fm_config_complain(node, "missing name");
-			rv = false;
-			continue;
-		}
-
-		if (!strcmp(type, "service-probe")) {
-			fm_scan_service_t *service;
-
-			service = fm_scan_service_alloc(name);
-			fm_scan_service_array_append(&module->services, service);
-			if (!fm_scan_service_process(service, node))
-				rv = false;
-			continue;
-		}
-
-		if (!strcmp(type, "service-catalog")) {
-			fm_scan_catalog_t *catalog;
-
-			catalog = fm_scan_catalog_alloc(name, module);
-			fm_scan_catalog_array_append(&module->service_catalogs, catalog);
-			if (!fm_scan_catalog_process(catalog, node))
-				rv = false;
-			continue;
-		}
-
-		if (!strcmp(type, "topology-scan")) {
-			mode = FM_PROBE_MODE_TOPO;
-		} else
-		if (!strcmp(type, "host-scan")) {
-			mode = FM_PROBE_MODE_HOST;
-		} else
-		if (!strcmp(type, "port-scan")) {
-			mode = FM_PROBE_MODE_PORT;
-		} else {
-			fm_config_complain(node, "unsupported routine type \"%s\"", type);
-			rv = false;
-			continue;
-		}
-
-		routine = fm_scan_routine_alloc(mode, name, node);
-		fm_scan_routine_array_append(&module->routines, routine);
-	}
-
-	curly_iter_free(iter);
-
-	/* As we keep references to unparsed nodes from the config file,
-	 * destroying the top node is somewhat counter-productive.
-	 * Just leak the top node. */
-	/* curly_node_free(top); */
 
 	return rv;
 }
@@ -632,6 +554,58 @@ fm_config_probe_array_append(fm_config_probe_array_t *array, fm_config_probe_t *
 {
 	maybe_realloc_array(array->entries, array->count, 4);
 	array->entries[array->count++] = parsed_probe;
+}
+
+/*
+ * Handle nodes like
+ *   host-scan blah { ... }
+ */
+static void *
+fm_config_module_create_routine(curly_node_t *node, fm_scan_routine_array_t *array, int mode)
+{
+	const char *name = curly_node_name(node);
+
+	return fm_scan_routine_alloc(mode, name, array);
+}
+
+static void *
+fm_config_module_create_topo_routine(curly_node_t *node, void *data)
+{
+	return fm_config_module_create_routine(node, data, FM_PROBE_MODE_TOPO);
+}
+
+static void *
+fm_config_module_create_host_routine(curly_node_t *node, void *data)
+{
+	return fm_config_module_create_routine(node, data, FM_PROBE_MODE_HOST);
+}
+
+static void *
+fm_config_module_create_port_routine(curly_node_t *node, void *data)
+{
+	return fm_config_module_create_routine(node, data, FM_PROBE_MODE_PORT);
+}
+
+/*
+ * Handle
+ *  service-probe blah { .. }
+ */
+static void *
+fm_config_module_create_service(curly_node_t *node, void *data)
+{
+	fm_scan_service_array_t *array = data;
+	const char *name = curly_node_name(node);
+
+	return fm_scan_service_alloc(name, array);
+}
+
+static void *
+fm_config_module_create_service_catalog(curly_node_t *node, void *data)
+{
+	fm_scan_catalog_array_t *array = data;
+	const char *name = curly_node_name(node);
+
+	return fm_scan_catalog_alloc(name, NULL, array);
 }
 
 /*
@@ -754,14 +728,14 @@ static fm_config_proc_t	fm_config_packet_root = {
 };
 
 static fm_config_proc_t	fm_config_routine_root = {
-	.name = ATTRIB_STRING(struct fm_scan_routine_parsed, name),
+	.name = ATTRIB_STRING(fm_scan_routine_t, name),
 	.attributes = {
-		ATTRIB_BOOL(struct fm_scan_routine_parsed, optional),
+		ATTRIB_BOOL(fm_scan_routine_t, optional),
 	},
 	.children = {
-		{ "topo-probe",		offsetof(struct fm_scan_routine_parsed, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
-		{ "host-probe",		offsetof(struct fm_scan_routine_parsed, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
-		{ "port-probe",		offsetof(struct fm_scan_routine_parsed, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
+		{ "topo-probe",		offsetof(fm_scan_routine_t, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
+		{ "host-probe",		offsetof(fm_scan_routine_t, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
+		{ "port-probe",		offsetof(fm_scan_routine_t, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
 	},
 };
 
@@ -784,32 +758,25 @@ static fm_config_proc_t	fm_config_catalog_root = {
 	},
 };
 
-static bool
-fm_scan_routine_process(fm_scan_routine_t *routine)
-{
-	struct fm_scan_routine_parsed *parsed_data = &routine->parsed;
-	curly_node_t *node = routine->unparsed;
+static fm_config_proc_t	fm_config_module_root = {
+	.children = {
+		{ "topology-scan",	offsetof(fm_scan_module_t, routines),	&fm_config_routine_root, .alloc_child = fm_config_module_create_topo_routine },
+		{ "host-scan",		offsetof(fm_scan_module_t, routines),	&fm_config_routine_root, .alloc_child = fm_config_module_create_host_routine },
+		{ "port-scan",		offsetof(fm_scan_module_t, routines),	&fm_config_routine_root, .alloc_child = fm_config_module_create_port_routine },
+		{ "service-probe",	offsetof(fm_scan_module_t, services),	&fm_config_service_root, .alloc_child = fm_config_module_create_service },
+		{ "service-catalog",	offsetof(fm_scan_module_t, service_catalogs),
+										&fm_config_catalog_root, .alloc_child = fm_config_module_create_service_catalog },
 
-	fm_log_debug("Trying to compile %s routine %s",
-			fm_probe_mode_to_string(routine->mode), routine->name);
-
-	if (!fm_config_process_node(node, &fm_config_routine_root, parsed_data)) {
-		fm_config_complain(node, "unable to parse routine definition");
-		return false;
-	}
-
-	return true;
-}
+	},
+};
 
 static bool
-fm_scan_service_process(fm_scan_service_t *service, curly_node_t *node)
+fm_scan_module_process(fm_scan_module_t *module, curly_node_t *node)
 {
-	if (!fm_config_process_node(node, &fm_config_service_root, service)) {
-		fm_config_complain(node, "unable to parse service probe definition");
+	if (!fm_config_process_node(node, &fm_config_module_root, module)) {
+		fm_config_complain(node, "unable to parse module definition");
 		return false;
 	}
-
-	fm_log_debug("processed service %s", service->name);
 
 	return true;
 }
@@ -834,28 +801,20 @@ fm_scan_library_resolve_service_catalog(fm_scan_library_t *lib, const char *name
 	return fm_scan_module_find_service_catalog(module, name);
 }
 
-static bool
-fm_scan_catalog_process(fm_scan_catalog_t *catalog, curly_node_t *node)
-{
-	if (!fm_config_process_node(node, &fm_config_catalog_root, catalog)) {
-		fm_config_complain(node, "unable to parse service catalog definition");
-		return false;
-	}
-
-	return true;
-}
-
 /*
  * Service catalogs
  */
 static fm_scan_catalog_t *
-fm_scan_catalog_alloc(const char *name, const fm_scan_module_t *module)
+fm_scan_catalog_alloc(const char *name, const fm_scan_module_t *module, fm_scan_catalog_array_t *array)
 {
 	fm_scan_catalog_t *catalog;
 
 	catalog = calloc(1, sizeof(*catalog));
 	catalog->name = strdup(name);
 	catalog->containing_module = module;
+
+	if (array)
+		fm_scan_catalog_array_append(array, catalog);
 	return catalog;
 }
 
@@ -976,10 +935,10 @@ fm_scan_routine_compile(const fm_scan_routine_t *routine, fm_scanner_t *scanner)
 	unsigned int i;
 	bool ok = true;
 
-	for (i = 0; ok && i < routine->parsed.probes.count; ++i) {
-		fm_config_probe_t *parsed_probe = routine->parsed.probes.entries[i];
+	for (i = 0; ok && i < routine->probes.count; ++i) {
+		fm_config_probe_t *probe = routine->probes.entries[i];
 
-		ok = fm_scanner_add_probe(scanner, parsed_probe) && ok;
+		ok = fm_scanner_add_probe(scanner, probe) && ok;
 
 		if (routine->mode == FM_PROBE_MODE_HOST) {
 			fm_scanner_insert_barrier(scanner);
