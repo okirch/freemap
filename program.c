@@ -505,23 +505,6 @@ fm_scan_routine_process(fm_scan_routine_t *routine)
 		return false;
 	}
 
-	if (false) {
-		unsigned int i, k;
-		fm_log_debug("name=%s", parsed_data->name);
-		fm_log_debug("optional=%d", parsed_data->optional);
-
-		for (i = 0; i < parsed_data->probes.count; ++i) {
-			fm_config_probe_t *probe = parsed_data->probes.entries[i];
-
-			fm_log_debug("probe mode %d name %s", probe->mode, probe->name);
-			fm_log_debug("	ttl:     %u", probe->probe_params.ttl);
-			fm_log_debug("	ports:   %u entries", probe->string_ports.count);
-
-			for (k = 0; k < probe->extra_args.count; ++k)
-				fm_log_debug("	arg%d:    %s", k, probe->extra_args.entries[k]);
-		}
-	}
-
 	return true;
 }
 
