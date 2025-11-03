@@ -63,7 +63,7 @@ typedef struct fm_config_packet_array {
 
 typedef struct fm_scan_service_array {
 	unsigned int		count;
-	fm_scan_service_t **entries;
+	fm_scan_service_t **	entries;
 } fm_scan_service_array_t;
 
 struct fm_config_packet {
@@ -73,19 +73,23 @@ struct fm_config_packet {
 };
 
 struct fm_scan_service {
-	const char *		name;
+	const fm_scan_module_t *containing_module;
 
-	fm_string_array_t	tcp_ports;
-	fm_string_array_t	udp_ports;
+	const char *		name;
+	const char *		fullname;
+
+	fm_uint_array_t		tcp_ports;
+	fm_uint_array_t		udp_ports;
 
 	fm_config_packet_array_t packets;
 };
+
 
 struct fm_scan_program {
 	fm_scan_routine_t *	topo_scan;
 	fm_scan_routine_t *	host_scan;
 	fm_scan_routine_t *	port_scan;
-	fm_scan_service_array_t	services;
+	fm_service_catalog_t *	service_catalog;
 };
 
 
@@ -102,5 +106,6 @@ extern fm_scan_module_t *	fm_scan_library_load_module(fm_scan_library_t *, const
 extern fm_scan_routine_t *	fm_scan_library_resolve_routine(fm_scan_library_t *, int, const char *name);
 extern fm_scan_catalog_t *	fm_scan_library_resolve_service_catalog(fm_scan_library_t *, const char *name, fm_scan_module_t *);
 
+extern void			fm_scan_service_array_append(fm_scan_service_array_t *array, fm_scan_service_t *service);
 
 #endif /* FREEMAP_PROGRAM_H */

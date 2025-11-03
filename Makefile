@@ -26,6 +26,7 @@ OBJS	= projects.o \
 	  program.o \
 	  config.o \
 	  defaults.o \
+	  services.o \
 	  wellknown.o \
 	  wellknown/rpc.o \
 	  wellknown/dns.o \

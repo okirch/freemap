@@ -37,6 +37,7 @@
 #include "utils.h"
 #include "filefmt.h"
 #include "buffer.h"
+#include "services.h"
 
 enum {
 	EMPTY, LOADED, FAILED
@@ -516,6 +517,13 @@ fm_scan_service_alloc(const char *name, fm_scan_service_array_t *array)
 	return service;
 }
 
+static void
+fm_scan_service_finalize(fm_scan_service_t *service, fm_scan_module_t *module)
+{
+	asprintf((char **) &service->fullname, "%s.%s", module->name, service->name);
+	service->containing_module = module;
+}
+
 /*
  * Load a collection of routines into our library
  */
@@ -545,6 +553,9 @@ fm_scan_module_load(fm_scan_module_t *module, const char *path)
 		fm_scan_catalog_t *catalog = module->service_catalogs.entries[i];
 		catalog->containing_module = module;
 	}
+
+	for (i = 0; i < module->services.count; ++i)
+		fm_scan_service_finalize(module->services.entries[i], module);
 
 	return rv;
 }
@@ -721,6 +732,9 @@ fm_config_packet_set_payload(curly_node_t *node, void *attr_data, const curly_at
 		}
 	}
 
+	bp->wpos = k;
+
+	assert(fm_buffer_available(bp));
 	return true;
 }
 
@@ -763,8 +777,8 @@ static fm_config_proc_t	fm_config_routine_root = {
 static fm_config_proc_t	fm_config_service_root = {
 	.name = ATTRIB_STRING(fm_scan_service_t, name),
 	.attributes = {
-		ATTRIB_STRING_ARRAY(fm_scan_service_t, tcp_ports),
-		ATTRIB_STRING_ARRAY(fm_scan_service_t, udp_ports),
+		ATTRIB_INT_ARRAY(fm_scan_service_t, tcp_ports),
+		ATTRIB_INT_ARRAY(fm_scan_service_t, udp_ports),
 	},
 	.children = {
 		{ "packet",		offsetof(fm_scan_service_t, packets),		&fm_config_packet_root, .alloc_child = fm_config_packet_root_create },
@@ -840,7 +854,7 @@ fm_scan_catalog_alloc(const char *name, const fm_scan_module_t *module, fm_scan_
 }
 
 static bool
-fm_scan_catalog_resolve_services(fm_scan_catalog_t *catalog, fm_scan_service_array_t *service_list)
+fm_scan_catalog_resolve_services(fm_scan_catalog_t *catalog, fm_service_catalog_t *service_catalog)
 {
 	fm_scan_library_t *lib = fm_config_load_library();
 	const fm_scan_module_t *context;
@@ -859,7 +873,7 @@ fm_scan_catalog_resolve_services(fm_scan_catalog_t *catalog, fm_scan_service_arr
 				return false;
 			}
 
-			fm_scan_service_array_append(service_list, service);
+			fm_service_catalog_add_service(service_catalog, service);
 		}
 
 		if (catalog->extend == NULL) {
@@ -901,6 +915,8 @@ fm_scan_program_build(const char *name, const char *topology_scan, const char *h
 	 && !(program->port_scan = fm_config_load_routine(FM_PROBE_MODE_PORT, port_scan)))
 		goto fail;
 
+	program->service_catalog = fm_service_catalog_alloc();
+
 	return program;
 
 fail:
@@ -919,6 +935,7 @@ fm_scan_program_dump(const fm_scan_program_t *program)
 {
 	/* this does not do anything right now */
 }
+
 
 /*
  * Attach service catalog
@@ -942,10 +959,11 @@ fm_scan_program_set_service_catalog(fm_scan_program_t *program, const char *name
 	if (!(catalog = fm_config_load_service_catalog(name, context)))
 		return false;
 
-	fm_service_array_destroy_shallow(&program->services);
-	return fm_scan_catalog_resolve_services(catalog, &program->services);
-}
+	if (!fm_scan_catalog_resolve_services(catalog, program->service_catalog))
+		return false;
 
+	return true;
+}
 
 /*
  * Convert a program into a sequence of scan actions
@@ -973,6 +991,8 @@ fm_scan_routine_compile(const fm_scan_routine_t *routine, fm_scanner_t *scanner)
 bool
 fm_scan_program_compile(const fm_scan_program_t *program, fm_scanner_t *scanner)
 {
+	fm_scanner_set_service_catalog(scanner, program->service_catalog);
+
 	return fm_scan_routine_compile(program->topo_scan, scanner)
 	    && fm_scan_routine_compile(program->host_scan, scanner)
 	    && fm_scan_routine_compile(program->port_scan, scanner);
