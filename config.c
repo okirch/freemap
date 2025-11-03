@@ -608,7 +608,8 @@ fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *dat
 		if (adef->name == NULL)
 			break;
 
-		if (!strcmp(adef->name, attr_name)) {
+		if (!strcmp(adef->name, attr_name)
+		 || !strcmp(adef->name, "*")) {
 			return fm_config_apply_value(node, data, adef, attr);
 		}
 	}
