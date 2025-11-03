@@ -44,7 +44,7 @@ struct fm_config_probe {
 typedef struct fm_config_module fm_config_module_t;
 typedef struct fm_config_routine fm_config_routine_t;
 typedef struct fm_config_service fm_config_service_t;
-typedef struct fm_scan_catalog fm_scan_catalog_t;
+typedef struct fm_config_catalog fm_config_catalog_t;
 
 typedef struct fm_config_module_array {
 	unsigned int		count;
@@ -104,7 +104,7 @@ extern void			fm_scan_program_free(fm_scan_program_t *);
 extern fm_scan_library_t *	fm_scan_library_alloc(const char * const *search_paths);
 extern fm_config_module_t *	fm_scan_library_load_module(fm_scan_library_t *, const char *name);
 extern fm_config_routine_t *	fm_scan_library_resolve_routine(fm_scan_library_t *, int, const char *name);
-extern fm_scan_catalog_t *	fm_scan_library_resolve_service_catalog(fm_scan_library_t *, const char *name, fm_config_module_t *);
+extern fm_config_catalog_t *	fm_scan_library_resolve_service_catalog(fm_scan_library_t *, const char *name, fm_config_module_t *);
 
 extern void			fm_config_service_array_append(fm_config_service_array_t *array, fm_config_service_t *service);
 

@@ -43,7 +43,7 @@ enum {
 	EMPTY, LOADED, FAILED
 };
 
-typedef struct fm_scan_catalog {
+typedef struct fm_config_catalog {
 	/* We need a back pointer to the module, so that we can
 	 * interpret relative names */
 	const fm_config_module_t *containing_module;
@@ -51,24 +51,24 @@ typedef struct fm_scan_catalog {
 	const char *		name;
 	const char *		extend;
 	fm_string_array_t	names;
-} fm_scan_catalog_t;
+} fm_config_catalog_t;
 
 typedef struct fm_config_probe_array {
 	unsigned int		count;
 	fm_config_probe_t **	entries;
 } fm_config_probe_array_t;
 
-typedef struct fm_scan_catalog_array {
+typedef struct fm_config_catalog_array {
 	unsigned int		count;
-	fm_scan_catalog_t **	entries;
-} fm_scan_catalog_array_t;
+	fm_config_catalog_t **	entries;
+} fm_config_catalog_array_t;
 
 struct fm_config_module {
 	const char *		name;
 	int			state;
 	fm_config_routine_array_t routines;
 	fm_config_service_array_t services;
-	fm_scan_catalog_array_t	service_catalogs;
+	fm_config_catalog_array_t	service_catalogs;
 };
 
 struct fm_config_routine {
@@ -84,7 +84,7 @@ struct fm_scan_library {
 };
 
 
-static fm_scan_catalog_t *fm_scan_catalog_alloc(const char *name, const fm_config_module_t *module, fm_scan_catalog_array_t *array);
+static fm_config_catalog_t *fm_config_catalog_alloc(const char *name, const fm_config_module_t *module, fm_config_catalog_array_t *array);
 static bool		fm_config_module_process(fm_config_module_t *module, curly_node_t *node);
 static fm_config_module_t *fm_scan_library_find_module(fm_scan_library_t *lib, const char *name, bool load_if_missing);
 static bool		fm_config_module_load(fm_config_module_t *module, const char *path);
@@ -121,7 +121,7 @@ fm_config_load_routine(int mode, const char *name)
 	return fm_scan_library_resolve_routine(lib, mode, name);
 }
 
-fm_scan_catalog_t *
+fm_config_catalog_t *
 fm_config_load_service_catalog(const char *name, fm_config_module_t *context)
 {
 	fm_scan_library_t *lib;
@@ -201,19 +201,19 @@ fm_service_array_destroy_shallow(fm_config_service_array_t *array)
 }
 
 static void
-fm_scan_catalog_array_append(fm_scan_catalog_array_t *array, fm_scan_catalog_t *catalog)
+fm_config_catalog_array_append(fm_config_catalog_array_t *array, fm_config_catalog_t *catalog)
 {
 	maybe_realloc_array(array->entries, array->count, 32);
 	array->entries[array->count++] = catalog;
 }
 
-static fm_scan_catalog_t *
-fm_scan_catalog_array_find(const fm_scan_catalog_array_t *array, const char *name)
+static fm_config_catalog_t *
+fm_config_catalog_array_find(const fm_config_catalog_array_t *array, const char *name)
 {
 	unsigned int i;
 
 	for (i = 0; i < array->count; ++i) {
-		fm_scan_catalog_t *catalog = array->entries[i];
+		fm_config_catalog_t *catalog = array->entries[i];
 
 		if (!strcmp(catalog->name, name))
 			return catalog;
@@ -262,13 +262,13 @@ fm_config_module_find_service(const fm_config_module_t *module, const char *name
 /*
  * Look up a service catalog gives its name
  */
-static fm_scan_catalog_t *
+static fm_config_catalog_t *
 fm_config_module_find_service_catalog(const fm_config_module_t *module, const char *name)
 {
 	if (module->state != LOADED)
 		return NULL;
 
-	return fm_scan_catalog_array_find(&module->service_catalogs, name);
+	return fm_config_catalog_array_find(&module->service_catalogs, name);
 }
 
 static bool
@@ -489,7 +489,7 @@ fm_scan_library_resolve_service(fm_scan_library_t *lib, const char *name, const 
 	return fm_config_module_find_service(module, name);
 }
 
-extern fm_scan_catalog_t *
+extern fm_config_catalog_t *
 fm_library_resolve_service_catalog(fm_scan_library_t *lib, const char *name, const fm_config_module_t *context)
 {
 	const fm_config_module_t *module;
@@ -550,7 +550,7 @@ fm_config_module_load(fm_config_module_t *module, const char *path)
 	/* Make the newly created service catalogs point back to the
 	 * module that contains them */
 	for (i = 0; i < module->service_catalogs.count; ++i) {
-		fm_scan_catalog_t *catalog = module->service_catalogs.entries[i];
+		fm_config_catalog_t *catalog = module->service_catalogs.entries[i];
 		catalog->containing_module = module;
 	}
 
@@ -613,10 +613,10 @@ fm_config_module_create_service(curly_node_t *node, void *data)
 static void *
 fm_config_module_create_service_catalog(curly_node_t *node, void *data)
 {
-	fm_scan_catalog_array_t *array = data;
+	fm_config_catalog_array_t *array = data;
 	const char *name = curly_node_name(node);
 
-	return fm_scan_catalog_alloc(name, NULL, array);
+	return fm_config_catalog_alloc(name, NULL, array);
 }
 
 /*
@@ -786,10 +786,10 @@ static fm_config_proc_t	fm_config_service_root = {
 };
 
 static fm_config_proc_t	fm_config_catalog_root = {
-	.name = ATTRIB_STRING(fm_scan_catalog_t, name),
+	.name = ATTRIB_STRING(fm_config_catalog_t, name),
 	.attributes = {
-		{ "use",		offsetof(fm_scan_catalog_t, names),		FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
-		{ "extend",		offsetof(fm_scan_catalog_t, extend),		FM_CONFIG_ATTR_TYPE_STRING },
+		{ "use",		offsetof(fm_config_catalog_t, names),		FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
+		{ "extend",		offsetof(fm_config_catalog_t, extend),		FM_CONFIG_ATTR_TYPE_STRING },
 	},
 };
 
@@ -816,7 +816,7 @@ fm_config_module_process(fm_config_module_t *module, curly_node_t *node)
 	return true;
 }
 
-extern fm_scan_catalog_t *
+extern fm_config_catalog_t *
 fm_scan_library_resolve_service_catalog(fm_scan_library_t *lib, const char *name, fm_config_module_t *context)
 {
 	char *module_name;
@@ -839,22 +839,22 @@ fm_scan_library_resolve_service_catalog(fm_scan_library_t *lib, const char *name
 /*
  * Service catalogs
  */
-static fm_scan_catalog_t *
-fm_scan_catalog_alloc(const char *name, const fm_config_module_t *module, fm_scan_catalog_array_t *array)
+static fm_config_catalog_t *
+fm_config_catalog_alloc(const char *name, const fm_config_module_t *module, fm_config_catalog_array_t *array)
 {
-	fm_scan_catalog_t *catalog;
+	fm_config_catalog_t *catalog;
 
 	catalog = calloc(1, sizeof(*catalog));
 	catalog->name = strdup(name);
 	catalog->containing_module = module;
 
 	if (array)
-		fm_scan_catalog_array_append(array, catalog);
+		fm_config_catalog_array_append(array, catalog);
 	return catalog;
 }
 
 static bool
-fm_scan_catalog_resolve_services(fm_scan_catalog_t *catalog, fm_service_catalog_t *service_catalog)
+fm_config_catalog_resolve_services(fm_config_catalog_t *catalog, fm_service_catalog_t *service_catalog)
 {
 	fm_scan_library_t *lib = fm_config_load_library();
 	const fm_config_module_t *context;
@@ -879,7 +879,7 @@ fm_scan_catalog_resolve_services(fm_scan_catalog_t *catalog, fm_service_catalog_
 		if (catalog->extend == NULL) {
 			break;
 		} else {
-			fm_scan_catalog_t *next;
+			fm_config_catalog_t *next;
 
 			next = fm_library_resolve_service_catalog(lib, catalog->extend, context);
 			if (next == NULL) {
@@ -944,7 +944,7 @@ bool
 fm_scan_program_set_service_catalog(fm_scan_program_t *program, const char *name)
 {
 	fm_config_module_t *context = NULL;
-	fm_scan_catalog_t *catalog;
+	fm_config_catalog_t *catalog;
 	fm_scan_library_t *lib;
 
 	lib = fm_config_load_library();
@@ -959,7 +959,7 @@ fm_scan_program_set_service_catalog(fm_scan_program_t *program, const char *name
 	if (!(catalog = fm_config_load_service_catalog(name, context)))
 		return false;
 
-	if (!fm_scan_catalog_resolve_services(catalog, program->service_catalog))
+	if (!fm_config_catalog_resolve_services(catalog, program->service_catalog))
 		return false;
 
 	return true;
