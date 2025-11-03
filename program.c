@@ -37,12 +37,20 @@
 #include "utils.h"
 #include "filefmt.h"
 
-
+enum {
+	EMPTY, LOADED, FAILED
+};
 
 typedef struct fm_config_probe_array {
 	unsigned int		count;
 	fm_config_probe_t **	entries;
 } fm_config_probe_array_t;
+
+struct fm_scan_module {
+	const char *		name;
+	int			state;
+	fm_scan_routine_array_t	routines;
+};
 
 struct fm_scan_routine {
 	const char *		name;
@@ -60,13 +68,14 @@ struct fm_scan_routine {
 };
 
 struct fm_scan_library {
-	fm_string_array_t		search_path;
-	fm_string_array_t		modules;
-	fm_scan_routine_array_t		routines;
+	fm_string_array_t	search_path;
+	fm_scan_module_array_t	modules;
 };
 
 
 static bool		fm_scan_routine_process(fm_scan_routine_t *routine);
+static fm_scan_module_t *fm_scan_library_find_module(fm_scan_library_t *lib, const char *name, bool load_if_missing);
+static bool		fm_scan_module_load(fm_scan_module_t *module, const char *path);
 
 
 /*
@@ -80,7 +89,7 @@ fm_config_load_library(void)
 	if (the_library == NULL) {
 		the_library = fm_scan_library_alloc(NULL);
 
-		if (!fm_scan_library_load_module(the_library, "standard"))
+		if (!fm_scan_library_find_module(the_library, "standard", true))
 			the_library = NULL;
 	}
 	return the_library;
@@ -97,7 +106,7 @@ fm_config_load_routine(int mode, const char *name)
 	if ((lib = fm_config_load_library()) == NULL)
 		return NULL;
 
-	return fm_scan_library_get_routine(lib, mode, name);
+	return fm_scan_library_resolve_routine(lib, mode, name, true);
 }
 
 /*
@@ -110,17 +119,92 @@ fm_scan_routine_array_append(fm_scan_routine_array_t *array, fm_scan_routine_t *
 	array->entries[array->count++] = routine;
 }
 
+void
+fm_scan_module_array_append(fm_scan_module_array_t *array, fm_scan_module_t *module)
+{
+	maybe_realloc_array(array->entries, array->count, 32);
+	array->entries[array->count++] = module;
+}
+
+/*
+ * create an empty scan module
+ */
+static fm_scan_module_t *
+fm_scan_module_alloc(const char *name)
+{
+	fm_scan_module_t *module;
+
+	module = calloc(1, sizeof(*module));
+	module->name = strdup(name);
+	module->state = EMPTY;
+	return module;
+}
+
+/*
+ * Look up a routine gives its name
+ */
 static fm_scan_routine_t *
-fm_scan_program_find_routine(fm_scan_library_t *lib, int mode, const char *name)
+fm_scan_module_find_routine(fm_scan_module_t *module, int mode, const char *name)
 {
 	unsigned int i;
 
-	for (i = 0; i < lib->routines.count; ++i) {
-		fm_scan_routine_t *routine = lib->routines.entries[i];
+	if (module->state != LOADED)
+		return NULL;
+
+	for (i = 0; i < module->routines.count; ++i) {
+		fm_scan_routine_t *routine = module->routines.entries[i];
 		if (routine->mode == mode && !strcmp(routine->name, name))
 			return routine;
 	}
 	return NULL;
+}
+
+static bool
+fm_scan_library_get_module_path(fm_scan_library_t *lib, const char *module_name, char *path_buf, size_t size)
+{
+	unsigned int i;
+
+	for (i = 0; i < lib->search_path.count; ++i) {
+		const char *dir = lib->search_path.entries[i];
+
+		snprintf(path_buf, size, "%s/%s.lib", dir, module_name);
+		if (access(path_buf, F_OK) >= 0)
+			return true;
+	}
+
+	return false;
+}
+
+static fm_scan_module_t *
+fm_scan_library_find_module(fm_scan_library_t *lib, const char *name, bool load_if_missing)
+{
+	fm_scan_module_t *module;
+	char path_buf[PATH_MAX];
+	unsigned int i;
+
+	for (i = 0; i < lib->modules.count; ++i) {
+		module = lib->modules.entries[i];
+		if (!strcmp(module->name, name))
+			return module;
+	}
+
+	if (!load_if_missing)
+		return NULL;
+
+	if (!fm_scan_library_get_module_path(lib, name, path_buf, sizeof(path_buf))) {
+		fm_log_error("Could not find module \"%s\" anywhere in my search path", name);
+		return NULL;
+	}
+
+	module = fm_scan_module_alloc(name);
+	fm_scan_module_array_append(&lib->modules, module);
+
+	if (fm_scan_module_load(module, path_buf))
+		module->state = LOADED;
+	else
+		module->state = FAILED;
+
+	return module;
 }
 
 /*
@@ -168,12 +252,65 @@ fm_scan_library_alloc(const char * const *search_paths)
 	return lib;
 }
 
-extern fm_scan_routine_t *
-fm_scan_library_get_routine(fm_scan_library_t *lib, int mode, const char *name)
+/*
+ * Parse a reference to a scan routine definition, which is optionally prefixed
+ * with a module name, separated by '.'
+ * Returns the module name, if found, or NULL.
+ * On return, *name_p will point to the routine name with any module prefix stripped
+ * off.
+ */
+static char *
+fm_scan_library_parse_routine_reference(const char **name_p)
 {
-	fm_scan_routine_t *routine;
+	const char *name = *name_p, *s;
+	unsigned int len;
+	char *module_name;
 
-	if (!(routine = fm_scan_program_find_routine(lib, mode, name)))
+	if ((s = strchr(name, '.')) == NULL)
+		return NULL;
+
+	len = s - name;
+
+	/* routine name starts past the dot */
+	*name_p = name + len + 1;
+
+	/* now allocate the module name */
+	module_name = malloc(len + 1);
+	strncpy(module_name, name, len);
+	module_name[len] = '\0';
+
+	return module_name;
+}
+
+extern fm_scan_routine_t *
+fm_scan_library_resolve_routine(fm_scan_library_t *lib, int mode, const char *name, bool create)
+{
+	fm_scan_routine_t *routine = NULL;
+	char *module_name;
+	fm_scan_module_t *module;
+
+	module_name = fm_scan_library_parse_routine_reference(&name);
+	if (module_name != NULL) {
+		module = fm_scan_library_find_module(lib, module_name, true);
+		free(module_name);
+
+		if (module == NULL || module->state != LOADED)
+			return NULL;
+
+		routine = fm_scan_module_find_routine(module, mode, name);
+	} else {
+		unsigned int i;
+
+		/* No module name provided; just loop over all modules and return
+		 * whatever matches. */
+		for (i = 0; i < lib->modules.count && routine == NULL; ++i) {
+			fm_scan_module_t *module = lib->modules.entries[i];
+
+			routine = fm_scan_module_find_routine(module, mode, name);
+		}
+	}
+
+	if (routine == NULL)
 		return NULL;
 
 	if (routine->processed) {
@@ -195,8 +332,8 @@ fm_scan_library_get_routine(fm_scan_library_t *lib, int mode, const char *name)
 /*
  * Load a collection of routines into our library
  */
-bool
-fm_scan_library_load_file(fm_scan_library_t *lib, const char *path)
+static bool
+fm_scan_module_load(fm_scan_module_t *module, const char *path)
 {
 	curly_node_t *top, *node;
 	curly_iter_t *iter;
@@ -226,7 +363,7 @@ fm_scan_library_load_file(fm_scan_library_t *lib, const char *path)
 	while ((node = curly_iter_next_node(iter)) != NULL) {
 		const char *type = curly_node_type(node);
 		const char *name = curly_node_name(node);
-		fm_scan_routine_t *routine, *other;
+		fm_scan_routine_t *routine;
 		int mode;
 
 		if (name == NULL) {
@@ -249,17 +386,8 @@ fm_scan_library_load_file(fm_scan_library_t *lib, const char *path)
 			continue;
 		}
 
-		if ((other = fm_scan_program_find_routine(lib, mode, name)) != NULL) {
-			fm_config_complain(node, "duplicated definition of %s routine %s (already have one from %s:%u)",
-					type, name,
-					curly_node_get_source_file(other->unparsed),
-					curly_node_get_source_line(other->unparsed));
-			rv = false;
-			continue;
-		}
-
 		routine = fm_scan_routine_alloc(mode, name, node);
-		fm_scan_routine_array_append(&lib->routines, routine);
+		fm_scan_routine_array_append(&module->routines, routine);
 	}
 
 	curly_iter_free(iter);
@@ -270,32 +398,6 @@ fm_scan_library_load_file(fm_scan_library_t *lib, const char *path)
 	/* curly_node_free(top); */
 
 	return rv;
-}
-
-bool
-fm_scan_library_load_module(fm_scan_library_t *lib, const char *module_name)
-{
-	char full_path[PATH_MAX];
-	unsigned int i;
-
-	if (fm_string_array_contains(&lib->modules, module_name))
-		return true;
-
-	for (i = 0; i < lib->search_path.count; ++i) {
-		const char *dir = lib->search_path.entries[i];
-
-		snprintf(full_path, sizeof(full_path), "%s/%s.lib", dir, module_name);
-		if (access(full_path, F_OK) >= 0) {
-			if (fm_scan_library_load_file(lib, full_path))
-				return true;
-
-			fm_log_error("Failed to load module \"%s\" from \"%s\"", module_name, full_path);
-			return false;
-		}
-	}
-
-	fm_log_error("Could not find module \"%s\" anywhere in my search path", module_name);
-	return false;
 }
 
 static void

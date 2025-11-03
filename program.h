@@ -28,6 +28,8 @@
 
 
 typedef struct fm_config_probe fm_config_probe_t;
+typedef struct fm_config_packet fm_config_packet_t;
+
 struct fm_config_probe {
 	const char *		name;
 	int			mode;
@@ -39,12 +41,29 @@ struct fm_config_probe {
 	fm_string_array_t	extra_args;
 };
 
+typedef struct fm_scan_module	fm_scan_module_t;
 typedef struct fm_scan_routine	fm_scan_routine_t;
+
+typedef struct fm_scan_module_array {
+	unsigned int		count;
+	fm_scan_module_t **	entries;
+} fm_scan_module_array_t;
 
 typedef struct fm_scan_routine_array {
 	unsigned int		count;
 	fm_scan_routine_t **	entries;
 } fm_scan_routine_array_t;
+
+typedef struct fm_config_packet_array {
+	unsigned int		count;
+	fm_config_packet_t **	entries;
+} fm_config_packet_array_t;
+
+struct fm_config_packet {
+	const char *		module;
+	const char *		name;
+	fm_buffer_t *		payload;
+};
 
 struct fm_scan_program {
 	fm_scan_routine_t *	topo_scan;
@@ -59,5 +78,10 @@ extern fm_scan_program_t *	fm_scan_program_build(const char *name,
 					const char *reachability_scan,
 					const char *service_scan);
 extern void			fm_scan_program_free(fm_scan_program_t *);
+
+extern fm_scan_library_t *	fm_scan_library_alloc(const char * const *search_paths);
+extern fm_scan_module_t *	fm_scan_library_load_module(fm_scan_library_t *, const char *name);
+extern fm_scan_routine_t *	fm_scan_library_resolve_routine(fm_scan_library_t *, int, const char *name, bool crete);
+
 
 #endif /* FREEMAP_PROGRAM_H */
