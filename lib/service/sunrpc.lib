@@ -1,0 +1,90 @@
+
+service-probe "default" {
+        tcp-ports       111, 2049;
+        udp-ports       111, 2049;
+
+	# Try to elicit a response from an unknown RPC service
+	# Conforming implementations should respond with an error
+	# that we're using an old version of the protocol
+	packet "broken-rpc-version" {
+		payload
+			1, 2, 3, 4,	# XID
+			0, 0, 0, 0,	# CALL
+			0, 0, 0, 1,	# bad RPC version (1)
+
+			0, 0, 0, 1,	# random RPC program (1)
+			0, 0, 0, 1,	# random RPC program version (1)
+			0, 0, 0, 0,	# RPC NULL call
+
+			0, 0, 0, 0,	# RPC NULL auth and verf
+			0, 0, 0, 0,
+			0, 0, 0, 0,
+			0, 0, 0, 0
+	}
+}
+
+service-probe "rpcbind" {
+        tcp-ports       111;
+        udp-ports       111;
+
+	# Perform an RPC NULL call to the rpcbind program
+	packet "null-call" {
+		payload
+			1, 2, 3, 5,		# XID
+			0, 0, 0, 0,		# CALL
+			0, 0, 0, 2,		# RPC version 2
+
+			0, 1, 0x86, 0xa0,	# random RPC program (1)
+			0, 0, 0, 1,		# random RPC program version (1)
+			0, 0, 0, 0,		# RPC NULL call
+
+			0, 0, 0, 0,		# RPC NULL auth and verf
+			0, 0, 0, 0,
+			0, 0, 0, 0,
+			0, 0, 0, 0
+
+	}
+}
+
+service-probe "nfsd" {
+        tcp-ports       2049;
+        udp-ports       2049;
+
+	# Perform an RPC NULL call to the nfs program
+	packet "null-call" {
+		payload
+			1, 2, 3, 6,		# XID
+			0, 0, 0, 0,		# CALL
+			0, 0, 0, 2,		# RPC version 2
+
+			0, 1, 0x86, 0xa3,	# random RPC program (1)
+			0, 0, 0, 1,		# random RPC program version (1)
+			0, 0, 0, 0,		# RPC NULL call
+
+			0, 0, 0, 0,		# RPC NULL auth and verf
+			0, 0, 0, 0,
+			0, 0, 0, 0,
+			0, 0, 0, 0
+
+	}
+}
+
+service-probe "nis" {
+	# Perform an RPC NULL call to the nfs program
+	packet "null-call" {
+		payload
+			1, 2, 3, 6,		# XID
+			0, 0, 0, 0,		# CALL
+			0, 0, 0, 2,		# RPC version 2
+
+			0, 1, 0x86, 0xa4,	# random RPC program (1)
+			0, 0, 0, 1,		# random RPC program version (1)
+			0, 0, 0, 0,		# RPC NULL call
+
+			0, 0, 0, 0,		# RPC NULL auth and verf
+			0, 0, 0, 0,
+			0, 0, 0, 0,
+			0, 0, 0, 0
+
+	}
+}

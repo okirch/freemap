@@ -13,7 +13,7 @@ host-scan thorough {
 	host-probe arp {
 		optional true;
 	}
-	host-probe icmp;
+	host-probe icmp {};
 	port-probe tcp {
 		port 0;
 	}
@@ -57,4 +57,10 @@ port-scan thorough {
 	port-probe udp {
 		port 1-512, 2049;
 	}
+}
+
+service-catalog "default" {
+	use	dns,
+		"sunrpc.rpcbind",
+		"sunrpc.nfsd";
 }
