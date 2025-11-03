@@ -140,7 +140,7 @@ fm_command_perform_scan(fm_command_t *cmd)
 		fm_log_fatal("the entire program mess is gone.");
 	} else {
 		program = fm_config_program_build("scan",
-				project->topology_probe?: NULL,
+				NULL,
 				project->reachability_probe?: "default",
 				project->service_probe?: "default");
 		if (program == NULL)
