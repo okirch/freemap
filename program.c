@@ -716,23 +716,40 @@ fm_config_packet_set_payload(curly_node_t *node, void *attr_data, const curly_at
 {
 	fm_buffer_t **payload_p = attr_data, *bp;
 	const char *attr_name = curly_attr_get_name(attr);
-	unsigned int k, raw_len;
+	unsigned int k, nattrs, pos, raw_len;
 
-	raw_len = curly_attr_get_count(attr);
+	nattrs = curly_attr_get_count(attr);
+	for (k = 0, raw_len = 0; k < nattrs; ++k) {
+		const char *octet = curly_attr_get_value(attr, k);
+
+		if (!strncmp(octet, "str:", 4))
+			raw_len += strlen(octet + 4);
+		else
+			raw_len += 1;
+	}
+
 	*payload_p = bp = fm_buffer_alloc(raw_len);
 
-	for (k = 0; k < raw_len; ++k) {
+	for (k = 0, pos = 0; k < nattrs; ++k) {
 		const char *octet = curly_attr_get_value(attr, k);
 		const char *end;
 
-		bp->data[k] = strtoul(octet, (char **) &end, 0);
-		if (*end) {
-			fm_config_complain(node, "attribute %s: cannot parse octet at index %u: \"%s\"", attr_name, k, octet);
-			return false;
+		if (!strncmp(octet, "str:", 4)) {
+			unsigned int nbytes = strlen(octet + 4);
+
+			assert(pos + nbytes <= raw_len);
+			memcpy(bp->data + pos, octet + 4, nbytes);
+			pos += nbytes;
+		} else {
+			bp->data[pos++] = strtoul(octet, (char **) &end, 0);
+			if (*end) {
+				fm_config_complain(node, "attribute %s: cannot parse octet at index %u: \"%s\"", attr_name, k, octet);
+				return false;
+			}
 		}
 	}
 
-	bp->wpos = k;
+	bp->wpos = pos;
 
 	assert(fm_buffer_available(bp));
 	return true;

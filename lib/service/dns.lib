@@ -17,4 +17,46 @@ service-probe "default" {
 			0, 1,		# qtype: A
 			0, 1;		# qclass: IN
 	}
+
+	packet "mdns-ptr-query1" {
+		payload
+			0xca, 0xfe,     # ID
+			0, 0,           # query, no flags
+			0, 1,           # 1 query
+			0, 0,           # 0 answers
+			0, 0,           # 0 SOA records
+			0, 0,           # 0 additional records
+
+			# question string: _services._dns-sd._udp.local
+			9, "str:_services",
+			7, "str:_dns-sd",
+			4, "str:_udp",
+			5, "str:local",
+			0,
+
+			0, 12,          # qtype: PTR
+			0, 1           	# qclass: IN
+			;
+
+	}
+	packet "mdns-ptr-query2" {
+		payload
+			0xca, 0xfe,     # ID
+			0, 0,           # query, no flags
+			0, 1,           # 1 query
+			0, 0,           # 0 answers
+			0, 0,           # 0 SOA records
+			0, 0,           # 0 additional records
+
+			# question string: _workstation._tcp.local
+			12, "str:_workstation",
+			4, "str:_tcp",
+			5, "str:local",
+			0,
+
+			0, 12,          # qtype: PTR
+			0, 1		# qclass: IN
+			;
+
+	}
 }
