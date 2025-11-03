@@ -654,24 +654,45 @@ fm_config_packet_root_create(curly_node_t *node, void *data)
 /*
  * Handle unknown attributes - convert them to foo=bar notation and store them as strings
  * probe->extra_args.
- *
- * For now, this supports only one value per attribute.
- * If we need more one day, this should probably represent them as foobar=1,2,4,7
- * or, for easier coding, as foobar=1 foobar=2 foobar=3 ...
+ * If the attribute contains more than one value, we concat them together as
+ *   foo=bar,baz,bloopie
  */
 static bool
 fm_config_probe_set_extra(curly_node_t *node, void *attr_data, const curly_attr_t *attr)
 {
 	fm_string_array_t *extra_args = attr_data;
 	const char *attr_name = curly_attr_get_name(attr);
-	char argbuf[128];
+	const char *attr_value;
+	unsigned int k, count, size, pos;
+	char *formatted;
 
-	if (curly_attr_get_count(attr) != 1) {
-		fm_config_complain(node, "unsupported number of values in attribute %s", attr_name);
+	count = curly_attr_get_count(attr);
+
+	size = strlen(attr_name) + 1;
+	for(k = 0; k < count; ++k) {
+		attr_value = curly_attr_get_value(attr, k);
+
+		size += strlen(attr_value) + 1;
 	}
 
-	snprintf(argbuf, sizeof(argbuf), "%s=%s", attr_name, curly_attr_get_value(attr, 0));
-	fm_string_array_append(extra_args, argbuf);
+	formatted = calloc(size, 1);
+	strcpy(formatted, attr_name);
+
+	for(k = 0, pos = 0; k < count; ++k) {
+		pos += strlen(formatted + pos);
+
+		if (k == 0)
+			formatted[pos++] = '=';
+		else
+			formatted[pos++] = ',';
+
+		strcpy(formatted + pos, curly_attr_get_value(attr, k));
+	}
+
+	assert(formatted[size - 1] == 0);
+
+	fm_string_array_append(extra_args, formatted);
+	free(formatted);
 
 	return true;
 }
