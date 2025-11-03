@@ -23,7 +23,7 @@
 #include "utils.h"
 
 struct fm_config {
-	struct fm_config_library {
+	struct fm_config_library_settings {
 		fm_string_array_t search_path;
 	} library;
 

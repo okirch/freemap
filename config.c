@@ -180,7 +180,7 @@ set_address_family(curly_node_t *node, void *attr_data, const curly_attr_t *attr
  */
 static fm_config_proc_t		fm_config_library = {
 	.attributes = {
-		ATTRIB_STRING_ARRAY(struct fm_config_library, search_path),
+		ATTRIB_STRING_ARRAY(struct fm_config_library_settings, search_path),
 	},
 };
 
