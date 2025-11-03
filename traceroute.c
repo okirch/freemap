@@ -881,10 +881,15 @@ fm_topo_process_extra_parameters(fm_probe_class_t *pclass, const fm_string_array
 	memset(&proto_args, 0, sizeof(proto_args));
 	for (i = 0; i < extra_args->count; ++i) {
 		const char *arg = extra_args->entries[i];
+		const char *proto_name;
 		unsigned int proto_id;
 
-		proto_id = fm_protocol_string_to_id(arg);
-		if (proto_id != FM_PROTO_NONE) {
+		if (fm_parse_string_argument(arg, "packet-proto", &proto_name)) {
+			proto_id = fm_protocol_string_to_id(proto_name);
+			if (proto_id == FM_PROTO_NONE) {
+				fm_log_error("%s: Unknown protocol in %s", pclass->name,  arg);
+				goto failed;
+			}
 			extra_params->packet_proto = fm_protocol_id_to_string(proto_id);
 		} else
 		if (fm_parse_numeric_argument(arg, "max-depth", &extra_params->max_depth)

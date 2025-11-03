@@ -137,9 +137,7 @@ fm_command_perform_scan(fm_command_t *cmd)
 				project->service_probe?: "default");
 	} else
 	if (scan_options.program != NULL) {
-		program = fm_scan_library_load_program(scan_options.program);
-		if (program == NULL)
-			fm_log_fatal("Could not find scan program \"%s\"\n", scan_options.program);
+		fm_log_fatal("the entire program mess is gone.");
 	} else {
 		program = fm_scan_program_build("scan",
 				project->topology_probe?: NULL,

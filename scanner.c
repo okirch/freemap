@@ -368,7 +368,7 @@ fm_scanner_add_dummy_probe(void)
  * Process a port or port range
  */
 static bool
-fm_scanner_process_ports(fm_probe_class_t *pclass, const char *arg, fm_uint_array_t *array)
+fm_scanner_process_port(fm_probe_class_t *pclass, const char *arg, fm_uint_array_t *array)
 {
 	fm_port_range_t range;
 	unsigned int low_port, high_port;
@@ -388,6 +388,50 @@ fm_scanner_process_ports(fm_probe_class_t *pclass, const char *arg, fm_uint_arra
 
 	while (low_port <= high_port)
 		fm_uint_array_append(array, low_port++);
+
+	return true;
+}
+
+static bool
+fm_scanner_process_port_array(fm_probe_class_t *pclass, const fm_string_array_t *strings,  fm_uint_array_t *port_array)
+{
+	unsigned int i;
+
+	for (i = 0; i < strings->count; ++i) {
+		const char *arg = strings->entries[i];
+
+		if (!fm_scanner_process_port(pclass, arg, port_array))
+			return false;
+	}
+
+	if (port_array->count == 0) {
+		fm_log_error("%s: requires one or more ports, but none were specified", pclass->name);
+		return false;
+	}
+
+	return true;
+}
+
+static bool
+fm_scanner_process_proto_args(fm_probe_class_t *pclass, fm_scan_action_t *action, int mode, const fm_string_array_t *extra_args)
+{
+	if (extra_args->count == 0)
+		return true;
+
+	if (pclass->process_extra_parameters != NULL) {
+		void *extra_params;
+
+		extra_params = pclass->process_extra_parameters(pclass, extra_args);
+		if (extra_params == NULL)
+			return false;
+
+		action->extra_params = extra_params;
+	} else
+	if (extra_args->count != 0) {
+		fm_log_error("found %u unrecognized parameters in %s probe for %s", extra_args->count,
+				fm_probe_mode_to_string(mode), pclass->name);
+		return false;
+	}
 
 	return true;
 }
@@ -412,7 +456,7 @@ fm_scanner_process_arguments(fm_probe_class_t *pclass, int mode, const fm_string
 		fm_param_type_t param_type = FM_PARAM_TYPE_NONE;
 
 		if (isdigit(*arg) && mode == FM_PROBE_MODE_PORT) {
-			if (!fm_scanner_process_ports(pclass, arg, ports))
+			if (!fm_scanner_process_port(pclass, arg, ports))
 				return false;
 		} else
 		if (fm_parse_numeric_argument(arg, "retries", &params->retries)) {
@@ -483,21 +527,8 @@ fm_scanner_create_probe_action(const char *probe_name, int mode, int flags, cons
 
 	action = fm_probe_scan_create(pclass, mode, &params, &ports);
 
-	if (pclass->process_extra_parameters != NULL) {
-		void *extra_params;
-
-		extra_params = pclass->process_extra_parameters(pclass, &proto_args);
-		if (extra_params == NULL)
-			goto failed;
-
-		action->extra_params = extra_params;
-	} else
-	if (proto_args.count != 0) {
-		fm_log_error("found %u unrecognized parameters in %s probe for %s", proto_args.count,
-				fm_probe_mode_to_string(mode), pclass->name);
-		fm_string_array_destroy(&proto_args);
+	if (!fm_scanner_process_proto_args(pclass, action, mode, &proto_args))
 		goto failed;
-	}
 
 	assert(action->nprobes >= 1);
 	action->flags |= flags;
@@ -512,6 +543,65 @@ failed:
 	fm_uint_array_destroy(&ports);
 	return NULL;
 }
+
+#include "program.h"
+
+fm_scan_action_t *
+fm_scanner_add_probe(fm_scanner_t *scanner, const fm_config_probe_t *parsed_probe)
+{
+	const char *probe_name = parsed_probe->name;
+	int mode = parsed_probe->mode;
+	fm_probe_class_t *pclass;
+	fm_scan_action_t *action = NULL;
+	fm_uint_array_t ports;
+	int flags = 0;
+
+	memset(&ports, 0, sizeof(ports));
+
+	if (parsed_probe->optional)
+		flags = FM_SCAN_ACTION_FLAG_OPTIONAL;
+
+	pclass = fm_probe_class_find(probe_name, mode);
+	if (pclass == NULL) {
+		if (!(flags & FM_SCAN_ACTION_FLAG_OPTIONAL)) {
+			fm_log_error("Unknown host %s class %s\n",
+					fm_probe_mode_to_string(mode),
+					probe_name);
+			goto failed;
+		}
+
+		fm_log_debug("Ignoring optional %s %s probe - creating dummy action",
+				fm_probe_mode_to_string(mode), probe_name);
+		action = fm_scanner_add_dummy_probe();
+		return action;
+	}
+
+	if (mode == FM_PROBE_MODE_PORT
+	 && !fm_scanner_process_port_array(pclass, &parsed_probe->string_ports, &ports))
+		goto failed;
+
+	action = fm_probe_scan_create(pclass, mode, &parsed_probe->probe_params, &ports);
+
+	if (!fm_scanner_process_proto_args(pclass, action, mode, &parsed_probe->extra_args))
+		goto failed;
+
+	assert(action->nprobes >= 1);
+	action->flags |= flags;
+
+	if (action != NULL)
+		fm_scan_action_array_append(&scanner->requests, action);
+
+	return action;
+
+failed:
+	if (action) {
+		/* no fm_action_free() yet, leak */
+	}
+
+	fm_uint_array_destroy(&ports);
+	return NULL;
+}
+
 
 fm_scan_action_t *
 fm_scanner_add_topo_probe(fm_scanner_t *scanner, const char *probe_name, int flags, const fm_string_array_t *args)

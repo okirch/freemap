@@ -24,6 +24,10 @@
 
 typedef struct fm_config  fm_config_t;
 typedef struct fm_project fm_project_t;
+typedef struct fm_new_library fm_new_library_t;
+typedef struct fm_new_routine fm_new_routine_t;
+typedef struct fm_config_probe fm_config_probe_t;
+
 typedef struct fm_address_enumerator fm_address_enumerator_t;
 typedef struct fm_target fm_target_t;
 typedef struct fm_interface fm_interface_t;
@@ -74,6 +78,15 @@ enum {
 
 	__FM_PROTO_MAX
 };
+
+/*
+ * Distinguish between probing modes
+ * Note these will be ORed together, so they need to be distinct bits
+ */
+
+#define FM_PROBE_MODE_TOPO	0x0001
+#define FM_PROBE_MODE_HOST	0x0002
+#define FM_PROBE_MODE_PORT	0x0004
 
 /*
  * Parameters that can be passed to a protocol when creating probes.

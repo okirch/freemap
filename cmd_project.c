@@ -129,18 +129,9 @@ fm_command_perform_add_targets(fm_command_t *cmd)
 }
 
 static bool
-sanity_check_probe_name(const char *key, int type, const char *name)
+sanity_check_probe_name(const char *key, int mode, const char *name)
 {
-	fm_scan_program_t *program;
-	bool okay = true;
-
-	program = fm_scan_program_alloc(key);
-	if (fm_scan_program_call_routine(program, type, name) == NULL) {
-		okay = false;
-	}
-
-	fm_scan_program_free(program);
-	return okay;
+	return fm_config_load_routine(mode, name) != NULL;
 }
 
 int
@@ -161,17 +152,17 @@ fm_command_perform_configure(fm_command_t *cmd)
 	key = cmd->values[0];
 	value = cmd->values[1];
 	if (!strcmp(key, "topology-probe")) {
-		if (!sanity_check_probe_name(key, FM_SCAN_ROUTINE_TOPOLOGY, value))
+		if (!sanity_check_probe_name(key, FM_PROBE_MODE_TOPO, value))
 			return 1;
 		assign_string(&project->topology_probe, value);
 	} else
 	if (!strcmp(key, "reachability-probe")) {
-		if (!sanity_check_probe_name(key, FM_SCAN_ROUTINE_HOSTS, value))
+		if (!sanity_check_probe_name(key, FM_PROBE_MODE_HOST, value))
 			return 1;
 		assign_string(&project->reachability_probe, value);
 	} else
 	if (!strcmp(key, "service-probe")) {
-		if (!sanity_check_probe_name(key, FM_SCAN_ROUTINE_SERVICES, value))
+		if (!sanity_check_probe_name(key, FM_PROBE_MODE_PORT, value))
 			return 1;
 		assign_string(&project->service_probe, value);
 	} else {

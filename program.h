@@ -26,7 +26,29 @@
 
 #include "utils.h"
 
+
+typedef struct fm_config_probe fm_config_probe_t;
+struct fm_config_probe {
+	const char *		name;
+	int			mode;
+
+	bool			optional;
+	bool			random;
+	fm_probe_params_t	probe_params;
+	fm_string_array_t	string_ports;
+	fm_string_array_t	extra_args;
+};
+
+/* FIXME: remove crap */
+
 extern const char *		fm_library_path;
+
+typedef struct fm_new_routine	fm_new_routine_t;
+
+typedef struct fm_new_routine_array {
+	unsigned int		count;
+	fm_new_routine_t **	entries;
+} fm_new_routine_array_t;
 
 /* A single action that is part of a scan. Ultimately,
  * this will be translated into an fm_scan_action object.
@@ -79,8 +101,9 @@ typedef struct fm_scan_routine {
 } fm_scan_routine_t;
 
 struct fm_scan_program {
-	char *			name;
-	fm_scan_exec_array_t	body;
+	fm_new_routine_t *	topo_scan;
+	fm_new_routine_t *	host_scan;
+	fm_new_routine_t *	port_scan;
 };
 
 enum {

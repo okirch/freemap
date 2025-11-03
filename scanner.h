@@ -93,6 +93,7 @@ struct fm_scanner {
 };
 
 extern fm_scan_action_t *	fm_scan_action_create(int mode, const struct fm_scan_action_ops *ops, const char *id, fm_probe_class_t *);
+extern fm_scan_action_t *	fm_scanner_add_probe(fm_scanner_t *, const fm_config_probe_t *);
 
 #endif /* FREEMAP_SCANNER_H */
 
