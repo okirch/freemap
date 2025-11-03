@@ -27,9 +27,6 @@ OBJS	= projects.o \
 	  config.o \
 	  defaults.o \
 	  services.o \
-	  wellknown.o \
-	  wellknown/rpc.o \
-	  wellknown/dns.o \
 	  subcommand.o \
 	  logging.o \
 	  buffer.o \

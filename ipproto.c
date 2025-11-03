@@ -29,7 +29,6 @@
 
 #include "scanner.h"
 #include "protocols.h"
-#include "wellknown.h"
 #include "target.h" /* for fm_probe_t */
 #include "socket.h"
 #include "rawpacket.h"
