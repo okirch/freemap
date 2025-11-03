@@ -43,6 +43,7 @@ enum {
 	FM_CONFIG_ATTR_TYPE_INT,
 	FM_CONFIG_ATTR_TYPE_BOOL,
 	FM_CONFIG_ATTR_TYPE_STRING,
+	FM_CONFIG_ATTR_TYPE_INT_ARRAY,
 	FM_CONFIG_ATTR_TYPE_STRING_ARRAY,
 	FM_CONFIG_ATTR_TYPE_SPECIAL,
 };
@@ -83,6 +84,8 @@ struct fm_config_proc {
 		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_STRING }
 #define ATTRIB_SPECIAL(container, member, __setfn) \
 		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = __setfn }
+#define ATTRIB_INT_ARRAY(container, member) \
+		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_INT_ARRAY }
 #define ATTRIB_STRING_ARRAY(container, member) \
 		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_STRING_ARRAY }
 

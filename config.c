@@ -485,20 +485,58 @@ fm_config_attr_render_string_array(curly_node_t *node, void *attr_data, const ch
 }
 
 static bool
+fm_config_attr_set_int_array(curly_node_t *node, void *attr_data, const curly_attr_t *attr)
+{
+	fm_uint_array_t *array = (fm_uint_array_t *) attr_data;
+	const char * const *values;
+	const char *item;
+
+	if (!(values = curly_attr_get_values(attr)))
+		return false;
+
+	/* zap what was there */
+	fm_uint_array_destroy(array);
+
+	while ((item = *values++) != NULL) {
+		unsigned int value;
+		char *end;
+
+		value = strtol(item, &end, 0);
+		if (*end)
+			return false;
+		fm_uint_array_append(array, value);
+	}
+
+	return true;
+
+}
+
+static bool
+fm_config_attr_render_int_array(curly_node_t *node, void *attr_data, const char *name)
+{
+	fm_uint_array_t *array = (fm_uint_array_t *) attr_data;
+	unsigned int i;
+
+	if (array->count == 0)
+		return true;
+
+	for (i = 0; i < array->count; ++i) {
+		char numbuf[16];
+
+		snprintf(numbuf, sizeof(numbuf), "%u", array->entries[i]);
+		curly_node_add_attr_list(node, name, numbuf);
+	}
+
+	return true;
+}
+
+static bool
 fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *attr_def, const curly_attr_t *attr)
 {
 	void *attr_data = fm_config_addr_apply_offset(data, attr_def->offset);
 	unsigned int count;
 	const char *value;
 	bool okay;
-
-	if (attr_def->type == FM_CONFIG_ATTR_TYPE_STRING_ARRAY) {
-		if (fm_config_attr_set_string_array(node, attr_data, attr))
-			return true;
-
-		fm_config_complain(node, "unable to parse string array attribute %s", attr_def->name);
-		return false;
-	}
 
 	if (attr_def->type == FM_CONFIG_ATTR_TYPE_INT
 	 || attr_def->type == FM_CONFIG_ATTR_TYPE_BOOL
@@ -531,6 +569,14 @@ fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *at
 			return false;
 		}
 		okay = attr_def->setfn(node, attr_data, attr);
+		break;
+
+	case FM_CONFIG_ATTR_TYPE_INT_ARRAY:
+		okay = fm_config_attr_set_int_array(node, attr_data, attr);
+		break;
+
+	case FM_CONFIG_ATTR_TYPE_STRING_ARRAY:
+		okay = fm_config_attr_set_string_array(node, attr_data, attr);
 		break;
 
 	default:
@@ -575,6 +621,10 @@ fm_config_render_value(curly_node_t *node, void *data, const fm_config_attr_t *a
 		okay = attr_def->getfn(node, attr_data);
 		break;
 
+	case FM_CONFIG_ATTR_TYPE_INT_ARRAY:
+		okay = fm_config_attr_render_int_array(node, attr_data, attr_name);
+		break;
+
 	case FM_CONFIG_ATTR_TYPE_STRING_ARRAY:
 		okay = fm_config_attr_render_string_array(node, attr_data, attr_name);
 		break;
@@ -613,6 +663,13 @@ fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *dat
 			return fm_config_apply_value(node, data, adef, attr);
 		}
 	}
+
+	/* FIXME: we may be nice and handle cases where users write short-hand node
+	 * definitions, omitting the body if it's empty.
+	 * Example:
+	 *   hosts-probe icmp;
+	 * We could catch this here and divert this "attribute" to fm_config_process_node()
+	 */
 
 	fm_config_complain(node, "unknown attribute \"%s\"", attr_name);
 	return false;
