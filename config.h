@@ -20,6 +20,7 @@
 
 #include <stdbool.h>
 #include "types.h"
+#include "utils.h"
 
 struct fm_config {
 	struct fm_config_address_generation {

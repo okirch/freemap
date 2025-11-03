@@ -26,15 +26,11 @@
 #include "freemap.h"
 #include "config.h"
 #include "projects.h"
-
-typedef struct fm_config_child	fm_config_child_t;
-typedef struct fm_config_attr	fm_config_attr_t;
-typedef struct fm_config_proc	fm_config_proc_t;
+#include "filefmt.h"
 
 static fm_config_proc_t		fm_config_root;
 static fm_config_proc_t		fm_project_root;
 
-static bool		fm_config_process_node(curly_node_t *node, fm_config_proc_t *proc, void *data);
 static bool		fm_config_render_node(curly_node_t *node, fm_config_proc_t *proc, void *data);
 static bool		fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *attr_def, const curly_attr_t *attr);
 static void		fm_config_dump(curly_node_t *np, unsigned int indent);
@@ -138,7 +134,7 @@ fm_config_save_project(fm_project_t *project, const char *path)
 /*
  * Error handling
  */
-static void
+void
 fm_config_complain(curly_node_t *node, const char *fmt, ...)
 {
 	const char *filename = curly_node_get_source_file(node);
@@ -155,52 +151,6 @@ fm_config_complain(curly_node_t *node, const char *fmt, ...)
 	}
 	va_end(ap);
 }
-
-enum {
-	FM_CONFIG_ATTR_TYPE_BAD = 0,
-	FM_CONFIG_ATTR_TYPE_INT,
-	FM_CONFIG_ATTR_TYPE_BOOL,
-	FM_CONFIG_ATTR_TYPE_STRING,
-	FM_CONFIG_ATTR_TYPE_STRING_ARRAY,
-	FM_CONFIG_ATTR_TYPE_SPECIAL,
-};
-
-struct fm_config_child {
-	const char *		name;
-	unsigned int		offset;
-	fm_config_proc_t *	proc;
-};
-
-struct fm_config_attr {
-	const char *		name;
-	unsigned int		offset;
-	int			type;
-
-	bool			(*setfn)(curly_node_t *node, void *attr_data, const char *value);
-	bool			(*getfn)(curly_node_t *node, void *attr_data);
-};
-
-#define MAX_CHILDREN		16
-#define MAX_ATTRIBUTES		16
-
-struct fm_config_proc {
-	fm_config_attr_t	name;
-	fm_config_child_t	children[MAX_CHILDREN];
-	fm_config_attr_t	attributes[MAX_ATTRIBUTES];
-};
-
-#define offsetof(type, member) \
-	((unsigned long) &(((type *) 0)->member))
-#define ATTRIB_INT(container, member) \
-		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_INT }
-#define ATTRIB_BOOL(container, member) \
-		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_BOOL }
-#define ATTRIB_STRING(container, member) \
-		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_STRING }
-#define ATTRIB_SPECIAL(container, member, __setfn) \
-		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = __setfn }
-#define ATTRIB_STRING_ARRAY(container, member) \
-		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_STRING_ARRAY }
 
 static inline void *
 fm_config_addr_apply_offset(void *data, unsigned int offset)

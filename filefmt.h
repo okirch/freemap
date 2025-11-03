@@ -27,11 +27,69 @@
 #include <errno.h>
 #include <ctype.h>
 
+#include <curlies.h>
+
 #include "freemap.h"
 #include "program.h"
 #include "scanner.h"
 
 struct file_scanner;
+
+typedef struct fm_config_child	fm_config_child_t;
+typedef struct fm_config_attr	fm_config_attr_t;
+typedef struct fm_config_proc	fm_config_proc_t;
+
+enum {
+	FM_CONFIG_ATTR_TYPE_BAD = 0,
+	FM_CONFIG_ATTR_TYPE_INT,
+	FM_CONFIG_ATTR_TYPE_BOOL,
+	FM_CONFIG_ATTR_TYPE_STRING,
+	FM_CONFIG_ATTR_TYPE_STRING_ARRAY,
+	FM_CONFIG_ATTR_TYPE_SPECIAL,
+};
+
+struct fm_config_child {
+	const char *		name;
+	unsigned int		offset;
+	fm_config_proc_t *	proc;
+
+	void *			(*alloc_child)(curly_node_t *, void *data);
+};
+
+struct fm_config_attr {
+	const char *		name;
+	unsigned int		offset;
+	int			type;
+
+	bool			(*setfn)(curly_node_t *node, void *attr_data, const curly_attr_t *attr);
+	bool			(*getfn)(curly_node_t *node, void *attr_data);
+};
+
+#define MAX_CHILDREN		16
+#define MAX_ATTRIBUTES		16
+
+struct fm_config_proc {
+	fm_config_attr_t	name;
+	fm_config_child_t	children[MAX_CHILDREN];
+	fm_config_attr_t	attributes[MAX_ATTRIBUTES];
+};
+
+#define offsetof(type, member) \
+	((unsigned long) &(((type *) 0)->member))
+#define ATTRIB_INT(container, member) \
+		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_INT }
+#define ATTRIB_BOOL(container, member) \
+		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_BOOL }
+#define ATTRIB_STRING(container, member) \
+		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_STRING }
+#define ATTRIB_SPECIAL(container, member, __setfn) \
+		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = __setfn }
+#define ATTRIB_STRING_ARRAY(container, member) \
+		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_STRING_ARRAY }
+
+
+extern void			fm_config_complain(curly_node_t *node, const char *fmt, ...);
+extern bool			fm_config_process_node(curly_node_t *node, fm_config_proc_t *prov, void *data);
 
 
 extern struct file_scanner *	file_scanner_open(const char *path);
