@@ -160,8 +160,10 @@ fm_config_addr_apply_offset(void *data, unsigned int offset)
 }
 
 static bool
-set_address_family(curly_node_t *node, void *attr_data, const char *value)
+set_address_family(curly_node_t *node, void *attr_data, const curly_attr_t *attr)
 {
+	const char *value = curly_attr_get_value(attr, 0);
+
 	if (!strcasecmp(value, "ipv4"))
 		*(int *) attr_data = AF_INET;
 	else if (!strcasecmp(value, "ipv6"))
@@ -370,8 +372,9 @@ fm_config_apply_child(curly_node_t *parent, fm_config_proc_t *proc, void *data, 
 }
 
 static bool
-fm_config_attr_set_int(curly_node_t *node, void *attr_data, const char *value)
+fm_config_attr_set_int(curly_node_t *node, void *attr_data, const curly_attr_t *attr)
 {
+	const char *value = curly_attr_get_value(attr, 0);
 	char *end;
 
 	*(int *) attr_data = strtol(value, &end, 0);
@@ -390,8 +393,10 @@ fm_config_attr_render_int(curly_node_t *node, void *attr_data, const char *name)
 }
 
 static bool
-fm_config_attr_set_bool(curly_node_t *node, void *attr_data, const char *value)
+fm_config_attr_set_bool(curly_node_t *node, void *attr_data, const curly_attr_t *attr)
 {
+	const char *value = curly_attr_get_value(attr, 0);
+
 	if (!strcasecmp(value, "true")
 	 || !strcasecmp(value, "yes")
 	 || !strcasecmp(value, "1"))
@@ -417,7 +422,7 @@ fm_config_attr_render_bool(curly_node_t *node, void *attr_data, const char *name
 }
 
 static bool
-fm_config_attr_set_string(curly_node_t *node, void *attr_data, const char *value)
+fm_config_attr_set_string_internal(curly_node_t *node, void *attr_data, const char *value)
 {
 	char **var = (char **) attr_data;
 
@@ -426,6 +431,13 @@ fm_config_attr_set_string(curly_node_t *node, void *attr_data, const char *value
 		*var = strdup(value);
 	return true;
 
+}
+
+static bool
+fm_config_attr_set_string(curly_node_t *node, void *attr_data, const curly_attr_t *attr)
+{
+	const char *value = curly_attr_get_value(attr, 0);
+	return fm_config_attr_set_string_internal(node, attr_data, value);
 }
 
 static bool
@@ -488,25 +500,29 @@ fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *at
 		return false;
 	}
 
-	count = curly_attr_get_count(attr);
-	if (count != 1) {
-		fm_config_complain(node, "attribute %s expects exactly one value", attr_def->name);
-		return false;
+	if (attr_def->type == FM_CONFIG_ATTR_TYPE_INT
+	 || attr_def->type == FM_CONFIG_ATTR_TYPE_BOOL
+	 || attr_def->type == FM_CONFIG_ATTR_TYPE_STRING) {
+		count = curly_attr_get_count(attr);
+		if (count != 1) {
+			fm_config_complain(node, "attribute %s expects exactly one value", attr_def->name);
+			return false;
+		}
 	}
 
 	value = curly_attr_get_value(attr, 0);
 
 	switch (attr_def->type) {
 	case FM_CONFIG_ATTR_TYPE_INT:
-		okay = fm_config_attr_set_int(node, attr_data, value);
+		okay = fm_config_attr_set_int(node, attr_data, attr);
 		break;
 
 	case FM_CONFIG_ATTR_TYPE_BOOL:
-		okay = fm_config_attr_set_bool(node, attr_data, value);
+		okay = fm_config_attr_set_bool(node, attr_data, attr);
 		break;
 
 	case FM_CONFIG_ATTR_TYPE_STRING:
-		okay = fm_config_attr_set_string(node, attr_data, value);
+		okay = fm_config_attr_set_string(node, attr_data, attr);
 		break;
 
 	case FM_CONFIG_ATTR_TYPE_SPECIAL:
@@ -514,7 +530,7 @@ fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *at
 			fm_config_complain(node, "attribute %s has not set() function", attr_def->name);
 			return false;
 		}
-		okay = attr_def->setfn(node, attr_data, value);
+		okay = attr_def->setfn(node, attr_data, attr);
 		break;
 
 	default:
@@ -620,7 +636,7 @@ fm_config_process_node(curly_node_t *node, fm_config_proc_t *proc, void *data)
 		}
 
 		assert(proc->name.type == FM_CONFIG_ATTR_TYPE_STRING);
-		fm_config_attr_set_string(node, name_data, name);
+		fm_config_attr_set_string_internal(node, name_data, name);
 	} else
 	if (name != NULL) {
 		fm_config_complain(node, "unexpected extra name argument");
