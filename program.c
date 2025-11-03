@@ -78,7 +78,7 @@ struct fm_config_routine {
 	fm_config_probe_array_t	probes;
 };
 
-struct fm_scan_library {
+struct fm_config_library {
 	fm_string_array_t	search_path;
 	fm_config_module_array_t	modules;
 };
@@ -86,22 +86,22 @@ struct fm_scan_library {
 
 static fm_config_catalog_t *fm_config_catalog_alloc(const char *name, const fm_config_module_t *module, fm_config_catalog_array_t *array);
 static bool		fm_config_module_process(fm_config_module_t *module, curly_node_t *node);
-static fm_config_module_t *fm_scan_library_find_module(fm_scan_library_t *lib, const char *name, bool load_if_missing);
+static fm_config_module_t *fm_config_library_find_module(fm_config_library_t *lib, const char *name, bool load_if_missing);
 static bool		fm_config_module_load(fm_config_module_t *module, const char *path);
 
 
 /*
  * These are global entry points for the application
  */
-fm_scan_library_t *
+fm_config_library_t *
 fm_config_load_library(void)
 {
-	static fm_scan_library_t *the_library;
+	static fm_config_library_t *the_library;
 
 	if (the_library == NULL) {
-		the_library = fm_scan_library_alloc(NULL);
+		the_library = fm_config_library_alloc(NULL);
 
-		if (!fm_scan_library_find_module(the_library, "standard", true))
+		if (!fm_config_library_find_module(the_library, "standard", true))
 			the_library = NULL;
 	}
 	return the_library;
@@ -110,7 +110,7 @@ fm_config_load_library(void)
 fm_config_routine_t *
 fm_config_load_routine(int mode, const char *name)
 {
-	fm_scan_library_t *lib;
+	fm_config_library_t *lib;
 
 	if (name == NULL)
 		return NULL;
@@ -118,13 +118,13 @@ fm_config_load_routine(int mode, const char *name)
 	if ((lib = fm_config_load_library()) == NULL)
 		return NULL;
 
-	return fm_scan_library_resolve_routine(lib, mode, name);
+	return fm_config_library_resolve_routine(lib, mode, name);
 }
 
 fm_config_catalog_t *
 fm_config_load_service_catalog(const char *name, fm_config_module_t *context)
 {
-	fm_scan_library_t *lib;
+	fm_config_library_t *lib;
 
 	if (name == NULL)
 		return NULL;
@@ -132,7 +132,7 @@ fm_config_load_service_catalog(const char *name, fm_config_module_t *context)
 	if ((lib = fm_config_load_library()) == NULL)
 		return NULL;
 
-	return fm_scan_library_resolve_service_catalog(lib, name, context);
+	return fm_config_library_resolve_service_catalog(lib, name, context);
 }
 
 /*
@@ -272,7 +272,7 @@ fm_config_module_find_service_catalog(const fm_config_module_t *module, const ch
 }
 
 static bool
-fm_scan_library_get_module_path(fm_scan_library_t *lib, const char *subdir, const char *module_name, char *path_buf, size_t size)
+fm_config_library_get_module_path(fm_config_library_t *lib, const char *subdir, const char *module_name, char *path_buf, size_t size)
 {
 	unsigned int i;
 
@@ -291,7 +291,7 @@ fm_scan_library_get_module_path(fm_scan_library_t *lib, const char *subdir, cons
 }
 
 static fm_config_module_t *
-fm_scan_library_find_module_with_type(fm_scan_library_t *lib, const char *subdir, const char *name, bool load_if_missing)
+fm_config_library_find_module_with_type(fm_config_library_t *lib, const char *subdir, const char *name, bool load_if_missing)
 {
 	fm_config_module_t *module;
 	char path_buf[PATH_MAX];
@@ -309,7 +309,7 @@ fm_scan_library_find_module_with_type(fm_scan_library_t *lib, const char *subdir
 	module = fm_config_module_alloc(name);
 	fm_config_module_array_append(&lib->modules, module);
 
-	if (!fm_scan_library_get_module_path(lib, subdir, name, path_buf, sizeof(path_buf))) {
+	if (!fm_config_library_get_module_path(lib, subdir, name, path_buf, sizeof(path_buf))) {
 		fm_log_error("Could not find module \"%s\" anywhere in my search path", name);
 		return NULL;
 	}
@@ -323,9 +323,9 @@ fm_scan_library_find_module_with_type(fm_scan_library_t *lib, const char *subdir
 }
 
 static fm_config_module_t *
-fm_scan_library_find_module(fm_scan_library_t *lib, const char *name, bool load_if_missing)
+fm_config_library_find_module(fm_config_library_t *lib, const char *name, bool load_if_missing)
 {
-	return fm_scan_library_find_module_with_type(lib, NULL, name, load_if_missing);
+	return fm_config_library_find_module_with_type(lib, NULL, name, load_if_missing);
 }
 
 /*
@@ -349,10 +349,10 @@ fm_config_routine_alloc(int mode, const char *name, fm_config_routine_array_t *a
 /*
  * Create a library object
  */
-fm_scan_library_t *
-fm_scan_library_alloc(const char * const *search_paths)
+fm_config_library_t *
+fm_config_library_alloc(const char * const *search_paths)
 {
-	fm_scan_library_t *lib;
+	fm_config_library_t *lib;
 	const char *path;
 
 	lib = calloc(1, sizeof(*lib));
@@ -383,7 +383,7 @@ fm_scan_library_alloc(const char * const *search_paths)
  * off.
  */
 static char *
-fm_scan_library_parse_reference(const char **name_p)
+fm_config_library_parse_reference(const char **name_p)
 {
 	const char *name = *name_p, *s;
 	unsigned int len;
@@ -406,27 +406,27 @@ fm_scan_library_parse_reference(const char **name_p)
 }
 
 static char *
-fm_scan_library_parse_routine_reference(const char **name_p)
+fm_config_library_parse_routine_reference(const char **name_p)
 {
-	return fm_scan_library_parse_reference(name_p);
+	return fm_config_library_parse_reference(name_p);
 }
 
 static char *
-fm_scan_library_parse_catalog_reference(const char **name_p)
+fm_config_library_parse_catalog_reference(const char **name_p)
 {
-	return fm_scan_library_parse_reference(name_p);
+	return fm_config_library_parse_reference(name_p);
 }
 
 extern fm_config_routine_t *
-fm_scan_library_resolve_routine(fm_scan_library_t *lib, int mode, const char *name)
+fm_config_library_resolve_routine(fm_config_library_t *lib, int mode, const char *name)
 {
 	fm_config_routine_t *routine = NULL;
 	char *module_name;
 	fm_config_module_t *module;
 
-	module_name = fm_scan_library_parse_routine_reference(&name);
+	module_name = fm_config_library_parse_routine_reference(&name);
 	if (module_name != NULL) {
-		module = fm_scan_library_find_module(lib, module_name, true);
+		module = fm_config_library_find_module(lib, module_name, true);
 		free(module_name);
 
 		if (module == NULL || module->state != LOADED)
@@ -457,18 +457,18 @@ fm_scan_library_resolve_routine(fm_scan_library_t *lib, int mode, const char *na
  * is taken to refer to "foobar.default"
  */
 static const fm_config_module_t *
-fm_scan_library_resolve_module(fm_scan_library_t *lib, const char *subdir, const char **name_p, const fm_config_module_t *context)
+fm_config_library_resolve_module(fm_config_library_t *lib, const char *subdir, const char **name_p, const fm_config_module_t *context)
 {
 	const fm_config_module_t *module;
 	char *module_name;
 
-	module_name = fm_scan_library_parse_reference(name_p);
+	module_name = fm_config_library_parse_reference(name_p);
 	if (module_name != NULL) {
 		/* The name explicitly referenced a module. Easy. */
-		module = fm_scan_library_find_module_with_type(lib, subdir, module_name, true);
+		module = fm_config_library_find_module_with_type(lib, subdir, module_name, true);
 		free(module_name);
 	} else {
-		module = fm_scan_library_find_module_with_type(lib, subdir, *name_p, true);
+		module = fm_config_library_find_module_with_type(lib, subdir, *name_p, true);
 		*name_p = "default";
 	}
 
@@ -480,21 +480,21 @@ fm_scan_library_resolve_module(fm_scan_library_t *lib, const char *subdir, const
 }
 
 extern fm_config_service_t *
-fm_scan_library_resolve_service(fm_scan_library_t *lib, const char *name, const fm_config_module_t *context)
+fm_config_library_resolve_service(fm_config_library_t *lib, const char *name, const fm_config_module_t *context)
 {
 	const fm_config_module_t *module;
 
-	if ((module = fm_scan_library_resolve_module(lib, "service", &name, context)) == NULL)
+	if ((module = fm_config_library_resolve_module(lib, "service", &name, context)) == NULL)
 		return NULL;
 	return fm_config_module_find_service(module, name);
 }
 
 extern fm_config_catalog_t *
-fm_library_resolve_service_catalog(fm_scan_library_t *lib, const char *name, const fm_config_module_t *context)
+fm_library_resolve_service_catalog(fm_config_library_t *lib, const char *name, const fm_config_module_t *context)
 {
 	const fm_config_module_t *module;
 
-	if ((module = fm_scan_library_resolve_module(lib, "service", &name, context)) == NULL)
+	if ((module = fm_config_library_resolve_module(lib, "service", &name, context)) == NULL)
 		return NULL;
 	return fm_config_module_find_service_catalog(module, name);
 }
@@ -817,14 +817,14 @@ fm_config_module_process(fm_config_module_t *module, curly_node_t *node)
 }
 
 extern fm_config_catalog_t *
-fm_scan_library_resolve_service_catalog(fm_scan_library_t *lib, const char *name, fm_config_module_t *context)
+fm_config_library_resolve_service_catalog(fm_config_library_t *lib, const char *name, fm_config_module_t *context)
 {
 	char *module_name;
 	fm_config_module_t *module;
 
-	module_name = fm_scan_library_parse_catalog_reference(&name);
+	module_name = fm_config_library_parse_catalog_reference(&name);
 	if (module_name != NULL) {
-		module = fm_scan_library_find_module(lib, module_name, true);
+		module = fm_config_library_find_module(lib, module_name, true);
 		free(module_name);
 	} else {
 		module = context;
@@ -856,7 +856,7 @@ fm_config_catalog_alloc(const char *name, const fm_config_module_t *module, fm_c
 static bool
 fm_config_catalog_resolve_services(fm_config_catalog_t *catalog, fm_service_catalog_t *service_catalog)
 {
-	fm_scan_library_t *lib = fm_config_load_library();
+	fm_config_library_t *lib = fm_config_load_library();
 	const fm_config_module_t *context;
 	unsigned int i;
 
@@ -866,7 +866,7 @@ fm_config_catalog_resolve_services(fm_config_catalog_t *catalog, fm_service_cata
 			const char *name = catalog->names.entries[i];
 			fm_config_service_t *service;
 
-			service = fm_scan_library_resolve_service(lib, name, context);
+			service = fm_config_library_resolve_service(lib, name, context);
 			if (service == NULL) {
 				fm_log_error("service catalog %s.%s: could not find referenced service %s",
 						context->name, catalog->name, name);
@@ -945,12 +945,12 @@ fm_scan_program_set_service_catalog(fm_scan_program_t *program, const char *name
 {
 	fm_config_module_t *context = NULL;
 	fm_config_catalog_t *catalog;
-	fm_scan_library_t *lib;
+	fm_config_library_t *lib;
 
 	lib = fm_config_load_library();
 
 	if (!strchr(name, '.')) {
-		context = fm_scan_library_find_module(lib, "standard", true);
+		context = fm_config_library_find_module(lib, "standard", true);
 		assert(context != NULL);
 	} else  {
 		abort();
