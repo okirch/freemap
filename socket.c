@@ -1093,12 +1093,25 @@ fm_socket_poll_all(const struct timeval *timeout)
 	long timeout_ms;
 	int rv;
 
+	timeout_ms = 100;
+	if (timeout != NULL && fm_timestamp_is_set(timeout)) {
+		timeout_ms = 1000 * fm_timestamp_expires_when(timeout, NULL) + .5;
+		assert(timeout_ms >= 0);
+
+		if (timeout_ms > 2000) {
+			fm_log_warning("%s: excessively large timeout %f", fm_timestamp_expires_when(timeout, NULL));
+			timeout_ms = 2000;
+		}
+	}
+
 	fm_socket_foreach(&socket_list, sock) {
 		max_fds++;
 	}
 
-	if (max_fds == 0)
+	if (max_fds == 0) {
+		poll(NULL, 0, timeout_ms);
 		return false;
+	}
 
 	pfd = calloc(max_fds, sizeof(pfd[0]));
 	socks = calloc(max_fds, sizeof(socks[0]));
@@ -1110,17 +1123,6 @@ fm_socket_poll_all(const struct timeval *timeout)
 			pfd[nfds].events = sock->rpoll;
 			socks[nfds] = sock;
 			nfds++;
-		}
-	}
-
-	timeout_ms = 100;
-	if (timeout != NULL && fm_timestamp_is_set(timeout)) {
-		timeout_ms = 1000 * fm_timestamp_expires_when(timeout, NULL) + .5;
-		assert(timeout_ms >= 0);
-
-		if (timeout_ms > 2000) {
-			fm_log_warning("%s: excessively large timeout %f", fm_timestamp_expires_when(timeout, NULL));
-			timeout_ms = 2000;
 		}
 	}
 
