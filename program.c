@@ -44,7 +44,7 @@ typedef struct fm_config_probe_array {
 	fm_config_probe_t **	entries;
 } fm_config_probe_array_t;
 
-struct fm_new_routine {
+struct fm_scan_routine {
 	const char *		name;
 	int			mode;
 
@@ -52,44 +52,44 @@ struct fm_new_routine {
 	bool			bad;
 
 	curly_node_t *		unparsed;
-	struct fm_new_routine_parsed {
+	struct fm_scan_routine_parsed {
 		char *			name;
 		bool			optional;
 		fm_config_probe_array_t	probes;
 	} parsed;
 };
 
-struct fm_new_library {
+struct fm_scan_library {
 	fm_string_array_t		search_path;
 	fm_string_array_t		modules;
-	fm_new_routine_array_t		routines;
+	fm_scan_routine_array_t		routines;
 };
 
 
-static bool		fm_new_routine_process(fm_new_routine_t *routine);
+static bool		fm_scan_routine_process(fm_scan_routine_t *routine);
 
 
 /*
  * These are global entry points for the application
  */
-fm_new_library_t *
+fm_scan_library_t *
 fm_config_load_library(void)
 {
-	static fm_new_library_t *the_library;
+	static fm_scan_library_t *the_library;
 
 	if (the_library == NULL) {
-		the_library = fm_new_library_alloc(NULL);
+		the_library = fm_scan_library_alloc(NULL);
 
-		if (!fm_new_library_load_module(the_library, "standard"))
+		if (!fm_scan_library_load_module(the_library, "standard"))
 			the_library = NULL;
 	}
 	return the_library;
 }
 
-fm_new_routine_t *
+fm_scan_routine_t *
 fm_config_load_routine(int mode, const char *name)
 {
-	fm_new_library_t *lib;
+	fm_scan_library_t *lib;
 
 	if (name == NULL)
 		return NULL;
@@ -97,26 +97,26 @@ fm_config_load_routine(int mode, const char *name)
 	if ((lib = fm_config_load_library()) == NULL)
 		return NULL;
 
-	return fm_new_library_get_routine(lib, mode, name);
+	return fm_scan_library_get_routine(lib, mode, name);
 }
 
 /*
  * fm_routine creation
  */
 void
-fm_new_routine_array_append(fm_new_routine_array_t *array, fm_new_routine_t *routine)
+fm_scan_routine_array_append(fm_scan_routine_array_t *array, fm_scan_routine_t *routine)
 {
 	maybe_realloc_array(array->entries, array->count, 32);
 	array->entries[array->count++] = routine;
 }
 
-static fm_new_routine_t *
-fm_new_program_find_routine(fm_new_library_t *lib, int mode, const char *name)
+static fm_scan_routine_t *
+fm_scan_program_find_routine(fm_scan_library_t *lib, int mode, const char *name)
 {
 	unsigned int i;
 
 	for (i = 0; i < lib->routines.count; ++i) {
-		fm_new_routine_t *routine = lib->routines.entries[i];
+		fm_scan_routine_t *routine = lib->routines.entries[i];
 		if (routine->mode == mode && !strcmp(routine->name, name))
 			return routine;
 	}
@@ -126,10 +126,10 @@ fm_new_program_find_routine(fm_new_library_t *lib, int mode, const char *name)
 /*
  * Handling of routine objects
  */
-static fm_new_routine_t *
-fm_new_routine_alloc(int mode, const char *name, curly_node_t *curly)
+static fm_scan_routine_t *
+fm_scan_routine_alloc(int mode, const char *name, curly_node_t *curly)
 {
-	fm_new_routine_t *routine;
+	fm_scan_routine_t *routine;
 
 	routine = calloc(1, sizeof(*routine));
 	routine->mode = mode;
@@ -142,10 +142,10 @@ fm_new_routine_alloc(int mode, const char *name, curly_node_t *curly)
 /*
  * Create a library object
  */
-fm_new_library_t *
-fm_new_library_alloc(const char * const *search_paths)
+fm_scan_library_t *
+fm_scan_library_alloc(const char * const *search_paths)
 {
-	fm_new_library_t *lib;
+	fm_scan_library_t *lib;
 	const char *path;
 
 	lib = calloc(1, sizeof(*lib));
@@ -168,12 +168,12 @@ fm_new_library_alloc(const char * const *search_paths)
 	return lib;
 }
 
-extern fm_new_routine_t *
-fm_new_library_get_routine(fm_new_library_t *lib, int mode, const char *name)
+extern fm_scan_routine_t *
+fm_scan_library_get_routine(fm_scan_library_t *lib, int mode, const char *name)
 {
-	fm_new_routine_t *routine;
+	fm_scan_routine_t *routine;
 
-	if (!(routine = fm_new_program_find_routine(lib, mode, name)))
+	if (!(routine = fm_scan_program_find_routine(lib, mode, name)))
 		return NULL;
 
 	if (routine->processed) {
@@ -183,7 +183,7 @@ fm_new_library_get_routine(fm_new_library_t *lib, int mode, const char *name)
 	}
 
 	routine->processed = true;
-	if (!fm_new_routine_process(routine)) {
+	if (!fm_scan_routine_process(routine)) {
 		routine->bad = true;
 		return NULL;
 	}
@@ -196,7 +196,7 @@ fm_new_library_get_routine(fm_new_library_t *lib, int mode, const char *name)
  * Load a collection of routines into our library
  */
 bool
-fm_new_library_load_file(fm_new_library_t *lib, const char *path)
+fm_scan_library_load_file(fm_scan_library_t *lib, const char *path)
 {
 	curly_node_t *top, *node;
 	curly_iter_t *iter;
@@ -226,7 +226,7 @@ fm_new_library_load_file(fm_new_library_t *lib, const char *path)
 	while ((node = curly_iter_next_node(iter)) != NULL) {
 		const char *type = curly_node_type(node);
 		const char *name = curly_node_name(node);
-		fm_new_routine_t *routine, *other;
+		fm_scan_routine_t *routine, *other;
 		int mode;
 
 		if (name == NULL) {
@@ -249,7 +249,7 @@ fm_new_library_load_file(fm_new_library_t *lib, const char *path)
 			continue;
 		}
 
-		if ((other = fm_new_program_find_routine(lib, mode, name)) != NULL) {
+		if ((other = fm_scan_program_find_routine(lib, mode, name)) != NULL) {
 			fm_config_complain(node, "duplicated definition of %s routine %s (already have one from %s:%u)",
 					type, name,
 					curly_node_get_source_file(other->unparsed),
@@ -258,8 +258,8 @@ fm_new_library_load_file(fm_new_library_t *lib, const char *path)
 			continue;
 		}
 
-		routine = fm_new_routine_alloc(mode, name, node);
-		fm_new_routine_array_append(&lib->routines, routine);
+		routine = fm_scan_routine_alloc(mode, name, node);
+		fm_scan_routine_array_append(&lib->routines, routine);
 	}
 
 	curly_iter_free(iter);
@@ -273,7 +273,7 @@ fm_new_library_load_file(fm_new_library_t *lib, const char *path)
 }
 
 bool
-fm_new_library_load_module(fm_new_library_t *lib, const char *module_name)
+fm_scan_library_load_module(fm_scan_library_t *lib, const char *module_name)
 {
 	char full_path[PATH_MAX];
 	unsigned int i;
@@ -286,7 +286,7 @@ fm_new_library_load_module(fm_new_library_t *lib, const char *module_name)
 
 		snprintf(full_path, sizeof(full_path), "%s/%s.lib", dir, module_name);
 		if (access(full_path, F_OK) >= 0) {
-			if (fm_new_library_load_file(lib, full_path))
+			if (fm_scan_library_load_file(lib, full_path))
 				return true;
 
 			fm_log_error("Failed to load module \"%s\" from \"%s\"", module_name, full_path);
@@ -378,21 +378,21 @@ static fm_config_proc_t	fm_config_probe_root = {
 };
 
 static fm_config_proc_t	fm_config_routine_root = {
-	.name = ATTRIB_STRING(struct fm_new_routine_parsed, name),
+	.name = ATTRIB_STRING(struct fm_scan_routine_parsed, name),
 	.attributes = {
-		ATTRIB_BOOL(struct fm_new_routine_parsed, optional),
+		ATTRIB_BOOL(struct fm_scan_routine_parsed, optional),
 	},
 	.children = {
-		{ "topo-probe",		offsetof(struct fm_new_routine_parsed, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
-		{ "host-probe",		offsetof(struct fm_new_routine_parsed, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
-		{ "port-probe",		offsetof(struct fm_new_routine_parsed, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
+		{ "topo-probe",		offsetof(struct fm_scan_routine_parsed, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
+		{ "host-probe",		offsetof(struct fm_scan_routine_parsed, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
+		{ "port-probe",		offsetof(struct fm_scan_routine_parsed, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
 	},
 };
 
 static bool
-fm_new_routine_process(fm_new_routine_t *routine)
+fm_scan_routine_process(fm_scan_routine_t *routine)
 {
-	struct fm_new_routine_parsed *parsed_data = &routine->parsed;
+	struct fm_scan_routine_parsed *parsed_data = &routine->parsed;
 	curly_node_t *node = routine->unparsed;
 
 	fm_log_debug("Trying to compile %s routine %s",
@@ -464,7 +464,7 @@ fm_scan_program_dump(const fm_scan_program_t *program)
  * Convert a program into a sequence of scan actions
  */
 static bool
-fm_scan_routine_compile(const fm_new_routine_t *routine, fm_scanner_t *scanner)
+fm_scan_routine_compile(const fm_scan_routine_t *routine, fm_scanner_t *scanner)
 {
 	unsigned int i;
 	bool ok = true;

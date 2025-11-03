@@ -39,17 +39,17 @@ struct fm_config_probe {
 	fm_string_array_t	extra_args;
 };
 
-typedef struct fm_new_routine	fm_new_routine_t;
+typedef struct fm_scan_routine	fm_scan_routine_t;
 
-typedef struct fm_new_routine_array {
+typedef struct fm_scan_routine_array {
 	unsigned int		count;
-	fm_new_routine_t **	entries;
-} fm_new_routine_array_t;
+	fm_scan_routine_t **	entries;
+} fm_scan_routine_array_t;
 
 struct fm_scan_program {
-	fm_new_routine_t *	topo_scan;
-	fm_new_routine_t *	host_scan;
-	fm_new_routine_t *	port_scan;
+	fm_scan_routine_t *	topo_scan;
+	fm_scan_routine_t *	host_scan;
+	fm_scan_routine_t *	port_scan;
 };
 
 

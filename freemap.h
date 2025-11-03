@@ -26,12 +26,12 @@
 
 extern void		fm_config_init_defaults(fm_config_t *);
 extern bool		fm_config_load(fm_config_t *, const char *path);
-extern fm_new_library_t *fm_config_load_library(void);
-extern fm_new_routine_t *fm_config_load_routine(int mode, const char *name);
+extern fm_scan_library_t *fm_config_load_library(void);
+extern fm_scan_routine_t *fm_config_load_routine(int mode, const char *name);
 
-extern fm_new_library_t *fm_new_library_alloc(const char * const *search_paths);
-extern bool		fm_new_library_load_module(fm_new_library_t *, const char *name);
-extern fm_new_routine_t *fm_new_library_get_routine(fm_new_library_t *, int, const char *name);
+extern fm_scan_library_t *fm_scan_library_alloc(const char * const *search_paths);
+extern bool		fm_scan_library_load_module(fm_scan_library_t *, const char *name);
+extern fm_scan_routine_t *fm_scan_library_get_routine(fm_scan_library_t *, int, const char *name);
 
 
 const char *		fm_strerror(fm_error_t);

@@ -24,8 +24,8 @@
 
 typedef struct fm_config  fm_config_t;
 typedef struct fm_project fm_project_t;
-typedef struct fm_new_library fm_new_library_t;
-typedef struct fm_new_routine fm_new_routine_t;
+typedef struct fm_scan_library fm_scan_library_t;
+typedef struct fm_scan_routine fm_scan_routine_t;
 typedef struct fm_config_probe fm_config_probe_t;
 
 typedef struct fm_address_enumerator fm_address_enumerator_t;
