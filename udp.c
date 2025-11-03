@@ -25,9 +25,9 @@
 
 #include "scanner.h"
 #include "protocols.h"
-#include "wellknown.h"
 #include "target.h" /* for fm_probe_t */
 #include "socket.h"
+#include "services.h"
 #include "buffer.h"
 
 typedef struct fm_udp_request {
@@ -49,6 +49,14 @@ typedef struct fm_udp_request {
 	/* This is used primarily for connected sockets and
 	 * for traceroute */
 	unsigned int		src_port;
+
+	/* total_retries reflects the complete # of packets we're supposed to
+	 * send, accounting for service probes with multiple packets. */
+	unsigned int		total_retries;
+
+	/* Set of packages we're supposed to use in probing the port */
+	unsigned int		service_index;
+	fm_service_probe_t *	service_probe;
 } fm_udp_request_t;
 
 typedef struct fm_udp_extant_info {
@@ -189,6 +197,7 @@ fm_udp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_p
 
 	if (udp->params.retries == 0)
 		udp->params.retries = fm_global.udp.retries;
+	udp->total_retries = udp->params.retries;
 
 	udp->family = target->address.ss_family;
 	udp->host_address = target->address;
@@ -213,6 +222,20 @@ fm_udp_request_set_socket(fm_udp_request_t *udp, fm_socket_t *sock)
 
 	if (fm_socket_get_local_address(sock, &local_addr))
 		udp->src_port = fm_address_get_port(&local_addr);
+}
+
+static void
+fm_udp_request_set_service(fm_udp_request_t *udp, fm_service_probe_t *service_probe)
+{
+	unsigned int npackets;
+
+	if (service_probe == NULL || (npackets = service_probe->npackets) == 0) {
+		udp->service_probe = NULL;
+		return;
+	}
+
+	udp->service_probe = service_probe;
+	udp->total_retries = udp->params.retries * npackets;
 }
 
 /*
@@ -304,20 +327,45 @@ fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 /*
  * UDP port probes using standard BSD sockets
  */
-static fm_pkt_t *
-fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port)
+
+/*
+ * See if we have a probe packet
+ */
+static const fm_buffer_t *
+fm_udp_request_next_service_probe(fm_udp_request_t *udp)
 {
-	fm_wellknown_service_t *wks;
+	unsigned int index = udp->service_index;
+	const fm_buffer_t *payload;
+
+	if (udp->service_probe == NULL)
+		return NULL;
+
+	payload = udp->service_probe->packets[index++];
+	if (fm_buffer_available(payload) == 0) {
+		fm_log_warning("udp port %u: service probe %u has empty packet", udp->params.port, index - 1);
+		payload = NULL;
+	}
+
+	udp->service_index = index % udp->service_probe->npackets;
+	return payload;
+}
+
+static fm_pkt_t *
+fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port, const fm_buffer_t *payload)
+{
 	fm_pkt_t *pkt;
 
 	pkt = fm_pkt_alloc(dstaddr->ss_family, 0);
 	pkt->peer_addr = *dstaddr;
 
-	/* Check if we can guess a well-known service */
-	if ((wks = fm_wellknown_service_for_port("udp", port)) != NULL) {
-		pkt->payload = fm_wellknown_service_build_packet(wks);
+	/* If we have a service probe payload, send a (copy) of that packet, else
+	 * send a single NUL byte as payload */
+	if (payload != NULL) {
+		unsigned int len = fm_buffer_available(payload);
+
+		pkt->payload = fm_buffer_alloc(len);
+		fm_buffer_append(pkt->payload, fm_buffer_head(payload), len);
 	} else {
-		/* If we can't guess the UDP service, send a single NUL byte as payload. */
 		pkt->payload = fm_buffer_alloc(16);
 		fm_buffer_append(pkt->payload, "", 1);
 	}
@@ -328,12 +376,12 @@ fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port)
 static fm_error_t
 fm_udp_request_schedule(fm_udp_request_t *udp, struct timeval *expires)
 {
-	if (udp->params.retries == 0)
+	if (udp->total_retries == 0)
 		return FM_TIMED_OUT;
 
 	/* After sending the last probe, we wait until the full timeout has expired.
 	 * For any earlier probe, we wait for the specified packet spacing */
-	if (udp->params.retries == 1)
+	if (udp->total_retries == 1)
 		fm_timestamp_set_timeout(expires, fm_global.udp.timeout);
 	else
 		fm_timestamp_set_timeout(expires, fm_global.udp.packet_spacing);
@@ -349,6 +397,7 @@ fm_udp_request_send(fm_udp_request_t *udp, fm_udp_extant_info_t *extant_info)
 {
 	fm_socket_t *sock;
 	fm_pkt_t *pkt;
+	const fm_buffer_t *payload;
 
 	if ((sock = udp->sock) != NULL) {
 		/* pass */
@@ -373,7 +422,9 @@ fm_udp_request_send(fm_udp_request_t *udp, fm_udp_extant_info_t *extant_info)
 		return FM_SEND_ERROR;
 	}
 
-	pkt = fm_udp_build_packet(&udp->host_address, udp->params.port);
+	payload = fm_udp_request_next_service_probe(udp);
+
+	pkt = fm_udp_build_packet(&udp->host_address, udp->params.port, payload);
 
 	/* apply ttl, tos etc */
 	fm_pkt_apply_probe_params(pkt, &udp->params, udp->proto->supported_parameters);
@@ -384,7 +435,7 @@ fm_udp_request_send(fm_udp_request_t *udp, fm_udp_extant_info_t *extant_info)
 	}
 
 	fm_udp_extant_info_build(udp, extant_info);
-	udp->params.retries -= 1;
+	udp->total_retries -= 1;
 
 	/* update the asset state */
 	fm_target_update_port_state(udp->target, FM_PROTO_UDP, udp->params.port, FM_ASSET_STATE_PROBE_SENT);
@@ -446,6 +497,18 @@ fm_udp_port_probe_set_socket(fm_probe_t *probe, fm_socket_t *sock)
 	return 0;
 }
 
+static fm_error_t
+fm_udp_port_probe_set_service(fm_probe_t *probe, fm_service_probe_t *service_probe)
+{
+	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
+
+	if (udp == NULL)
+		return FM_NOT_SUPPORTED;
+
+	fm_udp_request_set_service(udp, service_probe);
+	return 0;
+}
+
 /*
  * This is called when we time out.
  * Assuming that the host in general is reachable, this means either that
@@ -469,6 +532,7 @@ static struct fm_probe_ops fm_udp_port_probe_ops = {
 	.schedule	= fm_udp_port_probe_schedule,
 	.send		= fm_udp_port_probe_send,
 	.set_socket	= fm_udp_port_probe_set_socket,
+	.set_service	= fm_udp_port_probe_set_service,
 };
 
 static fm_udp_request_t *
@@ -513,6 +577,7 @@ static struct fm_probe_class fm_udp_port_probe_class = {
 	.name		= "udp",
 	.proto_id	= FM_PROTO_UDP,
 	.modes		= FM_PROBE_MODE_TOPO|FM_PROBE_MODE_HOST|FM_PROBE_MODE_PORT,
+	.features	= FM_FEATURE_SERVICE_PROBES_MASK,
 	.create_probe	= fm_udp_create_parameterized_probe,
 };
 
