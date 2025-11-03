@@ -347,6 +347,21 @@ fm_probe_set_socket(fm_probe_t *probe, fm_socket_t *sock)
 }
 
 /*
+ * Associate a service probe with a port probe.
+ * The service probe provides a list of payloads to send.
+ */
+fm_error_t
+fm_probe_set_service(fm_probe_t *probe, fm_service_probe_t *service_probe)
+{
+	if (probe->ops->set_service == NULL) {
+		fm_log_error("%s: %s does not support service probes", __func__, probe->name);
+		return FM_NOT_SUPPORTED;
+	}
+
+	return probe->ops->set_service(probe, service_probe);
+}
+
+/*
  * This kicks the probe to make it send another packet (if it feels like it)
  */
 fm_error_t

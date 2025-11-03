@@ -26,6 +26,7 @@ typedef struct fm_config  fm_config_t;
 typedef struct fm_project fm_project_t;
 typedef struct fm_scan_library fm_scan_library_t;
 typedef struct fm_scan_routine fm_scan_routine_t;
+typedef struct fm_service_probe	fm_service_probe_t;
 typedef struct fm_config_probe fm_config_probe_t;
 
 typedef struct fm_address_enumerator fm_address_enumerator_t;
@@ -100,6 +101,7 @@ typedef enum fm_param_type {
 
 	FM_FEATURE_SOCKET_SHARING,	/* for traceroute */
 	FM_FEATURE_STATUS_CALLBACK,	/* for traceroute */
+	FM_FEATURE_SERVICE_PROBES,	/* whether the probe can do service probes, ie talk to a port to find out what runs on it. */
 
 	__FM_PARAM_TYPE_MAX,
 } fm_param_type_t;

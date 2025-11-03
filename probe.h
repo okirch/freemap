@@ -63,6 +63,7 @@ struct fm_probe_ops {
 	fm_error_t		(*schedule)(fm_probe_t *);
 	fm_error_t		(*send)(fm_probe_t *);
 	fm_error_t		(*set_socket)(fm_probe_t *probe, fm_socket_t *);
+	fm_error_t		(*set_service)(fm_probe_t *, fm_service_probe_t *);
 };
 
 struct fm_probe {
@@ -178,6 +179,7 @@ extern void		fm_probe_cancel_completion(fm_probe_t *probe, const fm_completion_t
 extern void		fm_completion_free(fm_completion_t *);
 extern void		fm_probe_install_status_callback(fm_probe_t *, fm_probe_status_callback_t *, void *);
 extern fm_error_t	fm_probe_set_socket(fm_probe_t *probe, fm_socket_t *sock);
+extern fm_error_t	fm_probe_set_service(fm_probe_t *probe, fm_service_probe_t *);
 
 extern void		fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt);
 extern void		fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt);
