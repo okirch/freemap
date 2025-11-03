@@ -80,7 +80,7 @@ int
 fm_command_perform_scan(fm_command_t *cmd)
 {
 	fm_project_t *project;
-	const fm_scan_program_t *program = NULL;
+	fm_scan_program_t *program = NULL;
 	fm_scanner_t *scanner;
 	unsigned int k;
 
@@ -146,6 +146,9 @@ fm_command_perform_scan(fm_command_t *cmd)
 		if (program == NULL)
 			fm_log_fatal("Could not build scan program");
 	}
+
+	if (!fm_scan_program_set_service_catalog(program, "default"))
+		fm_log_fatal("Unknown service catalog \"%s\"", "default");
 
 	if (scan_options.dump)
 		fm_scan_program_dump(program);

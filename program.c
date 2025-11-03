@@ -36,20 +36,38 @@
 #include "probe.h"
 #include "utils.h"
 #include "filefmt.h"
+#include "buffer.h"
 
 enum {
 	EMPTY, LOADED, FAILED
 };
+
+typedef struct fm_scan_catalog {
+	/* We need a back pointer to the module, so that we can
+	 * interpret relative names */
+	const fm_scan_module_t *containing_module;
+
+	const char *		name;
+	const char *		extend;
+	fm_string_array_t	names;
+} fm_scan_catalog_t;
 
 typedef struct fm_config_probe_array {
 	unsigned int		count;
 	fm_config_probe_t **	entries;
 } fm_config_probe_array_t;
 
+typedef struct fm_scan_catalog_array {
+	unsigned int		count;
+	fm_scan_catalog_t **	entries;
+} fm_scan_catalog_array_t;
+
 struct fm_scan_module {
 	const char *		name;
 	int			state;
 	fm_scan_routine_array_t	routines;
+	fm_scan_service_array_t services;
+	fm_scan_catalog_array_t	service_catalogs;
 };
 
 struct fm_scan_routine {
@@ -76,6 +94,9 @@ struct fm_scan_library {
 static bool		fm_scan_routine_process(fm_scan_routine_t *routine);
 static fm_scan_module_t *fm_scan_library_find_module(fm_scan_library_t *lib, const char *name, bool load_if_missing);
 static bool		fm_scan_module_load(fm_scan_module_t *module, const char *path);
+static fm_scan_catalog_t *fm_scan_catalog_alloc(const char *name, const fm_scan_module_t *);
+static bool		fm_scan_service_process(fm_scan_service_t *, curly_node_t *);
+static bool		fm_scan_catalog_process(fm_scan_catalog_t *, curly_node_t *);
 
 
 /*
@@ -106,7 +127,21 @@ fm_config_load_routine(int mode, const char *name)
 	if ((lib = fm_config_load_library()) == NULL)
 		return NULL;
 
-	return fm_scan_library_resolve_routine(lib, mode, name, true);
+	return fm_scan_library_resolve_routine(lib, mode, name);
+}
+
+fm_scan_catalog_t *
+fm_config_load_service_catalog(const char *name, fm_scan_module_t *context)
+{
+	fm_scan_library_t *lib;
+
+	if (name == NULL)
+		return NULL;
+
+	if ((lib = fm_config_load_library()) == NULL)
+		return NULL;
+
+	return fm_scan_library_resolve_service_catalog(lib, name, context);
 }
 
 /*
@@ -119,11 +154,80 @@ fm_scan_routine_array_append(fm_scan_routine_array_t *array, fm_scan_routine_t *
 	array->entries[array->count++] = routine;
 }
 
+static fm_scan_routine_t *
+fm_scan_routine_array_find(const fm_scan_routine_array_t *array, int mode, const char *name)
+{
+	unsigned int i;
+
+	for (i = 0; i < array->count; ++i) {
+		fm_scan_routine_t *routine = array->entries[i];
+		if (routine->mode == mode && !strcmp(routine->name, name))
+			return routine;
+	}
+	return NULL;
+}
+
 void
 fm_scan_module_array_append(fm_scan_module_array_t *array, fm_scan_module_t *module)
 {
 	maybe_realloc_array(array->entries, array->count, 32);
 	array->entries[array->count++] = module;
+}
+
+void
+fm_config_packet_array_append(fm_config_packet_array_t *array, fm_config_packet_t *packet)
+{
+	maybe_realloc_array(array->entries, array->count, 32);
+	array->entries[array->count++] = packet;
+}
+
+void
+fm_scan_service_array_append(fm_scan_service_array_t *array, fm_scan_service_t *service)
+{
+	maybe_realloc_array(array->entries, array->count, 32);
+	array->entries[array->count++] = service;
+}
+
+static fm_scan_service_t *
+fm_scan_service_array_find(const fm_scan_service_array_t *array, const char *name)
+{
+	unsigned int i;
+
+	for (i = 0; i < array->count; ++i) {
+		fm_scan_service_t *service = array->entries[i];
+		if (!strcmp(service->name, name))
+			return service;
+	}
+	return NULL;
+}
+
+void
+fm_service_array_destroy_shallow(fm_scan_service_array_t *array)
+{
+	if (array->entries)
+		free(array->entries);
+	memset(array, 0, sizeof(*array));
+}
+
+static void
+fm_scan_catalog_array_append(fm_scan_catalog_array_t *array, fm_scan_catalog_t *catalog)
+{
+	maybe_realloc_array(array->entries, array->count, 32);
+	array->entries[array->count++] = catalog;
+}
+
+static fm_scan_catalog_t *
+fm_scan_catalog_array_find(const fm_scan_catalog_array_t *array, const char *name)
+{
+	unsigned int i;
+
+	for (i = 0; i < array->count; ++i) {
+		fm_scan_catalog_t *catalog = array->entries[i];
+
+		if (!strcmp(catalog->name, name))
+			return catalog;
+	}
+	return NULL;
 }
 
 /*
@@ -146,28 +250,48 @@ fm_scan_module_alloc(const char *name)
 static fm_scan_routine_t *
 fm_scan_module_find_routine(fm_scan_module_t *module, int mode, const char *name)
 {
-	unsigned int i;
-
 	if (module->state != LOADED)
 		return NULL;
 
-	for (i = 0; i < module->routines.count; ++i) {
-		fm_scan_routine_t *routine = module->routines.entries[i];
-		if (routine->mode == mode && !strcmp(routine->name, name))
-			return routine;
-	}
-	return NULL;
+	return fm_scan_routine_array_find(&module->routines, mode, name);
+}
+
+/*
+ * Look up a service gives its name
+ */
+static fm_scan_service_t *
+fm_scan_module_find_service(const fm_scan_module_t *module, const char *name)
+{
+	if (module->state != LOADED)
+		return NULL;
+
+	return fm_scan_service_array_find(&module->services, name);
+}
+
+/*
+ * Look up a service catalog gives its name
+ */
+static fm_scan_catalog_t *
+fm_scan_module_find_service_catalog(const fm_scan_module_t *module, const char *name)
+{
+	if (module->state != LOADED)
+		return NULL;
+
+	return fm_scan_catalog_array_find(&module->service_catalogs, name);
 }
 
 static bool
-fm_scan_library_get_module_path(fm_scan_library_t *lib, const char *module_name, char *path_buf, size_t size)
+fm_scan_library_get_module_path(fm_scan_library_t *lib, const char *subdir, const char *module_name, char *path_buf, size_t size)
 {
 	unsigned int i;
 
 	for (i = 0; i < lib->search_path.count; ++i) {
 		const char *dir = lib->search_path.entries[i];
 
-		snprintf(path_buf, size, "%s/%s.lib", dir, module_name);
+		if (subdir == NULL)
+			snprintf(path_buf, size, "%s/%s.lib", dir, module_name);
+		else
+			snprintf(path_buf, size, "%s/%s/%s.lib", dir, subdir, module_name);
 		if (access(path_buf, F_OK) >= 0)
 			return true;
 	}
@@ -176,7 +300,7 @@ fm_scan_library_get_module_path(fm_scan_library_t *lib, const char *module_name,
 }
 
 static fm_scan_module_t *
-fm_scan_library_find_module(fm_scan_library_t *lib, const char *name, bool load_if_missing)
+fm_scan_library_find_module_with_type(fm_scan_library_t *lib, const char *subdir, const char *name, bool load_if_missing)
 {
 	fm_scan_module_t *module;
 	char path_buf[PATH_MAX];
@@ -191,13 +315,13 @@ fm_scan_library_find_module(fm_scan_library_t *lib, const char *name, bool load_
 	if (!load_if_missing)
 		return NULL;
 
-	if (!fm_scan_library_get_module_path(lib, name, path_buf, sizeof(path_buf))) {
+	module = fm_scan_module_alloc(name);
+	fm_scan_module_array_append(&lib->modules, module);
+
+	if (!fm_scan_library_get_module_path(lib, subdir, name, path_buf, sizeof(path_buf))) {
 		fm_log_error("Could not find module \"%s\" anywhere in my search path", name);
 		return NULL;
 	}
-
-	module = fm_scan_module_alloc(name);
-	fm_scan_module_array_append(&lib->modules, module);
 
 	if (fm_scan_module_load(module, path_buf))
 		module->state = LOADED;
@@ -205,6 +329,12 @@ fm_scan_library_find_module(fm_scan_library_t *lib, const char *name, bool load_
 		module->state = FAILED;
 
 	return module;
+}
+
+static fm_scan_module_t *
+fm_scan_library_find_module(fm_scan_library_t *lib, const char *name, bool load_if_missing)
+{
+	return fm_scan_library_find_module_with_type(lib, NULL, name, load_if_missing);
 }
 
 /*
@@ -253,14 +383,14 @@ fm_scan_library_alloc(const char * const *search_paths)
 }
 
 /*
- * Parse a reference to a scan routine definition, which is optionally prefixed
+ * Parse a reference to a scan routine definition or similar, which is optionally prefixed
  * with a module name, separated by '.'
  * Returns the module name, if found, or NULL.
  * On return, *name_p will point to the routine name with any module prefix stripped
  * off.
  */
 static char *
-fm_scan_library_parse_routine_reference(const char **name_p)
+fm_scan_library_parse_reference(const char **name_p)
 {
 	const char *name = *name_p, *s;
 	unsigned int len;
@@ -282,8 +412,20 @@ fm_scan_library_parse_routine_reference(const char **name_p)
 	return module_name;
 }
 
+static char *
+fm_scan_library_parse_routine_reference(const char **name_p)
+{
+	return fm_scan_library_parse_reference(name_p);
+}
+
+static char *
+fm_scan_library_parse_catalog_reference(const char **name_p)
+{
+	return fm_scan_library_parse_reference(name_p);
+}
+
 extern fm_scan_routine_t *
-fm_scan_library_resolve_routine(fm_scan_library_t *lib, int mode, const char *name, bool create)
+fm_scan_library_resolve_routine(fm_scan_library_t *lib, int mode, const char *name)
 {
 	fm_scan_routine_t *routine = NULL;
 	char *module_name;
@@ -328,6 +470,71 @@ fm_scan_library_resolve_routine(fm_scan_library_t *lib, int mode, const char *na
 	return routine;
 }
 
+/*
+ * Resolve things such as service definitions, service catalogs etc.
+ * A name can be qualified, as in module_name.resource_name
+ *
+ * We interpret unqualifieds name as the name of a module; the resource to look
+ * for inside this module is called "default", so IOW the name "foobar"
+ * is taken to refer to "foobar.default"
+ */
+static const fm_scan_module_t *
+fm_scan_library_resolve_module(fm_scan_library_t *lib, const char *subdir, const char **name_p, const fm_scan_module_t *context)
+{
+	const fm_scan_module_t *module;
+	char *module_name;
+
+	module_name = fm_scan_library_parse_reference(name_p);
+	if (module_name != NULL) {
+		/* The name explicitly referenced a module. Easy. */
+		module = fm_scan_library_find_module_with_type(lib, subdir, module_name, true);
+		free(module_name);
+	} else {
+		module = fm_scan_library_find_module_with_type(lib, subdir, *name_p, true);
+		*name_p = "default";
+	}
+
+	if (module == NULL || module->state != LOADED)
+		return NULL;
+
+	/* Let the caller take care of looking up the actual resource inside the module. */
+	return module;
+}
+
+extern fm_scan_service_t *
+fm_scan_library_resolve_service(fm_scan_library_t *lib, const char *name, const fm_scan_module_t *context)
+{
+	const fm_scan_module_t *module;
+
+	if ((module = fm_scan_library_resolve_module(lib, "service", &name, context)) == NULL)
+		return NULL;
+	return fm_scan_module_find_service(module, name);
+}
+
+extern fm_scan_catalog_t *
+fm_library_resolve_service_catalog(fm_scan_library_t *lib, const char *name, const fm_scan_module_t *context)
+{
+	const fm_scan_module_t *module;
+
+	if ((module = fm_scan_library_resolve_module(lib, "service", &name, context)) == NULL)
+		return NULL;
+	return fm_scan_module_find_service_catalog(module, name);
+}
+
+/*
+ * Service probes
+ * For now, a service probe defines one or more probe packets to send, and the
+ * standard ports on which you would normally suspect this service.
+ */
+static fm_scan_service_t *
+fm_scan_service_alloc(const char *name)
+{
+	fm_scan_service_t *service;
+
+	service = calloc(1, sizeof(*service));
+	service->name = strdup(name);
+	return service;
+}
 
 /*
  * Load a collection of routines into our library
@@ -369,6 +576,26 @@ fm_scan_module_load(fm_scan_module_t *module, const char *path)
 		if (name == NULL) {
 			fm_config_complain(node, "missing name");
 			rv = false;
+			continue;
+		}
+
+		if (!strcmp(type, "service-probe")) {
+			fm_scan_service_t *service;
+
+			service = fm_scan_service_alloc(name);
+			fm_scan_service_array_append(&module->services, service);
+			if (!fm_scan_service_process(service, node))
+				rv = false;
+			continue;
+		}
+
+		if (!strcmp(type, "service-catalog")) {
+			fm_scan_catalog_t *catalog;
+
+			catalog = fm_scan_catalog_alloc(name, module);
+			fm_scan_catalog_array_append(&module->service_catalogs, catalog);
+			if (!fm_scan_catalog_process(catalog, node))
+				rv = false;
 			continue;
 		}
 
@@ -436,6 +663,20 @@ fm_config_probe_root_create(curly_node_t *node, void *data)
 	return parsed_probe;
 }
 
+static void *
+fm_config_packet_root_create(curly_node_t *node, void *data)
+{
+	fm_config_packet_array_t *array = (fm_config_packet_array_t *) data;
+	const char *name = curly_node_name(node);
+	fm_config_packet_t *parsed_packet;
+
+	parsed_packet = calloc(1, sizeof(*parsed_packet));
+	parsed_packet->name = strdup(name);
+	fm_config_packet_array_append(array, parsed_packet);
+
+	return parsed_packet;
+}
+
 /*
  * Handle unknown attributes - convert them to foo=bar notation and store them as strings
  * probe->extra_args.
@@ -461,6 +702,32 @@ fm_config_probe_set_extra(curly_node_t *node, void *attr_data, const curly_attr_
 	return true;
 }
 
+/*
+ * Parse a packet payload as a sequence of hex octets
+ */
+static bool
+fm_config_packet_set_payload(curly_node_t *node, void *attr_data, const curly_attr_t *attr)
+{
+	fm_buffer_t **payload_p = attr_data, *bp;
+	const char *attr_name = curly_attr_get_name(attr);
+	unsigned int k, raw_len;
+
+	raw_len = curly_attr_get_count(attr);
+	*payload_p = bp = fm_buffer_alloc(raw_len);
+
+	for (k = 0; k < raw_len; ++k) {
+		const char *octet = curly_attr_get_value(attr, k);
+		const char *end;
+
+		bp->data[k] = strtoul(octet, (char **) &end, 0);
+		if (*end) {
+			fm_config_complain(node, "attribute %s: cannot parse octet at index %u: \"%s\"", attr_name, k, octet);
+			return false;
+		}
+	}
+
+	return true;
+}
 
 /*
  * curly file structure for library
@@ -479,6 +746,13 @@ static fm_config_proc_t	fm_config_probe_root = {
 	},
 };
 
+static fm_config_proc_t	fm_config_packet_root = {
+	.name = ATTRIB_STRING(fm_config_packet_t, name),
+	.attributes = {
+		{ "payload",		offsetof(fm_config_packet_t, payload),		FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = fm_config_packet_set_payload }
+	},
+};
+
 static fm_config_proc_t	fm_config_routine_root = {
 	.name = ATTRIB_STRING(struct fm_scan_routine_parsed, name),
 	.attributes = {
@@ -488,6 +762,25 @@ static fm_config_proc_t	fm_config_routine_root = {
 		{ "topo-probe",		offsetof(struct fm_scan_routine_parsed, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
 		{ "host-probe",		offsetof(struct fm_scan_routine_parsed, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
 		{ "port-probe",		offsetof(struct fm_scan_routine_parsed, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
+	},
+};
+
+static fm_config_proc_t	fm_config_service_root = {
+	.name = ATTRIB_STRING(fm_scan_service_t, name),
+	.attributes = {
+		ATTRIB_STRING_ARRAY(fm_scan_service_t, tcp_ports),
+		ATTRIB_STRING_ARRAY(fm_scan_service_t, udp_ports),
+	},
+	.children = {
+		{ "packet",		offsetof(fm_scan_service_t, packets),		&fm_config_packet_root, .alloc_child = fm_config_packet_root_create },
+	},
+};
+
+static fm_config_proc_t	fm_config_catalog_root = {
+	.name = ATTRIB_STRING(fm_scan_catalog_t, name),
+	.attributes = {
+		{ "use",		offsetof(fm_scan_catalog_t, names),		FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
+		{ "extend",		offsetof(fm_scan_catalog_t, extend),		FM_CONFIG_ATTR_TYPE_STRING },
 	},
 };
 
@@ -503,6 +796,108 @@ fm_scan_routine_process(fm_scan_routine_t *routine)
 	if (!fm_config_process_node(node, &fm_config_routine_root, parsed_data)) {
 		fm_config_complain(node, "unable to parse routine definition");
 		return false;
+	}
+
+	return true;
+}
+
+static bool
+fm_scan_service_process(fm_scan_service_t *service, curly_node_t *node)
+{
+	if (!fm_config_process_node(node, &fm_config_service_root, service)) {
+		fm_config_complain(node, "unable to parse service probe definition");
+		return false;
+	}
+
+	fm_log_debug("processed service %s", service->name);
+
+	return true;
+}
+
+extern fm_scan_catalog_t *
+fm_scan_library_resolve_service_catalog(fm_scan_library_t *lib, const char *name, fm_scan_module_t *context)
+{
+	char *module_name;
+	fm_scan_module_t *module;
+
+	module_name = fm_scan_library_parse_catalog_reference(&name);
+	if (module_name != NULL) {
+		module = fm_scan_library_find_module(lib, module_name, true);
+		free(module_name);
+	} else {
+		module = context;
+	}
+
+	if (module == NULL)
+		return NULL;
+
+	return fm_scan_module_find_service_catalog(module, name);
+}
+
+static bool
+fm_scan_catalog_process(fm_scan_catalog_t *catalog, curly_node_t *node)
+{
+	if (!fm_config_process_node(node, &fm_config_catalog_root, catalog)) {
+		fm_config_complain(node, "unable to parse service catalog definition");
+		return false;
+	}
+
+	return true;
+}
+
+/*
+ * Service catalogs
+ */
+static fm_scan_catalog_t *
+fm_scan_catalog_alloc(const char *name, const fm_scan_module_t *module)
+{
+	fm_scan_catalog_t *catalog;
+
+	catalog = calloc(1, sizeof(*catalog));
+	catalog->name = strdup(name);
+	catalog->containing_module = module;
+	return catalog;
+}
+
+static bool
+fm_scan_catalog_resolve_services(fm_scan_catalog_t *catalog, fm_scan_service_array_t *service_list)
+{
+	fm_scan_library_t *lib = fm_config_load_library();
+	const fm_scan_module_t *context;
+	unsigned int i;
+
+	while (catalog != NULL) {
+		context = catalog->containing_module;
+		for (i = 0; i < catalog->names.count; ++i) {
+			const char *name = catalog->names.entries[i];
+			fm_scan_service_t *service;
+
+			service = fm_scan_library_resolve_service(lib, name, context);
+			if (service == NULL) {
+				fm_log_error("service catalog %s.%s: could not find referenced service %s",
+						context->name, catalog->name, name);
+				return false;
+			}
+
+			fm_scan_service_array_append(service_list, service);
+		}
+
+		if (catalog->extend == NULL) {
+			break;
+		} else {
+			fm_scan_catalog_t *next;
+
+			next = fm_library_resolve_service_catalog(lib, catalog->extend, context);
+			if (next == NULL) {
+				fm_log_error("service catalog %s.%s: extends service catalog %s, but I could not find it",
+						context->name, catalog->name, catalog->extend);
+				return false;
+			}
+
+			/* FIXME: we do not protect against circular loops */
+			catalog = next;
+		}
+
 	}
 
 	return true;
@@ -544,6 +939,33 @@ fm_scan_program_dump(const fm_scan_program_t *program)
 {
 	/* this does not do anything right now */
 }
+
+/*
+ * Attach service catalog
+ */
+bool
+fm_scan_program_set_service_catalog(fm_scan_program_t *program, const char *name)
+{
+	fm_scan_module_t *context = NULL;
+	fm_scan_catalog_t *catalog;
+	fm_scan_library_t *lib;
+
+	lib = fm_config_load_library();
+
+	if (!strchr(name, '.')) {
+		context = fm_scan_library_find_module(lib, "standard", true);
+		assert(context != NULL);
+	} else  {
+		abort();
+	}
+
+	if (!(catalog = fm_config_load_service_catalog(name, context)))
+		return false;
+
+	fm_service_array_destroy_shallow(&program->services);
+	return fm_scan_catalog_resolve_services(catalog, &program->services);
+}
+
 
 /*
  * Convert a program into a sequence of scan actions
