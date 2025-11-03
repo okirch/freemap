@@ -356,8 +356,12 @@ fm_config_apply_child(curly_node_t *parent, fm_config_proc_t *proc, void *data, 
 			break;
 
 		if (!strcmp(child_proc->name, type)) {
-			return fm_config_process_node(node, child_proc->proc,
-					fm_config_addr_apply_offset(data, child_proc->offset));
+			void *child_data = fm_config_addr_apply_offset(data, child_proc->offset);
+
+			if (child_proc->alloc_child != NULL)
+				child_data = child_proc->alloc_child(node, child_data);
+
+			return fm_config_process_node(node, child_proc->proc, child_data);
 		}
 	}
 
