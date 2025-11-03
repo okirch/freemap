@@ -24,10 +24,10 @@
 
 
 struct fm_config_packet_array;
-struct fm_scan_service;
+struct fm_config_service;
 
 struct fm_service_catalog {
-	struct fm_scan_service_array *services;
+	struct fm_config_service_array *services;
 };
 
 /*
@@ -43,7 +43,7 @@ struct fm_service_probe {
 };
 
 extern fm_service_catalog_t *	fm_service_catalog_alloc(void);
-extern bool			fm_service_catalog_add_service(fm_service_catalog_t *, struct fm_scan_service *);
+extern bool			fm_service_catalog_add_service(fm_service_catalog_t *, struct fm_config_service *);
 extern fm_service_probe_t *	fm_service_catalog_get_service_probe(const fm_service_catalog_t *, unsigned int proto_id, unsigned int port);
 
 #endif /* FREEMAP_SERVICES_H */

@@ -62,7 +62,7 @@ fm_service_probe_add_packet_array(fm_service_probe_t *probe, const fm_config_pac
 }
 
 bool
-fm_service_catalog_add_service(fm_service_catalog_t *catalog, fm_scan_service_t *service)
+fm_service_catalog_add_service(fm_service_catalog_t *catalog, fm_config_service_t *service)
 {
 	unsigned int i;
 
@@ -73,12 +73,12 @@ fm_service_catalog_add_service(fm_service_catalog_t *catalog, fm_scan_service_t 
 	}
 
 	fm_log_debug("Service %ss added to service catalog", service->fullname);
-	fm_scan_service_array_append(catalog->services, service);
+	fm_config_service_array_append(catalog->services, service);
 	return true;
 }
 
 static inline bool
-fm_scan_service_match(const fm_scan_service_t *service, unsigned int proto_id, unsigned int port)
+fm_config_service_match(const fm_config_service_t *service, unsigned int proto_id, unsigned int port)
 {
 	const fm_uint_array_t *ports;
 	unsigned int k;
@@ -108,9 +108,9 @@ fm_service_catalog_get_service_probe(const fm_service_catalog_t *catalog, unsign
 		return NULL;
 
 	for (i = 0; i < catalog->services->count; ++i) {
-		fm_scan_service_t *service = catalog->services->entries[i];
+		fm_config_service_t *service = catalog->services->entries[i];
 
-		if (!fm_scan_service_match(service, proto_id, port))
+		if (!fm_config_service_match(service, proto_id, port))
 			continue;
 
 		if (service->packets.count == 0)

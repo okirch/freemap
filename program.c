@@ -67,7 +67,7 @@ struct fm_scan_module {
 	const char *		name;
 	int			state;
 	fm_config_routine_array_t routines;
-	fm_scan_service_array_t services;
+	fm_config_service_array_t services;
 	fm_scan_catalog_array_t	service_catalogs;
 };
 
@@ -173,19 +173,19 @@ fm_config_packet_array_append(fm_config_packet_array_t *array, fm_config_packet_
 }
 
 void
-fm_scan_service_array_append(fm_scan_service_array_t *array, fm_scan_service_t *service)
+fm_config_service_array_append(fm_config_service_array_t *array, fm_config_service_t *service)
 {
 	maybe_realloc_array(array->entries, array->count, 32);
 	array->entries[array->count++] = service;
 }
 
-static fm_scan_service_t *
-fm_scan_service_array_find(const fm_scan_service_array_t *array, const char *name)
+static fm_config_service_t *
+fm_config_service_array_find(const fm_config_service_array_t *array, const char *name)
 {
 	unsigned int i;
 
 	for (i = 0; i < array->count; ++i) {
-		fm_scan_service_t *service = array->entries[i];
+		fm_config_service_t *service = array->entries[i];
 		if (!strcmp(service->name, name))
 			return service;
 	}
@@ -193,7 +193,7 @@ fm_scan_service_array_find(const fm_scan_service_array_t *array, const char *nam
 }
 
 void
-fm_service_array_destroy_shallow(fm_scan_service_array_t *array)
+fm_service_array_destroy_shallow(fm_config_service_array_t *array)
 {
 	if (array->entries)
 		free(array->entries);
@@ -250,13 +250,13 @@ fm_scan_module_find_routine(fm_scan_module_t *module, int mode, const char *name
 /*
  * Look up a service gives its name
  */
-static fm_scan_service_t *
+static fm_config_service_t *
 fm_scan_module_find_service(const fm_scan_module_t *module, const char *name)
 {
 	if (module->state != LOADED)
 		return NULL;
 
-	return fm_scan_service_array_find(&module->services, name);
+	return fm_config_service_array_find(&module->services, name);
 }
 
 /*
@@ -479,7 +479,7 @@ fm_scan_library_resolve_module(fm_scan_library_t *lib, const char *subdir, const
 	return module;
 }
 
-extern fm_scan_service_t *
+extern fm_config_service_t *
 fm_scan_library_resolve_service(fm_scan_library_t *lib, const char *name, const fm_scan_module_t *context)
 {
 	const fm_scan_module_t *module;
@@ -504,21 +504,21 @@ fm_library_resolve_service_catalog(fm_scan_library_t *lib, const char *name, con
  * For now, a service probe defines one or more probe packets to send, and the
  * standard ports on which you would normally suspect this service.
  */
-static fm_scan_service_t *
-fm_scan_service_alloc(const char *name, fm_scan_service_array_t *array)
+static fm_config_service_t *
+fm_config_service_alloc(const char *name, fm_config_service_array_t *array)
 {
-	fm_scan_service_t *service;
+	fm_config_service_t *service;
 
 	service = calloc(1, sizeof(*service));
 	service->name = strdup(name);
 
 	if (array)
-		fm_scan_service_array_append(array, service);
+		fm_config_service_array_append(array, service);
 	return service;
 }
 
 static void
-fm_scan_service_finalize(fm_scan_service_t *service, fm_scan_module_t *module)
+fm_config_service_finalize(fm_config_service_t *service, fm_scan_module_t *module)
 {
 	asprintf((char **) &service->fullname, "%s.%s", module->name, service->name);
 	service->containing_module = module;
@@ -555,7 +555,7 @@ fm_scan_module_load(fm_scan_module_t *module, const char *path)
 	}
 
 	for (i = 0; i < module->services.count; ++i)
-		fm_scan_service_finalize(module->services.entries[i], module);
+		fm_config_service_finalize(module->services.entries[i], module);
 
 	return rv;
 }
@@ -604,10 +604,10 @@ fm_config_module_create_port_routine(curly_node_t *node, void *data)
 static void *
 fm_config_module_create_service(curly_node_t *node, void *data)
 {
-	fm_scan_service_array_t *array = data;
+	fm_config_service_array_t *array = data;
 	const char *name = curly_node_name(node);
 
-	return fm_scan_service_alloc(name, array);
+	return fm_config_service_alloc(name, array);
 }
 
 static void *
@@ -775,13 +775,13 @@ static fm_config_proc_t	fm_config_routine_root = {
 };
 
 static fm_config_proc_t	fm_config_service_root = {
-	.name = ATTRIB_STRING(fm_scan_service_t, name),
+	.name = ATTRIB_STRING(fm_config_service_t, name),
 	.attributes = {
-		ATTRIB_INT_ARRAY(fm_scan_service_t, tcp_ports),
-		ATTRIB_INT_ARRAY(fm_scan_service_t, udp_ports),
+		ATTRIB_INT_ARRAY(fm_config_service_t, tcp_ports),
+		ATTRIB_INT_ARRAY(fm_config_service_t, udp_ports),
 	},
 	.children = {
-		{ "packet",		offsetof(fm_scan_service_t, packets),		&fm_config_packet_root, .alloc_child = fm_config_packet_root_create },
+		{ "packet",		offsetof(fm_config_service_t, packets),		&fm_config_packet_root, .alloc_child = fm_config_packet_root_create },
 	},
 };
 
@@ -864,7 +864,7 @@ fm_scan_catalog_resolve_services(fm_scan_catalog_t *catalog, fm_service_catalog_
 		context = catalog->containing_module;
 		for (i = 0; i < catalog->names.count; ++i) {
 			const char *name = catalog->names.entries[i];
-			fm_scan_service_t *service;
+			fm_config_service_t *service;
 
 			service = fm_scan_library_resolve_service(lib, name, context);
 			if (service == NULL) {

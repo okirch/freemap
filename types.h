@@ -26,7 +26,7 @@ typedef struct fm_config  fm_config_t;
 typedef struct fm_project fm_project_t;
 typedef struct fm_scan_library fm_scan_library_t;
 typedef struct fm_config_routine fm_config_routine_t;
-typedef struct fm_scan_service_array fm_scan_service_array_t;
+typedef struct fm_config_service_array fm_config_service_array_t;
 typedef struct fm_service_catalog fm_service_catalog_t;
 typedef struct fm_service_probe	fm_service_probe_t;
 typedef struct fm_config_probe fm_config_probe_t;
