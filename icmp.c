@@ -201,7 +201,8 @@ fm_icmp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 				ee->ee_type, ee->ee_code);
 
 		/* update asset state right away */
-		fm_host_asset_update_state_by_address(&pkt->peer_addr, FM_ASSET_STATE_CLOSED);
+		if (ee->ee_type == ICMP_DEST_UNREACH)
+			fm_host_asset_update_state_by_address(&pkt->peer_addr, FM_ASSET_STATE_CLOSED);
 		if (pkt->info.offender != NULL)
 			fm_host_asset_update_state_by_address(pkt->info.offender, FM_ASSET_STATE_OPEN);
 
@@ -210,36 +211,6 @@ fm_icmp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 		 * to, and the offender is the address of the host that generated the
 		 * ICMP packet. */
 		extant = fm_icmp_locate_probe(&pkt->peer_addr, pkt, false, ignore_id);
-
-		/* TODO: record the gateway that generated this error code;
-		 * we could build a rough sketch of the network topo and avoid swamping
-		 * the gateway with too many packets (which would result in ICMP errors
-		 * being dropped). */
-
-		/* We should not decide this here; the probe should decide what it
-		 * wants to ignore and what not. */
-		if (ee->ee_type != ICMP_DEST_UNREACH) {
-
-			/* super ugly; layering violation */
-			if (extant != NULL) {
-				fm_probe_t *probe = extant->probe;
-
-				if (probe->status_callback.cb) {
-					double rtt = fm_pkt_rtt(pkt, &extant->timestamp);
-					bool keep_going;
-
-					keep_going = probe->status_callback.cb(probe, pkt, rtt, probe->status_callback.user_data);
-					if (!keep_going)
-						fm_probe_mark_complete(probe);
-				}
-				return true;
-			}
-
-			fm_log_debug("%s ignoring icmp packet with type %d.%d",
-					fm_address_format(&pkt->peer_addr),
-					ee->ee_type, ee->ee_code);
-			return false;
-		}
 	}
 
 	if (extant != NULL) {
@@ -682,6 +653,32 @@ fm_icmp_host_probe_set_socket(fm_probe_t *probe, fm_socket_t *sock)
 	return 0;
 }
 
+static bool
+fm_icmp_host_probe_data_tap(const fm_probe_t *probe, const fm_pkt_t *pkt, double rtt, void *user_data)
+{
+	const struct sock_extended_err *ee;
+
+	if ((ee = pkt->info.ee) == NULL) {
+		/* We received a response. The host is reachable */
+		fm_log_debug("%s: have a response, done", probe->name);
+		return false;
+	} else
+	if (pkt->family == AF_INET && ee->ee_origin == SO_EE_ORIGIN_ICMP) {
+		if (ee->ee_type == ICMP_DEST_UNREACH) {
+			fm_log_debug("%s %s: received ICMP unreachable",
+					probe->name, fm_address_format(&probe->target->address));
+			return false;
+		} else {
+			fm_log_debug("%s ignoring icmp packet with type %d.%d",
+					fm_address_format(&pkt->peer_addr),
+					ee->ee_type, ee->ee_code);
+		}
+	}
+
+	/* by default, keep going */
+	return true;
+}
+
 static void
 fm_icmp_host_probe_destroy(fm_probe_t *probe)
 {
@@ -775,6 +772,8 @@ fm_icmp_create_host_probe(fm_probe_class_t *pclass, fm_target_t *target, const f
 	probe = fm_probe_alloc(name, &fm_icmp_host_probe_ops, target);
 
 	fm_icmp_probe_set_request(probe, icmp);
+
+	fm_probe_install_status_callback(probe, fm_icmp_host_probe_data_tap, NULL);
 
 	fm_log_debug("Created ICMP socket probe for %s\n", fm_address_format(&icmp->host_address));
 	return probe;
