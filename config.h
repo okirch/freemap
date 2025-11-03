@@ -23,6 +23,10 @@
 #include "utils.h"
 
 struct fm_config {
+	struct fm_config_library {
+		fm_string_array_t search_path;
+	} library;
+
 	struct fm_config_address_generation {
 		int		only_family;
 		bool		try_all;

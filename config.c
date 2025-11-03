@@ -174,6 +174,15 @@ set_address_family(curly_node_t *node, void *attr_data, const char *value)
 }
 
 /*
+ * library
+ */
+static fm_config_proc_t		fm_config_library = {
+	.attributes = {
+		ATTRIB_STRING_ARRAY(struct fm_config_library, search_path),
+	},
+};
+
+/*
  * address_generation
  */
 static fm_config_proc_t		fm_config_address_generation = {
@@ -276,6 +285,7 @@ static fm_config_proc_t		fm_config_arp = {
  */
 static fm_config_proc_t		fm_config_root = {
 	.children = {
+		{ "library",	offsetof(fm_config_t, library),		&fm_config_library },
 		{ "address-generation",
 				offsetof(fm_config_t, address_generation), &fm_config_address_generation },
 		{ "target-pool",offsetof(fm_config_t, target_pool),	&fm_config_target_pool },
