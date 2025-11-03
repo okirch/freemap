@@ -34,7 +34,7 @@ fm_buffer_head(const fm_buffer_t *pkt)
 }
 
 static inline unsigned int
-fm_buffer_available(fm_buffer_t *pkt)
+fm_buffer_available(const fm_buffer_t *pkt)
 {
 	return pkt->wpos - pkt->rpos;
 }
