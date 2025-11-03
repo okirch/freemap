@@ -618,7 +618,7 @@ fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *dat
 	return false;
 }
 
-static bool
+bool
 fm_config_process_node(curly_node_t *node, fm_config_proc_t *proc, void *data)
 {
 	const char *name;
