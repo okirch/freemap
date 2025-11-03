@@ -23,6 +23,8 @@
 #include "scanner.h"
 #include "target.h"
 #include "protocols.h"
+#include "program.h"
+#include "services.h"
 #include "utils.h"
 
 
@@ -544,8 +546,6 @@ failed:
 	return NULL;
 }
 
-#include "program.h"
-
 fm_scan_action_t *
 fm_scanner_add_probe(fm_scanner_t *scanner, const fm_config_probe_t *parsed_probe)
 {
@@ -591,6 +591,9 @@ fm_scanner_add_probe(fm_scanner_t *scanner, const fm_config_probe_t *parsed_prob
 	if (action != NULL)
 		fm_scan_action_array_append(&scanner->requests, action);
 
+	if (pclass->features & FM_FEATURE_SERVICE_PROBES_MASK)
+		action->service_catalog = scanner->service_catalog;
+
 	return action;
 
 failed:
@@ -601,7 +604,6 @@ failed:
 	fm_uint_array_destroy(&ports);
 	return NULL;
 }
-
 
 fm_scan_action_t *
 fm_scanner_add_topo_probe(fm_scanner_t *scanner, const char *probe_name, int flags, const fm_string_array_t *args)
@@ -640,6 +642,16 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *probe_name, int fla
 		fm_scan_action_array_append(&scanner->requests, action);
 
 	return action;
+}
+
+/*
+ * The service_catalog tells you whether the scan has been configured to use service
+ * probes for certain ports
+ */
+void
+fm_scanner_set_service_catalog(fm_scanner_t *scanner, const fm_service_catalog_t *service_catalog)
+{
+	scanner->service_catalog = service_catalog;
 }
 
 fm_scan_action_t *

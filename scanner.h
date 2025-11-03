@@ -63,6 +63,9 @@ struct fm_scan_action {
 
 	/* ports, protocol numbers, etc */
 	fm_uint_array_t		numeric_params;
+
+	/* Set when the probe class supports service probes */
+	const fm_service_catalog_t *service_catalog;
 };
 
 typedef struct fm_scan_action_array {
@@ -87,6 +90,8 @@ struct fm_scanner {
 
 	fm_scheduler_t *	scheduler;
 
+	const fm_service_catalog_t *service_catalog;
+
 	fm_scan_action_array_t	requests;
 
 	const fm_protocol_engine_t *proto;
@@ -94,6 +99,7 @@ struct fm_scanner {
 
 extern fm_scan_action_t *	fm_scan_action_create(int mode, const struct fm_scan_action_ops *ops, const char *id, fm_probe_class_t *);
 extern fm_scan_action_t *	fm_scanner_add_probe(fm_scanner_t *, const fm_config_probe_t *);
+extern void			fm_scanner_set_service_catalog(fm_scanner_t *, const fm_service_catalog_t *);
 
 #endif /* FREEMAP_SCANNER_H */
 
