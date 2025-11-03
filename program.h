@@ -41,9 +41,9 @@ struct fm_config_probe {
 	fm_string_array_t	extra_args;
 };
 
-typedef struct fm_scan_module	fm_scan_module_t;
-typedef struct fm_scan_routine	fm_scan_routine_t;
-typedef struct fm_scan_service	fm_scan_service_t;
+typedef struct fm_scan_module fm_scan_module_t;
+typedef struct fm_config_routine fm_config_routine_t;
+typedef struct fm_scan_service fm_scan_service_t;
 typedef struct fm_scan_catalog fm_scan_catalog_t;
 
 typedef struct fm_scan_module_array {
@@ -51,10 +51,10 @@ typedef struct fm_scan_module_array {
 	fm_scan_module_t **	entries;
 } fm_scan_module_array_t;
 
-typedef struct fm_scan_routine_array {
+typedef struct fm_config_routine_array {
 	unsigned int		count;
-	fm_scan_routine_t **	entries;
-} fm_scan_routine_array_t;
+	fm_config_routine_t **	entries;
+} fm_config_routine_array_t;
 
 typedef struct fm_config_packet_array {
 	unsigned int		count;
@@ -86,9 +86,9 @@ struct fm_scan_service {
 
 
 struct fm_scan_program {
-	fm_scan_routine_t *	topo_scan;
-	fm_scan_routine_t *	host_scan;
-	fm_scan_routine_t *	port_scan;
+	fm_config_routine_t *	topo_scan;
+	fm_config_routine_t *	host_scan;
+	fm_config_routine_t *	port_scan;
 	fm_service_catalog_t *	service_catalog;
 };
 
@@ -103,7 +103,7 @@ extern void			fm_scan_program_free(fm_scan_program_t *);
 
 extern fm_scan_library_t *	fm_scan_library_alloc(const char * const *search_paths);
 extern fm_scan_module_t *	fm_scan_library_load_module(fm_scan_library_t *, const char *name);
-extern fm_scan_routine_t *	fm_scan_library_resolve_routine(fm_scan_library_t *, int, const char *name);
+extern fm_config_routine_t *	fm_scan_library_resolve_routine(fm_scan_library_t *, int, const char *name);
 extern fm_scan_catalog_t *	fm_scan_library_resolve_service_catalog(fm_scan_library_t *, const char *name, fm_scan_module_t *);
 
 extern void			fm_scan_service_array_append(fm_scan_service_array_t *array, fm_scan_service_t *service);

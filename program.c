@@ -66,12 +66,12 @@ typedef struct fm_scan_catalog_array {
 struct fm_scan_module {
 	const char *		name;
 	int			state;
-	fm_scan_routine_array_t	routines;
+	fm_config_routine_array_t routines;
 	fm_scan_service_array_t services;
 	fm_scan_catalog_array_t	service_catalogs;
 };
 
-struct fm_scan_routine {
+struct fm_config_routine {
 	const char *		name;
 	int			mode;
 	bool			optional;
@@ -107,7 +107,7 @@ fm_config_load_library(void)
 	return the_library;
 }
 
-fm_scan_routine_t *
+fm_config_routine_t *
 fm_config_load_routine(int mode, const char *name)
 {
 	fm_scan_library_t *lib;
@@ -139,19 +139,19 @@ fm_config_load_service_catalog(const char *name, fm_scan_module_t *context)
  * fm_routine creation
  */
 void
-fm_scan_routine_array_append(fm_scan_routine_array_t *array, fm_scan_routine_t *routine)
+fm_config_routine_array_append(fm_config_routine_array_t *array, fm_config_routine_t *routine)
 {
 	maybe_realloc_array(array->entries, array->count, 32);
 	array->entries[array->count++] = routine;
 }
 
-static fm_scan_routine_t *
-fm_scan_routine_array_find(const fm_scan_routine_array_t *array, int mode, const char *name)
+static fm_config_routine_t *
+fm_config_routine_array_find(const fm_config_routine_array_t *array, int mode, const char *name)
 {
 	unsigned int i;
 
 	for (i = 0; i < array->count; ++i) {
-		fm_scan_routine_t *routine = array->entries[i];
+		fm_config_routine_t *routine = array->entries[i];
 		if (routine->mode == mode && !strcmp(routine->name, name))
 			return routine;
 	}
@@ -238,13 +238,13 @@ fm_scan_module_alloc(const char *name)
 /*
  * Look up a routine gives its name
  */
-static fm_scan_routine_t *
+static fm_config_routine_t *
 fm_scan_module_find_routine(fm_scan_module_t *module, int mode, const char *name)
 {
 	if (module->state != LOADED)
 		return NULL;
 
-	return fm_scan_routine_array_find(&module->routines, mode, name);
+	return fm_config_routine_array_find(&module->routines, mode, name);
 }
 
 /*
@@ -331,17 +331,17 @@ fm_scan_library_find_module(fm_scan_library_t *lib, const char *name, bool load_
 /*
  * Handling of routine objects
  */
-static fm_scan_routine_t *
-fm_scan_routine_alloc(int mode, const char *name, fm_scan_routine_array_t *array)
+static fm_config_routine_t *
+fm_config_routine_alloc(int mode, const char *name, fm_config_routine_array_t *array)
 {
-	fm_scan_routine_t *routine;
+	fm_config_routine_t *routine;
 
 	routine = calloc(1, sizeof(*routine));
 	routine->mode = mode;
 	routine->name = strdup(name);
 
 	if (array)
-		fm_scan_routine_array_append(array, routine);
+		fm_config_routine_array_append(array, routine);
 
 	return routine;
 }
@@ -417,10 +417,10 @@ fm_scan_library_parse_catalog_reference(const char **name_p)
 	return fm_scan_library_parse_reference(name_p);
 }
 
-extern fm_scan_routine_t *
+extern fm_config_routine_t *
 fm_scan_library_resolve_routine(fm_scan_library_t *lib, int mode, const char *name)
 {
-	fm_scan_routine_t *routine = NULL;
+	fm_config_routine_t *routine = NULL;
 	char *module_name;
 	fm_scan_module_t *module;
 
@@ -572,11 +572,11 @@ fm_config_probe_array_append(fm_config_probe_array_t *array, fm_config_probe_t *
  *   host-scan blah { ... }
  */
 static void *
-fm_config_module_create_routine(curly_node_t *node, fm_scan_routine_array_t *array, int mode)
+fm_config_module_create_routine(curly_node_t *node, fm_config_routine_array_t *array, int mode)
 {
 	const char *name = curly_node_name(node);
 
-	return fm_scan_routine_alloc(mode, name, array);
+	return fm_config_routine_alloc(mode, name, array);
 }
 
 static void *
@@ -763,14 +763,14 @@ static fm_config_proc_t	fm_config_packet_root = {
 };
 
 static fm_config_proc_t	fm_config_routine_root = {
-	.name = ATTRIB_STRING(fm_scan_routine_t, name),
+	.name = ATTRIB_STRING(fm_config_routine_t, name),
 	.attributes = {
-		ATTRIB_BOOL(fm_scan_routine_t, optional),
+		ATTRIB_BOOL(fm_config_routine_t, optional),
 	},
 	.children = {
-		{ "topo-probe",		offsetof(fm_scan_routine_t, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
-		{ "host-probe",		offsetof(fm_scan_routine_t, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
-		{ "port-probe",		offsetof(fm_scan_routine_t, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
+		{ "topo-probe",		offsetof(fm_config_routine_t, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
+		{ "host-probe",		offsetof(fm_config_routine_t, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
+		{ "port-probe",		offsetof(fm_config_routine_t, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
 	},
 };
 
@@ -969,7 +969,7 @@ fm_scan_program_set_service_catalog(fm_scan_program_t *program, const char *name
  * Convert a program into a sequence of scan actions
  */
 static bool
-fm_scan_routine_compile(const fm_scan_routine_t *routine, fm_scanner_t *scanner)
+fm_config_routine_compile(const fm_config_routine_t *routine, fm_scanner_t *scanner)
 {
 	unsigned int i;
 	bool ok = true;
@@ -993,7 +993,7 @@ fm_scan_program_compile(const fm_scan_program_t *program, fm_scanner_t *scanner)
 {
 	fm_scanner_set_service_catalog(scanner, program->service_catalog);
 
-	return fm_scan_routine_compile(program->topo_scan, scanner)
-	    && fm_scan_routine_compile(program->host_scan, scanner)
-	    && fm_scan_routine_compile(program->port_scan, scanner);
+	return fm_config_routine_compile(program->topo_scan, scanner)
+	    && fm_config_routine_compile(program->host_scan, scanner)
+	    && fm_config_routine_compile(program->port_scan, scanner);
 }

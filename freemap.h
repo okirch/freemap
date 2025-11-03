@@ -27,7 +27,7 @@
 extern void		fm_config_init_defaults(fm_config_t *);
 extern bool		fm_config_load(fm_config_t *, const char *path);
 extern fm_scan_library_t *fm_config_load_library(void);
-extern fm_scan_routine_t *fm_config_load_routine(int mode, const char *name);
+extern fm_config_routine_t *fm_config_load_routine(int mode, const char *name);
 
 const char *		fm_strerror(fm_error_t);
 
