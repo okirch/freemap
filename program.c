@@ -991,6 +991,9 @@ fm_config_routine_compile(const fm_config_routine_t *routine, fm_scanner_t *scan
 	unsigned int i;
 	bool ok = true;
 
+	if (routine == NULL)
+		return true;
+
 	for (i = 0; ok && i < routine->probes.count; ++i) {
 		fm_config_probe_t *probe = routine->probes.entries[i];
 
