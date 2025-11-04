@@ -343,7 +343,7 @@ fm_ipproto_host_probe_schedule(fm_probe_t *probe)
 	if (req == NULL)
 		return FM_NOT_SUPPORTED;
 
-	return fm_ipproto_request_schedule(req, &probe->expires);
+	return fm_ipproto_request_schedule(req, &probe->job.expires);
 }
 
 
@@ -422,9 +422,12 @@ fm_ipproto_host_probe_send(fm_probe_t *probe)
  * Event handling callback
  */
 static bool
-fm_ipproto_event_handler(fm_probe_t *probe, fm_event_t event)
+fm_ipproto_event_handler(fm_job_t *job, fm_event_t event)
 {
+	fm_probe_t *probe;
 	fm_ipproto_request_t *req;
+
+	probe = fm_probe_from_job(job);
 
 	req = fm_ipproto_probe_get_request(probe);
 	if (req == NULL)

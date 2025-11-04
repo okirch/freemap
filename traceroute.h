@@ -46,7 +46,7 @@ typedef struct fm_topo_hop_state {
 	unsigned int		probes_sent;
 
 	fm_ratelimit_t *	ratelimit;
-	fm_probe_t *		pending;
+	fm_job_t *		pending;
 	fm_completion_t *	completion;
 
 	/* Set when we learn about a new gateway.

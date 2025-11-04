@@ -25,6 +25,7 @@
 #include "freemap.h"
 #include "lists.h"
 #include "addresses.h"
+#include "scheduler.h"
 
 typedef bool			fm_probe_status_callback_t(const fm_probe_t *probe,
 						const fm_pkt_t *, double rtt,
@@ -67,30 +68,16 @@ struct fm_probe_ops {
 };
 
 struct fm_probe {
-	struct hlist		link;
+	fm_job_t		job;
 
 	fm_target_t *		target;
 
 	/* name of the probe, like udp/53 or icmp/echo */
 	char *			name;
-	char *			fullname;
 
 	const struct fm_probe_ops *ops;
 
-	/* The job group in which this is being scheduled. */
-	fm_job_group_t *	group;
-
-	bool			blocking;
-
 	fm_rtt_stats_t *	rtt;
-
-	/* Used when waiting for some event to occur (such as other
-	 * probes finishing, or a neighbor lookup completing).
-	 */
-	fm_event_listener_t *	event_listener;
-
-	/* Used to notify someone who is waiting for this probe to complete */
-	fm_completion_t *	completion;
 
 	/* Used by traceroute to receive callbacks when there is something to be
 	 * learned. */
@@ -108,27 +95,7 @@ struct fm_probe {
 	 */
 	unsigned int		rtt_application_bias;
 
-	long			timeout;
-
 	struct timeval		sent;
-	struct timeval		expires;
-
-	/* for probes that have completed */
-	bool			done;
-	fm_error_t		error;
-};
-
-struct fm_probe_list {
-	struct hlist_head	hlist;
-};
-
-/*
- * completions can be used to wait for a probe to finish.
- * They're owned by the caller and are theirs to disponse of after use.
- */
-struct fm_completion {
-	void			(*callback)(const fm_probe_t *, void *user_data);
-	void *			user_data;
 };
 
 /*
@@ -170,12 +137,14 @@ extern void		fm_probe_received_error(fm_probe_t *, double *rtt);
 extern void		fm_probe_timed_out(fm_probe_t *);
 extern void		fm_probe_set_error(fm_probe_t *, fm_error_t);
 extern void		fm_probe_mark_complete(fm_probe_t *);
-extern fm_completion_t *fm_probe_wait_for_completion(fm_probe_t *probe, void (*func)(const fm_probe_t *, void *), void *);
+extern fm_completion_t *fm_probe_wait_for_completion(fm_probe_t *probe, void (*func)(const fm_job_t *, void *), void *);
 extern void		fm_probe_cancel_completion(fm_probe_t *probe, const fm_completion_t *);
 extern void		fm_completion_free(fm_completion_t *);
 extern void		fm_probe_install_status_callback(fm_probe_t *, fm_probe_status_callback_t *, void *);
 extern fm_error_t	fm_probe_set_socket(fm_probe_t *probe, fm_socket_t *sock);
 extern fm_error_t	fm_probe_set_service(fm_probe_t *probe, fm_service_probe_t *);
+
+extern fm_probe_t *	fm_probe_from_job(fm_job_t *job);
 
 extern void		fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt);
 extern void		fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt);
@@ -189,43 +158,6 @@ fm_probe_class_supports(const fm_probe_class_t *pclass, fm_param_type_t type)
 {
 	return !!(pclass->features & (1 << type));
 }
-
-static inline void
-fm_probe_insert(struct fm_probe_list *list, fm_probe_t *probe)
-{
-	hlist_insert(&list->hlist, &probe->link);
-}
-
-static inline void
-fm_probe_append(struct fm_probe_list *list, fm_probe_t *probe)
-{
-	hlist_append(&list->hlist, &probe->link);
-}
-
-static inline void
-fm_probe_unlink(fm_probe_t *probe)
-{
-	hlist_remove(&probe->link);
-}
-
-static inline fm_probe_t *
-fm_probe_list_get_first(struct fm_probe_list *list)
-{
-	fm_probe_t *probe;
-
-	if ((probe = (fm_probe_t *) list->hlist.first) != NULL)
-		fm_probe_unlink(probe);
-	return probe;
-}
-
-static inline bool
-fm_probe_list_is_empty(const struct fm_probe_list *list)
-{
-	return list->hlist.first == NULL;
-}
-
-#define fm_probe_foreach(list, iter_var) \
-	for (iter_var = (fm_probe_t *) ((list)->hlist.first); iter_var != NULL; iter_var = (fm_probe_t *) (iter_var->next))
 
 static inline void
 fm_extant_append(struct fm_extant_list *list, fm_extant_t *extant)

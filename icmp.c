@@ -620,7 +620,7 @@ fm_icmp_host_probe_schedule(fm_probe_t *probe)
 	if (icmp == NULL)
 		return FM_NOT_SUPPORTED;
 
-	return fm_icmp_request_schedule(icmp, &probe->expires);
+	return fm_icmp_request_schedule(icmp, &probe->job.expires);
 }
 
 

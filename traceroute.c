@@ -169,7 +169,7 @@ fm_topo_state_free(fm_topo_state_t *topo)
 		fm_topo_hop_state_t *hop = &topo->hop[i];
 
 		if (hop->pending) {
-			fm_probe_cancel_completion(hop->pending, hop->completion);
+			fm_job_cancel_completion(hop->pending, hop->completion);
 			hop->pending = NULL;
 
 			fm_completion_free(hop->completion);
@@ -297,14 +297,14 @@ fm_topo_hop_probe_pkt_callback(const fm_probe_t *probe, const fm_pkt_t *pkt, dou
  * Callback from the scheduler when one of our hop probes completes
  */
 static void
-fm_topo_hop_probe_complete(const fm_probe_t *probe, void *user_data)
+fm_topo_hop_probe_complete(const fm_job_t *job, void *user_data)
 {
 	fm_topo_hop_state_t *hop = user_data;
 
-	if (hop->pending != probe)
+	if (hop->pending != job)
 		return;
 
-	fm_log_debug("%s completed", probe->name);
+	fm_log_debug("%s completed", job->fullname);
 	hop->pending = NULL;
 
 	if (hop->completion) {
@@ -342,18 +342,19 @@ fm_topo_state_check_pending(fm_topo_state_t *topo, double *delay_ret)
 	max_ttl = fm_topo_state_max_ttl(topo);
 	for (ttl = 1; ttl < max_ttl; ++ttl) {
 		fm_topo_hop_state_t *hop = &topo->hop[ttl];
+		fm_job_t *pending;
 		double delay;
 
-		if (hop->pending == NULL)
+		if ((pending = hop->pending) == NULL)
 			continue;
 
-		delay = fm_timestamp_expires_when(&hop->pending->expires, now);
+		delay = fm_timestamp_expires_when(&pending->expires, now);
 		if (delay < 0) {
 			fm_log_warning("traceroute: hop %u has a pending probe w/o expiry", ttl);
 		} else if (delay < *delay_ret) {
 			*delay_ret = delay;
 		}
-		fm_log_debug("  %2u pending probe %s delay=%f sec", ttl, hop->pending->name, delay);
+		fm_log_debug("  %2u pending probe %s delay=%f sec", ttl, pending->fullname, delay);
 		have_pending = true;
 	}
 
@@ -517,9 +518,9 @@ fm_topo_state_select_ttl(fm_topo_state_t *topo, double *delay_ret, fm_topo_hop_s
 			if (hop->pending == NULL)
 				continue;
 
-			fm_log_debug("  %2u cancel pending probe %s", ttl, hop->pending->name);
-			fm_probe_cancel_completion(hop->pending, hop->completion);
-			fm_probe_mark_complete(hop->pending);
+			fm_log_debug("  %2u cancel pending probe %s", ttl, hop->pending->fullname);
+			fm_job_cancel_completion(hop->pending, hop->completion);
+			fm_job_mark_complete(hop->pending);
 			hop->pending = NULL;
 		}
 
@@ -586,9 +587,9 @@ fm_topo_state_send_probe(fm_topo_state_t *topo, fm_topo_hop_state_t *hop, double
 
 		fm_ratelimit_consume(hop->ratelimit, 1);
 		hop->state = FM_ASSET_STATE_PROBE_SENT;
-		hop->pending = probe;
+		hop->pending = &probe->job;
 
-		delay = fm_timestamp_expires_when(&probe->expires, NULL);
+		delay = fm_timestamp_expires_when(&probe->job.expires, NULL);
 		if (delay < *delay_ret)
 			*delay_ret = delay;
 	} else {

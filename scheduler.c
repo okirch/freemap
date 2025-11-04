@@ -23,6 +23,7 @@
 #include "freemap.h"
 #include "target.h"
 #include "scheduler.h"
+#include "events.h"
 
 fm_scheduler_t *
 fm_scheduler_alloc(fm_scanner_t *scanner, const struct fm_scheduler_ops *ops)
@@ -74,7 +75,69 @@ fm_scheduler_detach_target(fm_scheduler_t *sched, fm_target_t *target)
  * fm_probe primitives
  */
 void
-fm_job_postpone(fm_probe_t *job)
+fm_job_free(fm_job_t *job)
+{
+	if (job->completion)
+		fm_log_fatal("BUG: %s(%s) with pending completion", __func__, job->fullname);
+
+	if (job->event_listener != NULL)
+		fm_event_listener_free(job->event_listener);
+
+	hlist_remove(&job->link);
+	job->group = NULL;
+
+	if (job->ops->destroy) {
+		job->ops->destroy(job);
+
+		assert(job->link.prevp == NULL);
+	}
+
+	drop_string(&job->fullname);
+
+	memset(job, 0, sizeof(*job));
+	free(job);
+}
+
+/*
+ * Set timeout on a job
+ */
+void
+fm_job_set_expiry(fm_job_t *job, double seconds)
+{
+	if (seconds < 0)
+		fm_log_error("%s: asking to set a negative expiry value %f", job->fullname, seconds);
+
+	if (seconds <= 0) {
+		fm_timestamp_init(&job->expires);
+	} else {
+		fm_timestamp_set_timeout(&job->expires, 1000 * seconds);
+	}
+}
+
+
+void
+fm_job_mark_complete(fm_job_t *job)
+{
+	/* could be set to gather stats on job runtime */
+	if (!job->done && job->ops->complete)
+		job->ops->complete(job, job->error);
+	job->done = true;
+
+	fm_job_invoke_completion(job);
+}
+
+void
+fm_job_set_error(fm_job_t *job, fm_error_t error)
+{
+	if (!job->done) {
+		if (!job->error)
+			job->error = error;
+	}
+	fm_job_mark_complete(job);
+}
+
+void
+fm_job_postpone(fm_job_t *job)
 {
 	fm_job_group_t *job_group = job->group;
 
@@ -88,7 +151,7 @@ fm_job_postpone(fm_probe_t *job)
 }
 
 void
-fm_job_continue(fm_probe_t *job)
+fm_job_continue(fm_job_t *job)
 {
 	fm_job_group_t *job_group = job->group;
 
@@ -103,6 +166,83 @@ fm_job_continue(fm_probe_t *job)
 }
 
 /*
+ * completions are a way to notify someone when a subordinate job exits
+ */
+void
+fm_job_invoke_completion(fm_job_t *job)
+{
+	fm_completion_t *completion;
+
+	if ((completion = job->completion) != NULL) {
+		job->completion = NULL;
+		completion->callback(job, completion->user_data);
+	}
+}
+
+fm_completion_t *
+fm_job_wait_for_completion(fm_job_t *job, void (*func)(const fm_job_t *, void *), void *user_data)
+{
+	fm_completion_t *completion;
+
+	if (job->completion != NULL) {
+		fm_log_error("%s: refusing to install more than one completion", job->fullname);
+		return NULL;
+	}
+
+	completion = calloc(1, sizeof(*completion));
+	completion->callback = func;
+	completion->user_data = user_data;
+
+	job->completion = completion;
+	return completion;
+}
+
+void
+fm_job_cancel_completion(fm_job_t *job, const fm_completion_t *completion)
+{
+	if (job->completion == completion)
+		job->completion = NULL;
+}
+
+void
+fm_completion_free(fm_completion_t *completion)
+{
+	completion = NULL;
+}
+
+/*
+ * A job can also wait for an event, such as a neighbor cache update.
+ */
+bool
+fm_job_wait_for_event(fm_job_t *job, fm_event_callback_t *callback, fm_event_t event)
+{
+        fm_event_listener_t *evl;
+
+        if ((evl = job->event_listener) != NULL) {
+                if (evl->callback == callback && evl->event == event)
+                        return true;
+                fm_log_error("%s: cannot wait for more than one event at a time", job->fullname);
+                return false;
+        }
+
+        job->event_listener = fm_event_listener_alloc(job, callback, event);
+        return true;
+}
+
+void
+fm_job_finish_waiting(fm_job_t *job)
+{
+        fm_event_listener_t *evl;
+
+        if ((evl = job->event_listener) != NULL) {
+                fm_event_listener_disable(evl);
+                job->event_listener = NULL;
+        }
+
+	fm_job_continue(job);
+}
+
+/*
  * fm_job_group primitives
  */
 void
@@ -114,7 +254,7 @@ fm_job_group_init(fm_job_group_t *job_group, const char *name, fm_ratelimit_t *r
 }
 
 void
-fm_job_move_to_group(fm_probe_t *job, struct hlist_head *head)
+fm_job_move_to_group(fm_job_t *job, struct hlist_head *head)
 {
 	hlist_remove(&job->link);
 	hlist_insert(head, &job->link);
@@ -124,11 +264,11 @@ void
 fm_job_list_destroy(struct hlist_head *head)
 {
 	hlist_iterator_t iter;
-	fm_probe_t *job;
+	fm_job_t *job;
 
 	hlist_iterator_init(&iter, head);
 	while ((job = hlist_iterator_next(&iter)) != NULL)
-		fm_probe_free(job);
+		fm_job_free(job);
 }
 
 void
@@ -160,19 +300,36 @@ fm_job_group_get_send_quota(fm_job_group_t *job_group, unsigned int max_quota)
 }
 
 /*
+ * Initialize an empty job
+ */
+void
+fm_job_init(fm_job_t *job, const fm_job_ops_t *ops, const char *name)
+{
+	job->_name = name;
+	job->ops = ops;
+
+	assert(ops->run && ops->destroy);
+}
+
+/*
  * Add a newly created job to a job group
  */
 fm_error_t
-fm_job_group_add_new(fm_job_group_t *job_group, fm_probe_t *job)
+fm_job_group_add_new(fm_job_group_t *job_group, fm_job_t *job)
 {
 	assert(job->group == NULL);
 	job->group = job_group;
+
+	assert(job->ops != NULL);
+
+	if (job->fullname == NULL)
+		asprintf(&job->fullname, "%s/%s", job_group->name, job->_name);
 
 	if (job->event_listener == NULL) {
 		fm_job_move_to_group(job, &job_group->ready_probes);
 	} else {
 		fm_job_move_to_group(job, &job_group->postponed_probes);
-		fm_log_debug("%s: postponed", job->name);
+		fm_log_debug("%s: postponed", job->fullname);
 	}
 
 	/* If the probe is marked as blocking, do not allow
@@ -193,7 +350,7 @@ fm_job_group_process_timeouts(fm_job_group_t *job_group)
 	const struct timeval *now = fm_timestamp_now();
 	hlist_insertion_iterator_t ready_tail_iter;
 	hlist_iterator_t wait_iter;
-	fm_probe_t *probe;
+	fm_job_t *probe;
 
 	hlist_iterator_init(&wait_iter, &job_group->pending_probes);
 
@@ -218,7 +375,7 @@ static void
 fm_job_group_postpone_remaining_runnable(fm_job_group_t *job_group, hlist_iterator_t *iter)
 {
 	hlist_insertion_iterator_t insert_iter;
-	fm_probe_t *probe;
+	fm_job_t *probe;
 
 	hlist_insertion_iterator_init(&insert_iter, &job_group->ready_probes);
 	while ((probe = hlist_iterator_next(iter)) != NULL) {
@@ -232,7 +389,7 @@ fm_job_group_process_runnable(fm_job_group_t *job_group, fm_sched_stats_t *stats
 {
 	struct hlist_head runnable = HLIST_HEAD_NIL;
 	hlist_iterator_t runnable_iter;
-	fm_probe_t *probe;
+	fm_job_t *job;
 
 	/* reassign runnable probes to a temporary list. This allows any probes to
 	 * become runnable without interfering with our processing, such as resulting
@@ -249,45 +406,39 @@ fm_job_group_process_runnable(fm_job_group_t *job_group, fm_sched_stats_t *stats
 	 * as long as probes on this host are ready to run (and making progress)
 	 */
 	hlist_iterator_init(&runnable_iter, &runnable);
-	while (stats->num_sent < stats->job_quota && (probe = hlist_iterator_next(&runnable_iter)) != NULL) {
-		bool first_transmission;
+	while (stats->num_sent < stats->job_quota && (job = hlist_iterator_next(&runnable_iter)) != NULL) {
 		fm_error_t error;
 
-		first_transmission = !fm_timestamp_is_set(&probe->sent);
+		fm_timestamp_clear(&job->expires);
 
-		fm_timestamp_clear(&probe->expires);
-
-		error = fm_probe_send(probe);
+		error = job->ops->run(job, stats);
 		if (error == FM_TRY_AGAIN) {
-			/* the probe asked to be postponed. */
+			/* the job asked to be postponed. */
+			if (!fm_timestamp_is_set(&job->expires)) {
+				fm_log_warning("BUG: job %s returned status=%d but did not set expiry", job->fullname, -error);
+				fm_timestamp_set_timeout(&job->expires, 10000);
+			}
+		} else if (error == 0) {
+			if (job->group->rate_limit)
+				fm_ratelimit_consume(job->group->rate_limit, 1);
+			stats->num_processed += 1;
 		} else {
-			if (error != FM_SEND_ERROR)
-				stats->num_sent += 1;
-
-			if (error != 0) {
-				/* complain about probes that are so broken they don't even manage to
-				 * send a single package. */
-				if (first_transmission)
-					fm_log_warning("%s: probe is DOA", probe->fullname);
-
-				fm_probe_set_error(probe, error);
-			} else if (first_transmission)
-				fm_timestamp_init(&probe->sent);
-
+			fm_log_debug("%s: %s", job->fullname, fm_strerror(error));
+			fm_job_set_error(job, error);
 			stats->num_processed += 1;
 		}
 
-		hlist_remove(&probe->link);
-		if (probe->done) {
+		hlist_remove(&job->link);
+		if (job->done) {
 			/* rather than freeing it immediately, should we have a recycler list? */
-			fm_probe_free(probe);
+			fm_job_free(job);
 			continue;
 		}
 
-		if (fm_timestamp_is_set(&probe->expires))
-			fm_job_move_to_group(probe, &job_group->pending_probes);
+		if (fm_timestamp_is_set(&job->expires))
+			fm_job_move_to_group(job, &job_group->pending_probes);
 		else
-			fm_job_move_to_group(probe, &job_group->ready_probes);
+			fm_job_move_to_group(job, &job_group->ready_probes);
 	}
 
 	if (runnable.first != NULL)
@@ -301,7 +452,7 @@ fm_job_group_check_for_hung_state(fm_job_group_t *job_group, const fm_sched_stat
 		const struct timeval *now = fm_timestamp_now();
 		static struct timeval next_ps;
 		bool update_ts = false;
-		fm_probe_t *probe;
+		fm_job_t *probe;
 
 		if (stats->num_processed != 0) {
 			fm_timestamp_clear(&next_ps);
@@ -322,7 +473,7 @@ fm_job_group_check_for_hung_state(fm_job_group_t *job_group, const fm_sched_stat
 				double probe_wait;
 
 				probe_wait = fm_timestamp_expires_when(&probe->expires, NULL);
-				fm_log_debug("   %4u ms %s", (unsigned int) (1000 * probe_wait), probe->name);
+				fm_log_debug("   %4u ms %s", (unsigned int) (1000 * probe_wait), probe->fullname);
 			}
 			update_ts = true;
 		}
@@ -338,7 +489,7 @@ static void
 fm_job_group_get_next_schedule_time(fm_job_group_t *job_group, fm_sched_stats_t *stats)
 {
 	hlist_iterator_t wait_iter;
-	fm_probe_t *probe;
+	fm_job_t *probe;
 
 	if (job_group->ready_probes.first != NULL) {
 		fm_sched_stats_update_timeout_min(stats, fm_timestamp_now(), "runnable jobs");
@@ -347,7 +498,7 @@ fm_job_group_get_next_schedule_time(fm_job_group_t *job_group, fm_sched_stats_t 
 
 	hlist_iterator_init(&wait_iter, &job_group->pending_probes);
 	while ((probe = hlist_iterator_next(&wait_iter)) != NULL) {
-		fm_sched_stats_update_timeout_min(stats, &probe->expires, probe->name);
+		fm_sched_stats_update_timeout_min(stats, &probe->expires, probe->fullname);
 	}
 
 	if (job_group->rate_limit && !fm_ratelimit_available(job_group->rate_limit)) {
@@ -388,14 +539,14 @@ bool
 fm_job_group_reap_complete(fm_job_group_t *job_group)
 {
 	hlist_iterator_t iter;
-	fm_probe_t *job;
+	fm_job_t *job;
 	bool rv = false;
 
 	/* FIXME: we should have a list for completed probes */
 	hlist_iterator_init(&iter, &job_group->pending_probes);
 	while ((job = hlist_iterator_next(&iter)) != NULL) {
 		if (job->done) {
-			fm_probe_free(job);
+			fm_job_free(job);
 			rv = true;
 		}
 	}

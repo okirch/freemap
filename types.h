@@ -40,6 +40,7 @@ typedef struct fm_network fm_network_t;
 typedef struct fm_gateway fm_gateway_t;
 typedef struct fm_target_manager fm_target_manager_t;
 typedef struct fm_target_pool fm_target_pool_t;
+typedef struct fm_job fm_job_t;
 typedef struct fm_job_group fm_job_group_t;
 typedef struct fm_scheduler fm_scheduler_t;
 typedef struct fm_sched_stats fm_sched_stats_t;
@@ -67,7 +68,7 @@ typedef struct sockaddr_storage	fm_address_t;
 
 /* Events are identified by a 32bit id. */
 typedef unsigned int fm_event_t;
-typedef bool fm_event_callback_t(fm_probe_t *, fm_event_t);
+typedef bool fm_event_callback_t(fm_job_t *, fm_event_t);
 
 /* so that we don't have to include linux/if_packet.h all the time */
 struct sockaddr_ll;

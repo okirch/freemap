@@ -95,11 +95,11 @@ fm_scan_action_get_next_probe(fm_scan_action_t *action, fm_target_t *target, uns
 	probe = action->ops->get_next_probe(action, target, index);
 	if (probe != NULL) {
 		if (action->barrier && index + 1 >= action->nprobes)
-			probe->blocking = true;
+			probe->job.blocking = true;
 
 		fm_log_debug("   %s created next probe for %s index=%d%s\n",
 				fm_target_get_id(target), action->id, index,
-				probe->blocking? " (blocking)": "");
+				probe->job.blocking? " (blocking)": "");
 	}
 	return probe;
 }

@@ -409,7 +409,7 @@ fm_target_is_done(const fm_target_t *target)
 fm_error_t
 fm_target_add_new_probe(fm_target_t *target, fm_probe_t *probe)
 {
-	return fm_job_group_add_new(&target->job_group, probe);
+	return fm_job_group_add_new(&target->job_group, &probe->job);
 }
 
 /*

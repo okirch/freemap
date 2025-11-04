@@ -465,7 +465,7 @@ fm_udp_port_probe_schedule(fm_probe_t *probe)
 {
 	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
 
-	return fm_udp_request_schedule(udp, &probe->expires);
+	return fm_udp_request_schedule(udp, &probe->job.expires);
 }
 
 /*

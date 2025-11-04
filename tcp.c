@@ -425,7 +425,7 @@ fm_tcp_port_probe_schedule(fm_probe_t *probe)
 {
 	fm_tcp_request_t *tcp = fm_tcp_probe_get_request(probe);
 
-	return fm_tcp_request_schedule(tcp, &probe->expires);
+	return fm_tcp_request_schedule(tcp, &probe->job.expires);
 }
 
 /*

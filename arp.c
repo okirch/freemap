@@ -348,9 +348,9 @@ fm_arp_host_probe_schedule(fm_probe_t *probe)
 	/* After sending the last probe, we wait until the full timeout has expired.
 	 * For any earlier probe, we wait for the specified packet spacing */
 	if (arp->params.retries == 1)
-		fm_timestamp_set_timeout(&probe->expires, fm_global.arp.timeout);
+		fm_timestamp_set_timeout(&probe->job.expires, fm_global.arp.timeout);
 	else
-		fm_timestamp_set_timeout(&probe->expires, fm_global.arp.packet_spacing);
+		fm_timestamp_set_timeout(&probe->job.expires, fm_global.arp.packet_spacing);
 	return 0;
 }
 
