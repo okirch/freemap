@@ -59,8 +59,6 @@ struct fm_address_array {
 };
 
 struct fm_address_enumerator {
-	struct hlist		link;
-
 	fm_gateway_t *		unknown_gateway;
 
 	/* every enumerator has its unique id */
@@ -74,11 +72,18 @@ struct fm_address_enumerator {
 	} *ops;
 };
 
+typedef struct fm_address_enumerator_array {
+	unsigned int		count;
+	fm_address_enumerator_t **entries;
+} fm_address_enumerator_array_t;
+
 struct fm_address_enumerator_list {
 	struct hlist_head	head;
 };
 
 extern fm_address_enumerator_t *fm_address_enumerator_alloc(const struct fm_address_enumerator_ops *);
+extern void			fm_address_enumerator_array_append(fm_address_enumerator_array_t *,
+						fm_address_enumerator_t *);
 extern const unsigned char *	fm_address_get_raw_addr(const fm_address_t *, unsigned int *nbits);
 extern void			fm_interface_add(const char *name, const struct sockaddr_ll *);
 extern const fm_address_prefix_t *fm_local_prefix_for_address(const fm_address_t *addr);
@@ -130,34 +135,6 @@ fm_address_generator_address_eligible(const fm_address_t *address)
 		return true;	/* it's a match */
 
 	return false;
-}
-
-static inline void
-fm_address_enumerator_list_append(struct fm_address_enumerator_list *list, fm_address_enumerator_t *entry)
-{
-	hlist_append(&list->head, &entry->link);
-}
-
-static inline void
-fm_address_enumerator_list_remove(fm_address_enumerator_t *entry)
-{
-	hlist_remove(&entry->link);
-}
-
-static inline fm_address_enumerator_t *
-fm_address_enumerator_list_head(struct fm_address_enumerator_list *list)
-{
-	return (fm_address_enumerator_t *) list->head.first;
-}
-
-static inline fm_address_enumerator_t *
-fm_address_enumerator_list_pop(struct fm_address_enumerator_list *list)
-{
-	fm_address_enumerator_t *entry = fm_address_enumerator_list_head(list);
-
-	if (entry != NULL)
-		hlist_remove(&entry->link);
-	return entry;
 }
 
 static inline void

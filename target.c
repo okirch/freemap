@@ -196,7 +196,7 @@ fm_target_manager_create(void)
 void
 fm_target_manager_add_address_generator(fm_target_manager_t *mgr, fm_address_enumerator_t *agen)
 {
-	fm_address_enumerator_list_append(&mgr->address_generators, agen);
+	fm_address_enumerator_array_append(&mgr->address_generators, agen);
 }
 
 fm_target_t *
@@ -209,12 +209,14 @@ fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 		fm_network_t *target_net;
 		fm_address_t target_addr;
 
-		if (!(agen = fm_address_enumerator_list_head(&mgr->address_generators)))
+		if (mgr->current_generator >= mgr->address_generators.count)
 			break;
+
+		agen = mgr->address_generators.entries[mgr->current_generator];
 
 		if (!fm_address_enumerator_get_one(agen, &target_addr)) {
 			/* This address generator is spent; move to the next */
-			fm_address_enumerator_destroy(agen);
+			mgr->current_generator++;
 			continue;
 		}
 

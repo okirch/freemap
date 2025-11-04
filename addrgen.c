@@ -62,7 +62,6 @@ fm_address_enumerator_destroy(fm_address_enumerator_t *agen)
 {
 	assert(agen->ops != NULL);
 
-	fm_address_enumerator_list_remove(agen);
 	if (agen->ops->destroy != NULL)
 		agen->ops->destroy(agen);
 	memset(agen, 0, agen->ops->obj_size);
@@ -82,6 +81,13 @@ fm_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
 	assert(agen->ops->get_one_address != NULL);
 
 	return agen->ops->get_one_address(agen, ret);
+}
+
+void
+fm_address_enumerator_array_append(fm_address_enumerator_array_t *array, fm_address_enumerator_t *agen)
+{
+	maybe_realloc_array(array->entries, array->count, 4);
+	array->entries[array->count++] = agen;
 }
 
 static bool

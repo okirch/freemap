@@ -83,9 +83,10 @@ struct fm_target_pool {
 };
 
 struct fm_target_manager {
-	struct fm_address_enumerator_list address_generators;
+	fm_address_enumerator_array_t address_generators;
 
 	bool			all_targets_exhausted;
+	unsigned int		current_generator;
 
 	/* Initial value for the packet send rate per target host. */
 	unsigned int		host_packet_rate;

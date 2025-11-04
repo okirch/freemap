@@ -155,7 +155,7 @@ fm_scanner_ready(fm_scanner_t *scanner)
 {
 	fm_target_manager_t *target_manager = scanner->target_manager;
 
-	if (target_manager->address_generators.head.first == NULL) {
+	if (target_manager->address_generators.count == 0) {
 		fm_log_error("No scan targets configured; nothing to scan");
 		return false;
 	}
