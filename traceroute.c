@@ -799,7 +799,7 @@ fm_topo_probe_send(fm_probe_t *probe)
 	double delay = 1;
 	fm_error_t error;
 
-	fm_log_debug("%s: traceroute ready to run", fm_address_format(&probe->target->address));
+	fm_log_debug("%s: traceroute ready to run", fm_probe_name(probe));
 
 	topo = fm_topo_probe_get_request(probe);
 	error = fm_topo_state_select_ttl(topo, &delay, &hop);

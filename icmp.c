@@ -665,8 +665,7 @@ fm_icmp_host_probe_data_tap(const fm_probe_t *probe, const fm_pkt_t *pkt, double
 	} else
 	if (pkt->family == AF_INET && ee->ee_origin == SO_EE_ORIGIN_ICMP) {
 		if (ee->ee_type == ICMP_DEST_UNREACH) {
-			fm_log_debug("%s %s: received ICMP unreachable",
-					probe->name, fm_address_format(&probe->target->address));
+			fm_log_debug("%s: received ICMP unreachable", fm_probe_name(probe));
 			return false;
 		} else {
 			fm_log_debug("%s ignoring icmp packet with type %d.%d",

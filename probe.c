@@ -140,8 +140,8 @@ fm_probe_destroy(fm_probe_t *probe)
 	if (probe->ops->destroy)
 		probe->ops->destroy(probe);
 
-	if (probe->target != NULL)
-		fm_target_forget_pending(probe->target, probe);
+	if (probe->_target != NULL)
+		fm_target_forget_pending(probe->_target, probe);
 }
 
 void
@@ -218,7 +218,7 @@ fm_probe_alloc(const char *id, const struct fm_probe_ops *ops, fm_target_t *targ
 
 	assert(ops->obj_size >= sizeof(*probe));
 	probe = calloc(1, ops->obj_size);
-	probe->target = target;
+	probe->_target = target;
 	probe->name = strdup(id);
 	probe->ops = ops;
 
@@ -383,8 +383,15 @@ fm_probe_finish_waiting(fm_probe_t *probe)
 fm_extant_t *
 fm_extant_alloc(fm_probe_t *probe, int af, int ipproto, const void *payload, size_t payload_size)
 {
-	fm_target_t *target = probe->target;
+	fm_target_t *target;
 	fm_extant_t *extant;
+
+	if ((target = probe->_target) == NULL) {
+		/* Dont do that */
+		fm_log_warning("%s: cannot allocate and extant because the probe is not associated with a specific target",
+				fm_probe_name(probe));
+		return NULL;
+	}
 
 	extant = calloc(1, sizeof(*extant) + payload_size);
 

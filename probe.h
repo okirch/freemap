@@ -69,10 +69,11 @@ struct fm_probe_ops {
 struct fm_probe {
 	fm_job_t		job;
 
-	fm_target_t *		target;
-
 	/* name of the probe, like udp/53 or icmp/echo */
 	char *			name;
+
+	/* Nothing outside the code in probe.c should touch this. */
+	fm_target_t *		_target;
 
 	const struct fm_probe_ops *ops;
 
@@ -197,6 +198,12 @@ fm_extant_iterator_match(hlist_iterator_t *iter, int af, int ipproto)
 	    && extant->family != af && extant->ipproto != ipproto)
 		;
 	return extant;
+}
+
+static inline const char *
+fm_probe_name(const fm_probe_t *probe)
+{
+	return probe->job.fullname;
 }
 
 #endif /* FREEMAP_PROBE_H */
