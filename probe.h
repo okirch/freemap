@@ -73,6 +73,7 @@ struct fm_probe {
 
 	/* name of the probe, like udp/53 or icmp/echo */
 	char *			name;
+	char *			fullname;
 
 	const struct fm_probe_ops *ops;
 

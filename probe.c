@@ -295,6 +295,8 @@ fm_probe_alloc(const char *id, const struct fm_probe_ops *ops, fm_target_t *targ
 	probe->name = strdup(id);
 	probe->ops = ops;
 
+	asprintf(&probe->fullname, "%s %s", fm_address_format(&target->address), probe->name);
+
 	return probe;
 }
 
@@ -314,6 +316,8 @@ fm_probe_free(fm_probe_t *probe)
 		fm_event_listener_free(probe->event_listener);
 
 	fm_probe_unlink(probe);
+
+	drop_string(&probe->fullname);
 
 	memset(probe, 0, sizeof(*probe));
 	free(probe);
