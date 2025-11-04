@@ -42,7 +42,6 @@ struct fm_probe_class {
 
 	void *			(*process_extra_parameters)(const fm_probe_class_t *, const fm_string_array_t *extra_args);
 	fm_probe_t *		(*create_probe)(const fm_probe_class_t *, fm_target_t *, const fm_probe_params_t *params, const void *extra_params);
-//	bool			(*set_probe_socket)(const fm_probe_class_t *, fm_probe_t *, fm_socket_t *);
 };
 
 #define FM_PROBE_CLASS_REGISTER(ops) \

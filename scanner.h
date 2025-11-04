@@ -90,6 +90,8 @@ struct fm_scanner {
 
 	fm_scheduler_t *	scheduler;
 
+	fm_job_group_t *	global_job_group;
+
 	const fm_service_catalog_t *service_catalog;
 
 	unsigned int		current_stage;
@@ -101,6 +103,8 @@ struct fm_scanner {
 extern fm_scan_action_t *	fm_scan_action_create(int mode, const struct fm_scan_action_ops *ops, const char *id, fm_probe_class_t *);
 extern fm_scan_action_t *	fm_scanner_add_probe(fm_scanner_t *, const fm_config_probe_t *);
 extern void			fm_scanner_set_service_catalog(fm_scanner_t *, const fm_service_catalog_t *);
+
+extern void			fm_scanner_add_global_job(fm_scanner_t *scanner, fm_job_t *job);
 
 static inline fm_scan_action_array_t *
 fm_scanner_get_stage(fm_scanner_t *scanner, unsigned int stage)

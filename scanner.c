@@ -236,17 +236,50 @@ fm_scanner_insert_barrier(fm_scanner_t *scanner, int probe_mode)
 }
 
 /*
- * Process the timeouts for all probes. This does not actually invoke any
- * of the probes, it just moves them to the list of runnable probes.
+ * Add a job at the global level, for instance a discovery probe.
  */
+void
+fm_scanner_add_global_job(fm_scanner_t *scanner, fm_job_t *job)
+{
+	if (scanner->global_job_group == NULL) {
+		fm_job_group_t *job_group;
+
+
+		job_group = calloc(1, sizeof(*job_group));
+		fm_job_group_init(job_group, "GLOBAL", NULL);
+		scanner->global_job_group = job_group;
+	}
+
+	fm_job_group_add_new(scanner->global_job_group, job);
+}
+
+/*
+ * Schedule everything that needs to be scheduled.
+ */
+static inline void
+fm_scanner_schedule_job_group(fm_scanner_t *scanner, fm_job_group_t *job_group, fm_sched_stats_t *global_stats)
+{
+	fm_sched_stats_t sched_stats;
+
+	memset(&sched_stats, 0, sizeof(sched_stats));
+	sched_stats.job_quota = global_stats->job_quota;
+
+	fm_job_group_schedule(job_group, &sched_stats);
+
+	fm_sched_stats_update_from_nested(global_stats, &sched_stats);
+	fm_ratelimit_consume(&scanner->send_rate_limit, sched_stats.num_sent);
+}
+
 void
 fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 {
 	unsigned int num_visited = 0;
 
+	if (global_stats->job_quota != 0 && scanner->global_job_group)
+		fm_scanner_schedule_job_group(scanner, scanner->global_job_group, global_stats);
+
 	while (true) {
 		fm_target_t *target;
-		fm_sched_stats_t sched_stats;
 
 		if (global_stats->job_quota == 0)
 			break; /* we exhausted our global send quota */
@@ -255,13 +288,7 @@ fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 		if (target == NULL)
 			break;
 
-		memset(&sched_stats, 0, sizeof(sched_stats));
-		sched_stats.job_quota = global_stats->job_quota;
-
-		fm_job_group_schedule(&target->job_group, &sched_stats);
-
-		fm_sched_stats_update_from_nested(global_stats, &sched_stats);
-		fm_ratelimit_consume(&scanner->send_rate_limit, sched_stats.num_sent);
+		fm_scanner_schedule_job_group(scanner, &target->job_group, global_stats);
 	}
 }
 
