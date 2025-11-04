@@ -31,6 +31,16 @@
 #include "addresses.h"
 #include "network.h"
 
+#if AF_UNSPEC >= 32
+# error "AF_UNSPEC is too large, fix this code"
+#endif
+#if AF_INET >= 32
+# error "AF_INET is too large, fix this code"
+#endif
+#if AF_INET6 >= 32
+# error "AF_INET6 is too large, fix this code"
+#endif
+
 extern const fm_address_prefix_t *	fm_local_prefix_for_address(const fm_address_t *);
 
 /*
@@ -294,6 +304,20 @@ fm_address_equal(const fm_address_t *a, const fm_address_t *b, bool with_port)
 	return false;
 }
 
+bool
+fm_address_array_append_unique(fm_address_array_t *array, const fm_address_t *address)
+{
+	unsigned int i;
+
+	for (i = 0; i < array->count; ++i) {
+		if (fm_address_equal(&array->elements[i], address, false))
+			return false;
+	}
+
+	fm_address_array_append(array, address);
+	return true;
+}
+
 /*
  * Helper functions for hostname resolution
  */
@@ -302,6 +326,7 @@ fm_address_resolve(const char *hostname, fm_address_array_t *array)
 {
 	struct addrinfo hints, *result = NULL, *pos;
 	fm_address_t address;
+	uint32_t seen_af_mask = 0;
 	int err;
 
 	if (fm_address_parse(hostname, &address)) {
@@ -332,7 +357,21 @@ fm_address_resolve(const char *hostname, fm_address_array_t *array)
 		memset(&address, 0, sizeof(address));
 		memcpy(&address, pos->ai_addr, pos->ai_addrlen);
 
-		fm_address_array_append(array, &address);
+		/* Skip address families we've been asked to ignore */
+		if (!fm_address_generator_address_eligible(&address))
+			continue;
+
+		/* If try_all is set, really try all addresses. Otherwise, use at
+		 * most one of each address family. */
+		if (!fm_global.address_generation.try_all) {
+			uint32_t af_mask = (1 << pos->ai_family);
+
+			if (seen_af_mask & af_mask)
+				continue;
+			seen_af_mask |= af_mask;
+		}
+
+		fm_address_array_append_unique(array, &address);
 	}
 
 	freeaddrinfo(result);
