@@ -118,14 +118,6 @@ struct fm_probe_list {
 	struct hlist_head	hlist;
 };
 
-typedef struct fm_sched_stats {
-	struct timeval		timeout;
-
-	unsigned int		job_quota;
-	unsigned int		num_sent;
-	unsigned int		num_processed;;
-} fm_sched_stats_t;
-
 /*
  * completions can be used to wait for a probe to finish.
  * They're owned by the caller and are theirs to disponse of after use.

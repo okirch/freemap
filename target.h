@@ -24,6 +24,7 @@
 #include "freemap.h"
 #include "lists.h"
 #include "addresses.h"
+#include "scheduler.h"
 #include "probe.h"
 
 struct fm_target {

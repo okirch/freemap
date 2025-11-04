@@ -22,38 +22,7 @@
 
 #include "freemap.h"
 #include "target.h"
-
-/*
- * A scheduler determines which target and port are scanned next.
- * The default implementation just does everything in a linear fashion;
- * but of course, it's possible to implement more complex approaches
- * (focusing eg on stealth, minimizing the impact of ICMP rate limiting etc)
- */
-struct fm_scheduler {
-	fm_scanner_t *		scanner;
-	fm_target_pool_t *	target_pool;
-
-	const struct fm_scheduler_ops {
-		const char *	name;
-		size_t		size;
-
-		bool		(*attach)(fm_scheduler_t *, fm_target_t *);
-		void		(*detach)(fm_scheduler_t *, fm_target_t *);
-		void		(*create_new_probes)(fm_scheduler_t *, fm_sched_stats_t *);
-		fm_probe_t *	(*get_next_probe)(fm_scheduler_t *, fm_target_t *);
-		void		(*destroy)(fm_scheduler_t *);
-	} *ops;
-};
-
-struct fm_linear_scheduler {
-	fm_scheduler_t		base;
-};
-
-struct fm_linear_sched_target_state {
-	fm_scan_action_t *	action;
-	unsigned int		action_index;
-	unsigned int		probe_index;
-};
+#include "scheduler.h"
 
 fm_scheduler_t *
 fm_scheduler_alloc(fm_scanner_t *scanner, const struct fm_scheduler_ops *ops)
