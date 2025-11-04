@@ -1,8 +1,8 @@
+ * store asset information
+ * topo scanner: do not scan each host in a network
  * reduce the zoo of types (exec steps vs actions vs probe). The current
    implementation is too complex, and many settings are evaluated too late for
    timely error reporting.
- * the file parser is very brittle; use something better
-    - maybe embed python for more complex stuff.
  * have a "local" address enumerator that loops through all local networks
  * improve on the netid idea
  * perform send rate limiting based on class C networks so that we're
