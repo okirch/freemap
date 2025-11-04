@@ -33,6 +33,7 @@ const char *		fm_strerror(fm_error_t);
 
 extern fm_address_enumerator_t *fm_create_simple_address_enumerator(const char *addr_string);
 extern fm_address_enumerator_t *fm_create_cidr_address_enumerator(const char *addr_string);
+extern fm_address_enumerator_t *fm_create_local_address_enumerator(const char *addr_string);
 
 extern fm_report_t *	fm_report_create(void);
 extern void		fm_report_write(const fm_report_t *, const fm_target_t *);

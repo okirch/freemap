@@ -139,6 +139,8 @@ fm_scanner_add_target_from_spec(fm_scanner_t *scanner, const char *spec)
 
 	if (strchr(spec, '/')) {
 		agen = fm_create_cidr_address_enumerator(spec);
+	} else if (spec[0] == '%') {
+		agen = fm_create_local_address_enumerator(spec + 1);
 	} else {
 		agen = fm_create_simple_address_enumerator(spec);
 	}

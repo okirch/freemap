@@ -184,6 +184,12 @@ fm_create_simple_address_enumerator(const char *addr_string)
 	return &simple->base;
 }
 
+static struct fm_simple_address_enumerator *
+fm_create_simple_address_enumerator_empty(void)
+{
+	return NEW_ADDRESS_ENUMERATOR(fm_simple_address_enumerator);
+}
+
 /*
  * Enumeration of local IPv6 networks
  */
@@ -332,4 +338,126 @@ fm_create_cidr_address_enumerator(const char *addr_string)
 	}
 
 	return NULL;
+}
+
+/*
+ * Local address enumerator
+ */
+struct fm_local_network_enumerator {
+	fm_address_enumerator_t base;
+
+	unsigned int	current;
+	fm_address_enumerator_array_t children;
+
+	struct fm_simple_address_enumerator *simple;
+};
+
+bool
+fm_local_network_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
+{
+	struct fm_local_network_enumerator *local = (struct fm_local_network_enumerator *) agen;
+
+	while (local->current < local->children.count) {
+		fm_address_enumerator_t *child = local->children.entries[local->current];
+
+		if (fm_address_enumerator_get_one(child, ret))
+			return true;
+
+		local->current++;
+	}
+
+	return false;
+}
+
+static void
+fm_local_network_enumerator_restart(fm_address_enumerator_t *agen, int stage)
+{
+	struct fm_local_network_enumerator *local = (struct fm_local_network_enumerator *) agen;
+	unsigned int i;
+
+	for (i = 0; i < local->children.count; ++i) {
+		fm_address_enumerator_t *child = local->children.entries[i];
+
+		fm_address_enumerator_restart(child, stage);
+	}
+
+	local->current = 0;
+}
+
+static const struct fm_address_enumerator_ops fm_local_network_enumerator_ops = {
+	.obj_size	= sizeof(struct fm_local_network_enumerator),
+	.name		= "local",
+	.destroy	= NULL,
+	.get_one_address= fm_local_network_enumerator_get_one,
+	.restart	= fm_local_network_enumerator_restart,
+};
+
+static void
+fm_local_address_enumerator_add_single_address(struct fm_local_network_enumerator *local, const fm_address_t *addr)
+{
+	if (local->simple == NULL) {
+		local->simple = fm_create_simple_address_enumerator_empty();
+		fm_address_enumerator_array_append(&local->children, &local->simple->base);
+	}
+
+	fm_address_array_append(&local->simple->addrs, addr);
+}
+
+fm_address_enumerator_t *
+fm_create_local_address_enumerator(const char *ifname)
+{
+	struct fm_local_network_enumerator *local;
+	fm_address_prefix_array_t prefix_array = { 0 };
+	const fm_interface_t *nic;
+	bool ipv6_complained = false;
+	unsigned int i;
+
+	if (!(nic = fm_interface_by_name(ifname))) {
+		fm_log_error("Cannot generate local address generator for interface %s: unknown interface", ifname);
+		return NULL;
+	}
+
+	fm_interface_get_local_prefixes(nic, &prefix_array);
+
+	local = NEW_ADDRESS_ENUMERATOR(fm_local_network_enumerator);
+
+	for (i = 0; i < prefix_array.count; ++i) {
+		const fm_address_prefix_t *prefix = &prefix_array.elements[i];
+		fm_address_enumerator_t *child = NULL;
+
+		if (!fm_address_generator_address_eligible(&prefix->address))
+			continue;
+
+		if (fm_interface_is_loopback(nic)) {
+			/* Bravely talking to myself. Hullo, self... */
+			fm_local_address_enumerator_add_single_address(local, &prefix->source_addr);
+			continue;
+		}
+
+		if (prefix->address.ss_family == AF_INET) {
+			if (prefix->pfxlen == 32)
+				fm_local_address_enumerator_add_single_address(local, &prefix->address);
+			else
+				child = fm_ipv4_network_enumerator(&prefix->address, prefix->pfxlen);
+		} else
+		if (prefix->address.ss_family == AF_INET6) {
+			if (prefix->pfxlen == 128)
+				fm_local_address_enumerator_add_single_address(local, &prefix->address);
+			else if (!ipv6_complained) {
+				fm_log_warning("Interface %s is on an IPv6 network, but I don't support this yet", ifname);
+				ipv6_complained = true;
+			}
+		} else {
+			/* silently ignore anything else (for those of you still on Netware IPX, I pity you) */
+		}
+
+		if (child != NULL)
+			fm_address_enumerator_array_append(&local->children, child);
+	}
+
+	if (local->children.count == 0)
+		fm_log_warning("Empty local address generator for interface %s: no local prefixes", ifname);
+
+	fm_address_prefix_array_destroy(&prefix_array);
+	return &local->base;
 }
