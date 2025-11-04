@@ -26,7 +26,7 @@ fm_config_init_defaults(fm_config_t *conf)
 	fm_string_array_append(&conf->library.search_path, "./lib");	/* Remove before production */
 
 	conf->address_generation.only_family = AF_UNSPEC;
-	conf->address_generation.try_all = true;
+	conf->address_generation.try_all = false;
 	conf->address_generation.randomize = false;
 
 	/* the target pool starts out with 16 slots, and we increase its
