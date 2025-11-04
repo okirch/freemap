@@ -998,11 +998,11 @@ fm_config_routine_compile(const fm_config_routine_t *routine, fm_scanner_t *scan
 		fm_config_probe_t *probe = routine->probes.entries[i];
 
 		ok = fm_scanner_add_probe(scanner, probe) && ok;
+	}
 
-		if (routine->mode == FM_PROBE_MODE_HOST) {
-			fm_scanner_insert_barrier(scanner);
-			fm_scanner_add_reachability_check(scanner);
-		}
+	if (routine->mode == FM_PROBE_MODE_HOST) {
+		fm_scanner_insert_barrier(scanner);
+		fm_scanner_add_reachability_check(scanner);
 	}
 
 	return ok;
