@@ -34,12 +34,12 @@ static fm_scan_action_t *	fm_scan_action_reachability_check(void);
 static inline void
 fm_scan_action_array_append(struct fm_scan_action_array *array, fm_scan_action_t *action)
 {
-	array->entries = realloc(array->entries, (array->count + 1) * sizeof(array->entries[0]));
+	maybe_realloc_array(array->entries, array->count, 4);
 	array->entries[array->count++] = action;
 }
 
 static inline fm_scan_action_t *
-fm_scan_action_array_get(struct fm_scan_action_array *array, unsigned int index)
+fm_scan_action_array_get(const struct fm_scan_action_array *array, unsigned int index)
 {
 	if (index >= array->count)
 		return NULL;
@@ -187,6 +187,12 @@ fm_scan_action_t *
 fm_scanner_get_action(fm_scanner_t *scanner, unsigned int index)
 {
 	return fm_scan_action_array_get(&scanner->requests, index);
+}
+
+static void
+fm_scanner_queue_action(fm_scanner_t *scanner, fm_scan_action_t *action)
+{
+	fm_scan_action_array_append(&scanner->requests, action);
 }
 
 double
@@ -589,7 +595,7 @@ fm_scanner_add_probe(fm_scanner_t *scanner, const fm_config_probe_t *parsed_prob
 	action->flags |= flags;
 
 	if (action != NULL)
-		fm_scan_action_array_append(&scanner->requests, action);
+		fm_scanner_queue_action(scanner, action);
 
 	if (pclass->features & FM_FEATURE_SERVICE_PROBES_MASK)
 		action->service_catalog = scanner->service_catalog;
@@ -612,7 +618,7 @@ fm_scanner_add_topo_probe(fm_scanner_t *scanner, const char *probe_name, int fla
 
 	action = fm_scanner_create_probe_action(probe_name, FM_PROBE_MODE_TOPO, flags, args);
 	if (action != NULL)
-		fm_scan_action_array_append(&scanner->requests, action);
+		fm_scanner_queue_action(scanner, action);
 
 	/* FIXME: for a topo probe, we do not want to scan each and every address in the scan range,
 	 * but usually just 1-2 per assumed target network size */
@@ -627,7 +633,7 @@ fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *probe_name, int fla
 
 	action = fm_scanner_create_probe_action(probe_name, FM_PROBE_MODE_HOST, flags, args);
 	if (action != NULL)
-		fm_scan_action_array_append(&scanner->requests, action);
+		fm_scanner_queue_action(scanner, action);
 
 	return action;
 }
@@ -639,7 +645,7 @@ fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *probe_name, int fla
 
 	action = fm_scanner_create_probe_action(probe_name, FM_PROBE_MODE_PORT, flags, args);
 	if (action != NULL)
-		fm_scan_action_array_append(&scanner->requests, action);
+		fm_scanner_queue_action(scanner, action);
 
 	return action;
 }
@@ -660,7 +666,7 @@ fm_scanner_add_reachability_check(fm_scanner_t *scanner)
 	fm_scan_action_t *action;
 
 	if ((action = fm_scan_action_reachability_check()) != NULL) {
-		fm_scan_action_array_append(&scanner->requests, action);
+		fm_scanner_queue_action(scanner, action);
 		action->barrier = true;
 	}
 	return action;
