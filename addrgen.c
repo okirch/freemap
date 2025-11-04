@@ -183,6 +183,8 @@ fm_local_ipv6_address_enumerator(const char *device, const fm_address_t *addr, u
 struct fm_ipv4_network_enumerator {
 	fm_address_enumerator_t base;
 
+	int		stride;
+
 	uint32_t	ipv4_net;
 	unsigned int	prefixlen;
 
@@ -201,7 +203,17 @@ fm_ipv4_network_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *
 	if (sagen->next_host > sagen->last_host || sagen->next_host == 0)
 		return false;
 
-	addr = sagen->ipv4_net | sagen->next_host++;
+	if (sagen->stride <= 1) {
+		addr = sagen->ipv4_net | sagen->next_host++;
+	} else {
+		/* For now, pick any address from the block.
+		 * If we want to do better, we could probe the first and the last
+		 * one from each block, and compare their last_hop. If they
+		 * differ, then we should split the subnet and repeat. */
+
+		addr = sagen->ipv4_net | (sagen->next_host + 1);
+		sagen->next_host += sagen->stride;
+	}
 
 	memset(ret, 0, sizeof(*ret));
 
