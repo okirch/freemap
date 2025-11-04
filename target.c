@@ -372,18 +372,6 @@ fm_target_get_local_bind_address(fm_target_t *target, fm_address_t *bind_address
 	return true;
 }
 
-
-unsigned int
-fm_target_get_send_quota(fm_target_t *target, unsigned int max_quota)
-{
-	unsigned int quota;
-
-	quota = fm_ratelimit_available(&target->host_rate_limit);
-	if (quota > max_quota)
-		quota = max_quota;
-	return quota;
-}
-
 /*
  * Update the host asset information
  */

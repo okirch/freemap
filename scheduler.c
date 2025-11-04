@@ -148,6 +148,17 @@ fm_job_group_is_done(const fm_job_group_t *job_group)
 	    && fm_job_list_is_empty(&job_group->pending_probes);
 }
 
+unsigned int
+fm_job_group_get_send_quota(fm_job_group_t *job_group, unsigned int max_quota)
+{
+	unsigned int quota;
+
+	quota = fm_ratelimit_available(job_group->rate_limit);
+	if (quota > max_quota)
+		quota = max_quota;
+	return quota;
+}
+
 /*
  * Add a newly created job to a job group
  */
@@ -353,6 +364,15 @@ fm_job_group_get_next_schedule_time(fm_job_group_t *job_group, fm_sched_stats_t 
 void
 fm_job_group_schedule(fm_job_group_t *job_group, fm_sched_stats_t *stats)
 {
+	if (job_group->rate_limit != NULL) {
+		fm_ratelimit_update(job_group->rate_limit);
+
+                stats->job_quota = fm_job_group_get_send_quota(job_group, stats->job_quota);
+	}
+
+	if (stats->job_quota == 0)
+		return;
+
 	fm_job_group_process_timeouts(job_group);
 	fm_job_group_process_runnable(job_group, stats);
 	fm_job_group_get_next_schedule_time(job_group, stats);
@@ -465,7 +485,7 @@ fm_linear_scheduler_create_new_probes(fm_scheduler_t *sched, fm_sched_stats_t *s
 		if (target == NULL)
 			break;
 
-		target_quota = fm_target_get_send_quota(target, max_create - num_created);
+		target_quota = fm_job_group_get_send_quota(&target->job_group, max_create - num_created);
 		while (target_created < target_quota) {
 			fm_probe_t *probe;
 

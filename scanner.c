@@ -255,16 +255,13 @@ fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 		if (target == NULL)
 			break;
 
-		fm_ratelimit_update(&target->host_rate_limit);
-
 		memset(&sched_stats, 0, sizeof(sched_stats));
-		sched_stats.job_quota = fm_target_get_send_quota(target, global_stats->job_quota);
-		if (sched_stats.job_quota != 0) {
-			fm_job_group_schedule(&target->job_group, &sched_stats);
+		sched_stats.job_quota = global_stats->job_quota;
 
-			fm_sched_stats_update_from_nested(global_stats, &sched_stats);
-			fm_ratelimit_consume(&scanner->send_rate_limit, sched_stats.num_sent);
-		}
+		fm_job_group_schedule(&target->job_group, &sched_stats);
+
+		fm_sched_stats_update_from_nested(global_stats, &sched_stats);
+		fm_ratelimit_consume(&scanner->send_rate_limit, sched_stats.num_sent);
 	}
 }
 
