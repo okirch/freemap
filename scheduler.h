@@ -19,6 +19,7 @@
 #define FREEMAP_SCHEDULER_H
 
 #include "freemap.h"
+#include "lists.h"
 
 struct fm_sched_stats {
 	struct timeval		timeout;
@@ -27,6 +28,23 @@ struct fm_sched_stats {
 	unsigned int		num_sent;
 	unsigned int		num_processed;;
 };
+
+typedef struct fm_job_group {
+	bool			plugged;
+
+	/* scheduler stores per-target state here: */
+	void *			sched_state;
+
+	/* probes that are waiting for some event before they
+	 * can continue */
+	struct hlist_head 	postponed_probes;
+
+	/* probes that can continue */
+	struct hlist_head 	ready_probes;
+
+	/* should be renamed to "active_probes" */
+	struct hlist_head 	pending_probes;
+} fm_job_group_t;
 
 /*
  * A scheduler determines which target and port are scanned next.
@@ -49,6 +67,17 @@ struct fm_scheduler {
 		void		(*destroy)(fm_scheduler_t *);
 	} *ops;
 };
+
+extern void		fm_job_move_to_group(fm_probe_t *job, struct hlist_head *head);
+extern void		fm_job_list_destroy(struct hlist_head *head);
+
+extern void		fm_job_group_destroy(fm_job_group_t *);
+
+static inline bool
+fm_job_list_is_empty(const struct hlist_head *head)
+{
+	return head->first == NULL;
+}
 
 struct fm_linear_scheduler {
 	fm_scheduler_t		base;

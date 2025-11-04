@@ -288,7 +288,7 @@ fm_scanner_process_completed(fm_scanner_t *scanner)
 			/* wrap up reporting for this target */
 			fm_report_write(scanner->report, target);
 
-			if (target->sched_state != NULL)
+			if (target->job_group.sched_state != NULL)
 				fm_scheduler_detach_target(scanner->scheduler, target);
 
 			fm_target_free(target);

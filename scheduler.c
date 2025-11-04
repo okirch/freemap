@@ -71,6 +71,28 @@ fm_scheduler_detach_target(fm_scheduler_t *sched, fm_target_t *target)
 }
 
 /*
+ * fm_job_group primitives
+ */
+void
+fm_job_move_to_group(fm_probe_t *job, struct hlist_head *head)
+{
+	hlist_remove(&job->link);
+	hlist_insert(head, &job->link);
+}
+
+void
+fm_job_list_destroy(struct hlist_head *head)
+{
+	hlist_iterator_t iter;
+	fm_probe_t *job;
+
+	hlist_iterator_init(&iter, head);
+	while ((job = hlist_iterator_next(&iter)) != NULL)
+		fm_probe_free(job);
+}
+
+
+/*
  * Linear scheduler
  */
 static bool
@@ -78,31 +100,31 @@ fm_linear_scheduler_attach(fm_scheduler_t *sched, fm_target_t *target)
 {
 	struct fm_linear_sched_target_state *state;
 
-	assert(target->sched_state == NULL);
+	assert(target->job_group.sched_state == NULL);
 
 	state = calloc(1, sizeof(*state));
-	target->sched_state = state;
+	target->job_group.sched_state = state;
 	return true;
 }
 
 static void
 fm_linear_scheduler_detach(fm_scheduler_t *sched, fm_target_t *target)
 {
-	assert(target->sched_state != NULL);
-	free(target->sched_state);
-	target->sched_state = NULL;
+	assert(target->job_group.sched_state != NULL);
+	free(target->job_group.sched_state);
+	target->job_group.sched_state = NULL;
 }
 
 static fm_probe_t *
 fm_linear_scheduler_get_next_probe(fm_scheduler_t *sched, fm_target_t *target)
 {
-	struct fm_linear_sched_target_state *state = target->sched_state;
+	struct fm_linear_sched_target_state *state = target->job_group.sched_state;
 	fm_scan_action_t *action;
 	fm_probe_t *probe;
 
 	assert(state != NULL);
 
-	while (!target->scan_done && !target->plugged) {
+	while (!target->scan_done && !target->job_group.plugged) {
 		action = state->action;
 		if (action == NULL) {
 			if (!(action = fm_scanner_get_action(sched->scanner, state->action_index)))
@@ -152,11 +174,11 @@ fm_linear_scheduler_create_new_probes(fm_scheduler_t *sched, fm_sched_stats_t *s
 		while (target_created < target_quota) {
 			fm_probe_t *probe;
 
-			if (target->scan_done || target->plugged)
+			if (target->scan_done || target->job_group.plugged)
 				break;
 
 			/* FIXME: which is the right place and time to detach? */
-			if (target->sched_state == NULL)
+			if (target->job_group.sched_state == NULL)
 				fm_scheduler_attach_target(sched, target);
 
 			probe = fm_scheduler_get_next_probe(sched, target);

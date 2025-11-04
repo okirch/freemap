@@ -301,16 +301,9 @@ fm_target_create(const fm_address_t *address, fm_network_t *network)
 void
 fm_target_free(fm_target_t *target)
 {
-	fm_probe_t *probe;
-
-	while ((probe = fm_probe_list_get_first(&target->postponed_probes)) != NULL)
-		fm_probe_free(probe);
-
-	while ((probe = fm_probe_list_get_first(&target->ready_probes)) != NULL)
-		fm_probe_free(probe);
-
-	while ((probe = fm_probe_list_get_first(&target->pending_probes)) != NULL)
-		fm_probe_free(probe);
+	fm_job_list_destroy(&target->job_group.postponed_probes);
+	fm_job_list_destroy(&target->job_group.ready_probes);
+	fm_job_list_destroy(&target->job_group.pending_probes);
 
 	drop_string(&target->id);
 
@@ -417,19 +410,18 @@ fm_target_is_done(const fm_target_t *target)
 	if (!target->scan_done)
 		return false;
 
-	return fm_probe_list_is_empty(&target->postponed_probes)
-	    && fm_probe_list_is_empty(&target->ready_probes)
-	    && fm_probe_list_is_empty(&target->pending_probes);
+	return fm_job_list_is_empty(&target->job_group.postponed_probes)
+	    && fm_job_list_is_empty(&target->job_group.ready_probes)
+	    && fm_job_list_is_empty(&target->job_group.pending_probes);
 }
 
 void
 fm_target_postpone_probe(fm_target_t *target, fm_probe_t *probe)
 {
-	fm_probe_unlink(probe);
-	fm_probe_insert(&target->postponed_probes, probe);
+	fm_job_move_to_group(probe, &target->job_group.postponed_probes);
 
 	if (probe->blocking)
-		target->plugged = true;
+		target->job_group.plugged = true;
 
 	fm_log_debug("%s: postponed", probe->name);
 }
@@ -437,8 +429,7 @@ fm_target_postpone_probe(fm_target_t *target, fm_probe_t *probe)
 void
 fm_target_continue_probe(fm_target_t *target, fm_probe_t *probe)
 {
-	fm_probe_unlink(probe);
-	fm_probe_insert(&target->ready_probes, probe);
+	fm_job_move_to_group(probe, &target->job_group.ready_probes);
 	fm_timestamp_clear(&probe->expires);
 
 	if (fm_debug_level >= 2)
@@ -452,7 +443,7 @@ fm_error_t
 fm_target_add_new_probe(fm_target_t *target, fm_probe_t *probe)
 {
 	if (probe->event_listener == NULL) {
-		fm_probe_insert(&target->ready_probes, probe);
+		fm_job_move_to_group(probe, &target->job_group.ready_probes);
 	} else {
 		fm_target_postpone_probe(target, probe);
 	}
@@ -461,7 +452,7 @@ fm_target_add_new_probe(fm_target_t *target, fm_probe_t *probe)
 	 * any further probes to be created until we've
 	 * processed everything that is in the queue. */
 	if (probe->blocking)
-		target->plugged = true;
+		target->job_group.plugged = true;
 
 	return 0;
 }
@@ -474,9 +465,9 @@ fm_target_process_timeouts(fm_target_t *target)
 	hlist_iterator_t wait_iter;
 	fm_probe_t *probe;
 
-	hlist_iterator_init(&wait_iter, &target->pending_probes.hlist);
+	hlist_iterator_init(&wait_iter, &target->job_group.pending_probes);
 
-	hlist_insertion_iterator_init_tail(&ready_tail_iter, &target->ready_probes.hlist);
+	hlist_insertion_iterator_init_tail(&ready_tail_iter, &target->job_group.ready_probes);
 
 	while ((probe = hlist_iterator_next(&wait_iter)) != NULL) {
 		if (fm_timestamp_older(&probe->expires, now)) {
@@ -495,7 +486,7 @@ fm_target_postpone_remaining_runnable(fm_target_t *target, hlist_iterator_t *ite
 	hlist_insertion_iterator_t insert_iter;
 	fm_probe_t *probe;
 
-	hlist_insertion_iterator_init(&insert_iter, &target->ready_probes.hlist);
+	hlist_insertion_iterator_init(&insert_iter, &target->job_group.ready_probes);
 	while ((probe = hlist_iterator_next(iter)) != NULL) {
 		hlist_remove(&probe->link);
 		hlist_insertion_iterator_insert_and_advance(&insert_iter, &probe->link);
@@ -512,7 +503,7 @@ fm_target_process_runnable(fm_target_t *target, fm_sched_stats_t *stats)
 	/* reassign runnable probes to a temporary list. This allows any probes to
 	 * become runnable without interfering with our processing, such as resulting
 	 * in endless loops. */
-	hlist_head_reassign(&target->ready_probes.hlist, &runnable);
+	hlist_head_reassign(&target->job_group.ready_probes, &runnable);
 
 	/* Now process the list of probes that are ready to run.
 	 * Note that we don't use an iterator, we always refer to the first runnable
@@ -560,9 +551,9 @@ fm_target_process_runnable(fm_target_t *target, fm_sched_stats_t *stats)
 		}
 
 		if (fm_timestamp_is_set(&probe->expires))
-			fm_probe_insert(&target->pending_probes, probe);
+			fm_job_move_to_group(probe, &target->job_group.pending_probes);
 		else
-			fm_probe_insert(&target->ready_probes, probe);
+			fm_job_move_to_group(probe, &target->job_group.ready_probes);
 	}
 
 	if (runnable.first != NULL)
@@ -586,13 +577,13 @@ fm_target_check_for_hung_state(fm_target_t *target, const fm_sched_stats_t *stat
 		if (fm_timestamp_older(&next_ps, now)) {
 			struct list_iterator wait_iter;
 
-			if (target->pending_probes.hlist.first == NULL) {
+			if (target->job_group.pending_probes.first == NULL) {
 				fm_log_debug("%s: no pending probes", fm_address_format(&target->address));
 			} else {
 				fm_log_debug("%s: *** pending ***", fm_address_format(&target->address));
 			}
 
-			hlist_iterator_init(&wait_iter, &target->pending_probes.hlist);
+			hlist_iterator_init(&wait_iter, &target->job_group.pending_probes);
 			while ((probe = hlist_iterator_next(&wait_iter)) != NULL) {
 				double probe_wait;
 
@@ -615,12 +606,12 @@ fm_target_get_next_schedule_time(fm_target_t *target, fm_sched_stats_t *stats)
 	hlist_iterator_t wait_iter;
 	fm_probe_t *probe;
 
-	if (target->ready_probes.hlist.first != NULL) {
+	if (target->job_group.ready_probes.first != NULL) {
 		fm_sched_stats_update_timeout_min(stats, fm_timestamp_now(), "runnable jobs");
 		return;
 	}
 
-	hlist_iterator_init(&wait_iter, &target->pending_probes.hlist);
+	hlist_iterator_init(&wait_iter, &target->job_group.pending_probes);
 	while ((probe = hlist_iterator_next(&wait_iter)) != NULL) {
 		fm_sched_stats_update_timeout_min(stats, &probe->expires, probe->name);
 	}
@@ -657,7 +648,7 @@ fm_target_inspect_pending(fm_target_t *target)
 	fm_probe_t *probe, *next;
 	bool rv = false;
 
-        for (probe = (fm_probe_t *) (target->pending_probes.hlist.first); probe != NULL; probe = next) {
+        for (probe = (fm_probe_t *) (target->job_group.pending_probes.first); probe != NULL; probe = next) {
                 next = (fm_probe_t *) probe->link.next;
 
 		if (probe->done) {
@@ -666,8 +657,8 @@ fm_target_inspect_pending(fm_target_t *target)
 		}
 	}
 
-	if (fm_probe_list_is_empty(&target->pending_probes))
-		target->plugged = false;
+	if (fm_job_list_is_empty(&target->job_group.pending_probes))
+		target->job_group.plugged = false;
 
 	if (fm_target_is_done(target)) {
 		fm_log_debug("%s all outstanding probes collected\n", fm_address_format(&target->address));

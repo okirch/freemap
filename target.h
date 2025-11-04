@@ -45,8 +45,6 @@ struct fm_target {
 	 * Maybe later we need 3 states or more. */
 	bool			scan_done;
 
-	bool			plugged;
-
 	/* Limit the rate at which we send packets to this host */
 	fm_ratelimit_t		host_rate_limit;
 
@@ -56,20 +54,9 @@ struct fm_target {
 	/* Unique ID identifying a network that we scan */
 	fm_network_t *		network;
 
-	/* scheduler stores per-target state here: */
-	void *			sched_state;
-
-	/* probes that are waiting for some event before they
-	 * can continue */
-	struct fm_probe_list	postponed_probes;
-
-	/* probes that can continue */
-	struct fm_probe_list	ready_probes;
-
-	/* should be renamed to "active_probes" */
-	struct fm_probe_list	pending_probes;
-
 	struct fm_extant_list	expecting;
+
+	fm_job_group_t		job_group;
 
 	/* This is where we report host/port state to */
 	fm_host_asset_t *	host_asset;
