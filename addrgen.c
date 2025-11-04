@@ -246,11 +246,11 @@ fm_ipv4_network_enumerator_restart(fm_address_enumerator_t *agen, int stage)
 {
 	struct fm_ipv4_network_enumerator *ngen = (struct fm_ipv4_network_enumerator *) agen;
 
-	ngen->next_host = 0;
+	ngen->next_host = 1;
 	if (stage == FM_SCAN_STAGE_TOPO) {
-		ngen->stride = 1;
-	} else {
 		ngen->stride = 256;	/* hard-coded for now */
+	} else {
+		ngen->stride = 1;
 	}
 }
 
