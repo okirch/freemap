@@ -41,6 +41,7 @@ typedef struct fm_raw_socket_cache {
 static struct hlist_head	raw_sock_cache = { .first = NULL, };
 static fm_address_prefix_array_t fm_local_address_prefixes;
 
+static fm_address_prefix_t *	fm_address_prefix_array_append(fm_address_prefix_array_t *array, const fm_address_t *addr, unsigned int pfxlen);
 
 fm_socket_t *
 fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *driver, int sotype)
@@ -249,6 +250,24 @@ fm_interface_get_name(const fm_interface_t *nic)
 	return nic->name;
 }
 
+bool
+fm_interface_get_local_prefixes(const fm_interface_t *nic, fm_address_prefix_array_t *result)
+{
+	unsigned int i;
+
+	for (i = 0; i < fm_local_address_prefixes.count; ++i) {
+		fm_address_prefix_t *entry = &fm_local_address_prefixes.elements[i];
+		fm_address_prefix_t *new_entry;
+
+		if (entry->ifindex == nic->ifindex) {
+			new_entry = fm_address_prefix_array_append(result, NULL, 0);
+			*new_entry = *entry;
+		}
+	}
+
+	return true;
+}
+
 /*
  * Neighbor cache
  */
@@ -292,16 +311,24 @@ fm_address_prefix_array_append(fm_address_prefix_array_t *array, const fm_addres
 {
 	fm_address_prefix_t *entry;
 
-	if ((array->count % 8) == 0) 
-		array->elements = realloc(array->elements, (array->count + 8) * sizeof(array->elements[0]));
+	maybe_realloc_array(array->elements, array->count, 8);
 
 	entry = &array->elements[array->count++];
 	memset(entry, 0, sizeof(*entry));
 
-	entry->address = *addr;
+	if (addr)
+		entry->address = *addr;
 	entry->pfxlen = pfxlen;
 
 	return entry;
+}
+
+void
+fm_address_prefix_array_destroy(fm_address_prefix_array_t *array)
+{
+	if (array->elements)
+		free(array->elements);
+	memset(array, 0, sizeof(*array));
 }
 
 /*

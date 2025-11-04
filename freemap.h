@@ -64,8 +64,10 @@ extern bool		fm_interface_is_loopback(const fm_interface_t *nic);
 extern bool		fm_interface_get_lladdr(const fm_interface_t *nic, struct sockaddr_ll *sll);
 extern bool		fm_interface_get_network_address(const fm_interface_t *nic, int af, fm_address_t *ret_addr);
 extern fm_neighbor_t *	fm_interface_get_neighbor(const fm_interface_t *nic, const fm_address_t *network_address, bool create);
+extern bool		fm_interface_get_local_prefixes(const fm_interface_t *, fm_address_prefix_array_t *);
 extern bool		fm_neighbor_initiate_discovery(fm_neighbor_t *);
 extern bool		fm_neighbor_get_link_address(const fm_neighbor_t *neigh, fm_address_t *link_address);
+extern void		fm_address_prefix_array_destroy(fm_address_prefix_array_t *);
 
 extern void		fm_timestamp_init(struct timeval *ts);
 extern double		fm_timestamp_update(struct timeval *ts);
