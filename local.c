@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 #include <net/if.h>
 #include <linux/if_packet.h>
+#include <linux/if_arp.h>
 #include <netinet/in.h>
 #include <string.h>
 
@@ -223,6 +224,11 @@ fm_interface_get_network_address(const fm_interface_t *nic, int af, fm_address_t
 	return false;
 }
 
+bool
+fm_interface_is_loopback(const fm_interface_t *nic)
+{
+	return nic->lladdr.sll_hatype == ARPHRD_LOOPBACK;
+}
 
 bool
 fm_interface_get_lladdr(const fm_interface_t *nic, struct sockaddr_ll *lladdr)
