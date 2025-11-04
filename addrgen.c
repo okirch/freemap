@@ -58,6 +58,14 @@ fm_address_enumerator_alloc(const struct fm_address_enumerator_ops *ops)
 }
 
 void
+fm_address_enumerator_restart(fm_address_enumerator_t *agen, int stage)
+{
+	assert(agen->ops != NULL);
+
+	agen->ops->restart(agen, stage);
+}
+
+void
 fm_address_enumerator_destroy(fm_address_enumerator_t *agen)
 {
 	assert(agen->ops != NULL);
@@ -130,7 +138,7 @@ struct fm_simple_address_enumerator {
 	fm_address_array_t	addrs;
 };
 
-bool
+static bool
 fm_simple_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
 {
 	struct fm_simple_address_enumerator *simple = (struct fm_simple_address_enumerator *) agen;
@@ -141,11 +149,20 @@ fm_simple_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t
 	return true;
 }
 
+static void
+fm_simple_address_enumerator_restart(fm_address_enumerator_t *agen, int stage)
+{
+	struct fm_simple_address_enumerator *simple = (struct fm_simple_address_enumerator *) agen;
+
+	simple->next = 0;
+}
+
 static const struct fm_address_enumerator_ops fm_simple_address_enumerator_ops = {
 	.obj_size	= sizeof(struct fm_simple_address_enumerator),
 	.name		= "simple",
 	.destroy	= NULL,
 	.get_one_address= fm_simple_address_enumerator_get_one,
+	.restart	= fm_simple_address_enumerator_restart,
 };
 
 /*
@@ -224,12 +241,25 @@ fm_ipv4_network_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *
 	return true;
 }
 
+static void
+fm_ipv4_network_enumerator_restart(fm_address_enumerator_t *agen, int stage)
+{
+	struct fm_ipv4_network_enumerator *ngen = (struct fm_ipv4_network_enumerator *) agen;
+
+	ngen->next_host = 0;
+	if (stage == FM_SCAN_STAGE_TOPO) {
+		ngen->stride = 1;
+	} else {
+		ngen->stride = 256;	/* hard-coded for now */
+	}
+}
 
 static const struct fm_address_enumerator_ops fm_ipv4_network_enumerator_ops = {
 	.obj_size	= sizeof(struct fm_ipv4_network_enumerator),
 	.name		= "ipv4-net",
 	.destroy	= NULL,
 	.get_one_address= fm_ipv4_network_enumerator_get_one,
+	.restart	= fm_ipv4_network_enumerator_restart,
 };
 
 static fm_address_enumerator_t *

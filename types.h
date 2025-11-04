@@ -84,6 +84,18 @@ enum {
 };
 
 /*
+ * Scanning happens in stages.
+ * This is primarily because topo stage is very different - to begin with,
+ * you wouldn't want to do a full traceroute on every host in each network
+ * you scan, but just a few of them.
+ */
+enum {
+	FM_SCAN_STAGE_TOPO,
+	FM_SCAN_STAGE_GENERAL,
+	__FM_SCAN_STAGE_MAX
+};
+
+/*
  * Distinguish between probing modes
  * Note these will be ORed together, so they need to be distinct bits
  */

@@ -258,6 +258,21 @@ fm_target_manager_replenish_pool(fm_target_manager_t *mgr, fm_target_pool_t *poo
 	return pool->count > 0;
 }
 
+void
+fm_target_manager_restart(fm_target_manager_t *mgr, unsigned int stage)
+{
+	fm_address_enumerator_array_t *array = &mgr->address_generators;
+	unsigned int i;
+
+	mgr->current_generator = 0;
+	for (i = 0; i < array->count; ++i) {
+		fm_address_enumerator_t *gen = array->entries[i];
+
+		fm_address_enumerator_restart(gen, stage);
+	}
+	mgr->all_targets_exhausted = false;
+}
+
 fm_target_t *
 fm_target_create(const fm_address_t *address, fm_network_t *network)
 {

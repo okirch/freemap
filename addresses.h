@@ -68,6 +68,7 @@ struct fm_address_enumerator {
 		size_t		obj_size;
 		const char *	name;
 		void		(*destroy)(fm_address_enumerator_t *);
+		void		(*restart)(fm_address_enumerator_t *, int);
 		bool		(*get_one_address)(fm_address_enumerator_t *, fm_address_t *);
 	} *ops;
 };
