@@ -120,19 +120,18 @@ out:
 struct fm_simple_address_enumerator {
 	fm_address_enumerator_t base;
 
-	struct sockaddr_storage	addr;
+	unsigned int		next;
+	fm_address_array_t	addrs;
 };
 
 bool
 fm_simple_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
 {
-	struct fm_simple_address_enumerator *sagen = (struct fm_simple_address_enumerator *) agen;
-	if (sagen->addr.ss_family == AF_UNSPEC)
+	struct fm_simple_address_enumerator *simple = (struct fm_simple_address_enumerator *) agen;
+
+	if (simple->next >= simple->addrs.count)
 		return false;
-
-	*ret = sagen->addr;
-	sagen->addr.ss_family = AF_UNSPEC;
-
+	*ret = simple->addrs.elements[simple->next++];
 	return true;
 }
 
@@ -143,17 +142,6 @@ static const struct fm_address_enumerator_ops fm_simple_address_enumerator_ops =
 	.get_one_address= fm_simple_address_enumerator_get_one,
 };
 
-static fm_address_enumerator_t *
-fm_create_simple_address_enumerator_work(const char *addr_string, const fm_address_t *addr)
-{
-	struct fm_simple_address_enumerator *sagen;
-
-	sagen = NEW_ADDRESS_ENUMERATOR(fm_simple_address_enumerator);
-	sagen->addr = *addr;
-
-	return &sagen->base;
-}
-
 /*
  * Note, when hostname resolution is supported, this function will return a list of
  * generators rather than a single one.
@@ -161,29 +149,16 @@ fm_create_simple_address_enumerator_work(const char *addr_string, const fm_addre
 fm_address_enumerator_t *
 fm_create_simple_address_enumerator(const char *addr_string)
 {
-	fm_address_array_t addrs = { 0 };
-	fm_address_enumerator_t *result = NULL;
-	unsigned int i;
+	struct fm_simple_address_enumerator *simple;
 
-	if (!fm_address_resolve(addr_string, &addrs))
+	simple = NEW_ADDRESS_ENUMERATOR(fm_simple_address_enumerator);
+
+	if (!fm_address_resolve(addr_string, &simple->addrs)) {
+		free(simple);
 		return NULL;
-
-	for (i = 0; i < addrs.count; ++i) {
-		fm_address_t *addr = &addrs.elements[i];
-		fm_address_enumerator_t *agen;
-
-		agen = fm_create_simple_address_enumerator_work(fm_address_format(addr), addr);
-		if (agen != NULL) {
-			result = agen;
-
-			if (!fm_global.address_generation.try_all)
-				break;
-		}
 	}
 
-	fm_address_array_destroy(&addrs);
-
-	return result;
+	return &simple->base;
 }
 
 /*
