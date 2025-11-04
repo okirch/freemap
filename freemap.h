@@ -46,6 +46,8 @@ extern bool		fm_address_enumerator_get_one(fm_address_enumerator_t *, fm_address
 extern void		fm_address_enumerator_destroy(fm_address_enumerator_t *);
 
 extern const char *	fm_address_format(const fm_address_t *);
+extern bool		fm_address_resolve(const char *addr_string, fm_address_array_t *);
+extern bool		fm_address_parse(const char *addr_string, fm_address_t *addr);
 extern bool		fm_address_equal(const fm_address_t *, const fm_address_t *, bool with_port);
 
 extern void		fm_routing_discover(void);

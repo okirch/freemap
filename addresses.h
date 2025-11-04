@@ -48,13 +48,11 @@ struct fm_address_prefix {
 	const fm_interface_t *	device;
 };
 
-typedef struct fm_address_prefix_array fm_address_prefix_array_t;
 struct fm_address_prefix_array {
 	unsigned int		count;
 	fm_address_prefix_t *	elements;
 };
 
-typedef struct fm_address_array fm_address_array_t;
 struct fm_address_array {
 	unsigned int		count;
 	fm_address_t *		elements;

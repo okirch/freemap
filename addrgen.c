@@ -1,0 +1,312 @@
+/*
+ * Copyright (C) 2025 Olaf Kirch <okir@suse.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 2.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+#include <sys/socket.h>
+#include <sys/param.h>
+#include <arpa/inet.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <assert.h>
+#include <errno.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <linux/if_packet.h>
+
+#include "addresses.h"
+#include "network.h"
+
+extern const fm_address_prefix_t *	fm_local_prefix_for_address(const fm_address_t *);
+
+#define NEW_ADDRESS_ENUMERATOR(_typename) \
+	((struct _typename *) fm_address_enumerator_alloc(&_typename ## _ops))
+
+
+/*
+ * Common address handling functions
+ */
+fm_address_enumerator_t *
+fm_address_enumerator_alloc(const struct fm_address_enumerator_ops *ops)
+{
+	static unsigned int allocator_id = 1;
+	fm_address_enumerator_t *agen;
+
+	assert(sizeof(*agen) <= ops->obj_size);
+
+	agen = calloc(1, ops->obj_size);
+	agen->ops = ops;
+	agen->id = allocator_id++;
+
+	agen->unknown_gateway = fm_gateway_alloc(NULL);
+
+	return agen;
+}
+
+void
+fm_address_enumerator_destroy(fm_address_enumerator_t *agen)
+{
+	assert(agen->ops != NULL);
+
+	fm_address_enumerator_list_remove(agen);
+	if (agen->ops->destroy != NULL)
+		agen->ops->destroy(agen);
+	memset(agen, 0, agen->ops->obj_size);
+	free(agen);
+}
+
+const char *
+fm_address_enumerator_name(const fm_address_enumerator_t *agen)
+{
+	return agen->ops->name;
+}
+
+bool
+fm_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
+{
+	assert(agen->ops != NULL);
+	assert(agen->ops->get_one_address != NULL);
+
+	return agen->ops->get_one_address(agen, ret);
+}
+
+static bool
+fm_try_parse_cidr(const char *addr_string, struct sockaddr_storage *ss, unsigned int *nbits)
+{
+	char *addr_copy, *slash, *end;
+	bool ok = false;
+
+	addr_copy = strdup(addr_string);
+	if (addr_copy == NULL)
+		return false;
+
+	if ((slash = strchr(addr_copy, '/')) == NULL)
+		goto out;
+
+	*slash++ = '\0';
+	if (!fm_address_parse(addr_copy, ss))
+		goto out;
+
+	*nbits = strtoul(slash, &end, 0);
+	if (*end)
+		goto out;
+
+	if (*nbits > fm_addrfamily_max_addrbits(ss->ss_family))
+		goto out;
+
+	ok = true;
+out:
+	free(addr_copy);
+	return ok;
+}
+
+/*
+ * The "simple" enumerator that is initialized with a single address
+ */
+struct fm_simple_address_enumerator {
+	fm_address_enumerator_t base;
+
+	struct sockaddr_storage	addr;
+};
+
+bool
+fm_simple_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
+{
+	struct fm_simple_address_enumerator *sagen = (struct fm_simple_address_enumerator *) agen;
+	if (sagen->addr.ss_family == AF_UNSPEC)
+		return false;
+
+	*ret = sagen->addr;
+	sagen->addr.ss_family = AF_UNSPEC;
+
+	return true;
+}
+
+static const struct fm_address_enumerator_ops fm_simple_address_enumerator_ops = {
+	.obj_size	= sizeof(struct fm_simple_address_enumerator),
+	.name		= "simple",
+	.destroy	= NULL,
+	.get_one_address= fm_simple_address_enumerator_get_one,
+};
+
+static fm_address_enumerator_t *
+fm_create_simple_address_enumerator_work(const char *addr_string, const fm_address_t *addr)
+{
+	struct fm_simple_address_enumerator *sagen;
+
+	sagen = NEW_ADDRESS_ENUMERATOR(fm_simple_address_enumerator);
+	sagen->addr = *addr;
+
+	return &sagen->base;
+}
+
+/*
+ * Note, when hostname resolution is supported, this function will return a list of
+ * generators rather than a single one.
+ */
+fm_address_enumerator_t *
+fm_create_simple_address_enumerator(const char *addr_string)
+{
+	fm_address_array_t addrs = { 0 };
+	fm_address_enumerator_t *result = NULL;
+	unsigned int i;
+
+	if (!fm_address_resolve(addr_string, &addrs))
+		return NULL;
+
+	for (i = 0; i < addrs.count; ++i) {
+		fm_address_t *addr = &addrs.elements[i];
+		fm_address_enumerator_t *agen;
+
+		agen = fm_create_simple_address_enumerator_work(fm_address_format(addr), addr);
+		if (agen != NULL) {
+			result = agen;
+
+			if (!fm_global.address_generation.try_all)
+				break;
+		}
+	}
+
+	fm_address_array_destroy(&addrs);
+
+	return result;
+}
+
+/*
+ * Enumeration of local IPv6 networks
+ */
+static fm_address_enumerator_t *
+fm_local_ipv6_address_enumerator(const char *device, const fm_address_t *addr, unsigned int pfxlen)
+{
+	fm_log_error("%s: not yet implemented", __func__);
+	return NULL;
+}
+
+/*
+ * The "cidr" enumerator that iterates over a CIDR block.
+ */
+struct fm_ipv4_network_enumerator {
+	fm_address_enumerator_t base;
+
+	uint32_t	ipv4_net;
+	unsigned int	prefixlen;
+
+	/* these should not exceed the size of an IPv4 address */
+	uint32_t	next_host;
+	uint32_t	last_host;
+};
+
+bool
+fm_ipv4_network_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
+{
+	struct fm_ipv4_network_enumerator *sagen = (struct fm_ipv4_network_enumerator *) agen;
+	struct sockaddr_in *sin;
+	uint32_t addr;
+
+	if (sagen->next_host > sagen->last_host || sagen->next_host == 0)
+		return false;
+
+	addr = sagen->ipv4_net | sagen->next_host++;
+
+	memset(ret, 0, sizeof(*ret));
+
+	sin = (struct sockaddr_in *) ret;
+	sin->sin_family = AF_INET;
+	sin->sin_addr.s_addr = htonl(addr);
+
+	return true;
+}
+
+
+static const struct fm_address_enumerator_ops fm_ipv4_network_enumerator_ops = {
+	.obj_size	= sizeof(struct fm_ipv4_network_enumerator),
+	.name		= "ipv4-net",
+	.destroy	= NULL,
+	.get_one_address= fm_ipv4_network_enumerator_get_one,
+};
+
+static fm_address_enumerator_t *
+fm_ipv4_network_enumerator(const fm_address_t *addr, unsigned int pfxlen)
+{
+	struct fm_ipv4_network_enumerator *sagen;
+
+	assert(addr->ss_family == AF_INET);
+
+	sagen = NEW_ADDRESS_ENUMERATOR(fm_ipv4_network_enumerator);
+	sagen->ipv4_net = ntohl(((struct sockaddr_in *) addr)->sin_addr.s_addr);
+	sagen->prefixlen = pfxlen;
+	sagen->next_host = 1;
+	sagen->last_host = 0xFFFFFFFF >> pfxlen;
+
+	/* Clear the network's host part */
+	sagen->ipv4_net &= ~(sagen->last_host);
+	return &sagen->base;
+}
+
+/*
+ * Note, when hostname resolution is supported, this function will return a list of
+ * generators rather than a single one.
+ */
+fm_address_enumerator_t *
+fm_create_cidr_address_enumerator(const char *addr_string)
+{
+	struct sockaddr_storage ss;
+	unsigned int cidr_bits, host_bits;
+
+	if (!fm_try_parse_cidr(addr_string, &ss, &cidr_bits)) {
+		/* TBD: resolve hostname, apply opts to filter which addresses to use */
+		return NULL;
+	}
+
+	if (!fm_address_generator_address_eligible(&ss))
+		return NULL;
+
+	host_bits = fm_addrfamily_max_addrbits(ss.ss_family);
+	if (host_bits == 0)
+		return NULL;
+
+	if (cidr_bits > host_bits) {
+		fm_log_error("%s: network size of %lu bits bigger than address size", addr_string, cidr_bits);
+		return NULL;
+	}
+	host_bits -= cidr_bits;
+
+	if (ss.ss_family == AF_INET6) {
+		const fm_address_prefix_t *local_prefix;
+
+		local_prefix = fm_local_prefix_for_address(&ss);
+		if (local_prefix == NULL || cidr_bits < local_prefix->pfxlen) {
+			fm_log_error("%s: remote network enumeration not supported for IPv6", addr_string);
+			return NULL;
+		}
+
+		return fm_local_ipv6_address_enumerator(local_prefix->ifname, &ss, cidr_bits);
+	}
+
+	if (ss.ss_family == AF_INET) {
+		/* This limit is somewhat arbitrary and we need to increase it, at least for
+		 * local networks. */
+		if (host_bits > 8) {
+			fm_log_error("%s: IPv4 address enumeration limited to /24 networks", addr_string);
+			return NULL;
+		}
+
+		return fm_ipv4_network_enumerator(&ss, cidr_bits);
+	}
+
+	return NULL;
+}
