@@ -74,6 +74,14 @@ fm_scheduler_detach_target(fm_scheduler_t *sched, fm_target_t *target)
  * fm_job_group primitives
  */
 void
+fm_job_group_init(fm_job_group_t *job_group, const char *name, fm_ratelimit_t *rate_limit)
+{
+	memset(job_group, 0, sizeof(*job_group));
+	job_group->name = strdup(name);
+	job_group->rate_limit = rate_limit;
+}
+
+void
 fm_job_move_to_group(fm_probe_t *job, struct hlist_head *head)
 {
 	hlist_remove(&job->link);
@@ -89,6 +97,258 @@ fm_job_list_destroy(struct hlist_head *head)
 	hlist_iterator_init(&iter, head);
 	while ((job = hlist_iterator_next(&iter)) != NULL)
 		fm_probe_free(job);
+}
+
+void
+fm_job_group_destroy(fm_job_group_t *job_group)
+{
+	fm_job_list_destroy(&job_group->postponed_probes);
+	fm_job_list_destroy(&job_group->ready_probes);
+	fm_job_list_destroy(&job_group->pending_probes);
+	drop_string(&job_group->name);
+}
+
+bool
+fm_job_group_is_done(const fm_job_group_t *job_group)
+{
+	return fm_job_list_is_empty(&job_group->postponed_probes)
+	    && fm_job_list_is_empty(&job_group->ready_probes)
+	    && fm_job_list_is_empty(&job_group->pending_probes);
+}
+
+/*
+ * Add a newly created job to a job group
+ */
+fm_error_t
+fm_job_group_add_new(fm_job_group_t *job_group, fm_probe_t *job)
+{
+	if (job->event_listener == NULL) {
+		fm_job_move_to_group(job, &job_group->ready_probes);
+	} else {
+		fm_job_move_to_group(job, &job_group->postponed_probes);
+		fm_log_debug("%s: postponed", job->name);
+	}
+
+	/* If the probe is marked as blocking, do not allow
+	 * any further probes to be created until we've
+	 * processed everything that is in the queue. */
+	if (job->blocking)
+		job_group->plugged = true;
+
+	return 0;
+}
+
+/*
+ * Process all timeouts in a job group
+ */
+void
+fm_job_group_process_timeouts(fm_job_group_t *job_group)
+{
+	const struct timeval *now = fm_timestamp_now();
+	hlist_insertion_iterator_t ready_tail_iter;
+	hlist_iterator_t wait_iter;
+	fm_probe_t *probe;
+
+	hlist_iterator_init(&wait_iter, &job_group->pending_probes);
+
+	hlist_insertion_iterator_init_tail(&ready_tail_iter, &job_group->ready_probes);
+
+	while ((probe = hlist_iterator_next(&wait_iter)) != NULL) {
+		if (fm_timestamp_older(&probe->expires, now)) {
+			hlist_remove(&probe->link);
+			hlist_insertion_iterator_insert_and_advance(&ready_tail_iter, &probe->link);
+		}
+	}
+}
+
+/*
+ * The next couple of functions are the main work-horse for the job scheduler
+ */
+
+/*
+ * Insert the remaining probes at the head of the runnable list again
+ */
+static void
+fm_job_group_postpone_remaining_runnable(fm_job_group_t *job_group, hlist_iterator_t *iter)
+{
+	hlist_insertion_iterator_t insert_iter;
+	fm_probe_t *probe;
+
+	hlist_insertion_iterator_init(&insert_iter, &job_group->ready_probes);
+	while ((probe = hlist_iterator_next(iter)) != NULL) {
+		hlist_remove(&probe->link);
+		hlist_insertion_iterator_insert_and_advance(&insert_iter, &probe->link);
+	}
+}
+
+static void
+fm_job_group_process_runnable(fm_job_group_t *job_group, fm_sched_stats_t *stats)
+{
+	struct hlist_head runnable = HLIST_HEAD_NIL;
+	hlist_iterator_t runnable_iter;
+	fm_probe_t *probe;
+
+	/* reassign runnable probes to a temporary list. This allows any probes to
+	 * become runnable without interfering with our processing, such as resulting
+	 * in endless loops. */
+	hlist_head_reassign(&job_group->ready_probes, &runnable);
+
+	/* Now process the list of probes that are ready to run.
+	 * Note that we don't use an iterator, we always refer to the first runnable
+	 * job at the head of the ready_list. The reason is that any pending probe
+	 * may disappear from that list at any point in time (eg traceroute will
+	 * actively cancel pending packet probes after the first reply).
+	 *
+	 * NB we could implement a "greedy" scheduling mode that does not return
+	 * as long as probes on this host are ready to run (and making progress)
+	 */
+	hlist_iterator_init(&runnable_iter, &runnable);
+	while (stats->num_sent < stats->job_quota && (probe = hlist_iterator_next(&runnable_iter)) != NULL) {
+		bool first_transmission;
+		fm_error_t error;
+
+		first_transmission = !fm_timestamp_is_set(&probe->sent);
+
+		fm_timestamp_clear(&probe->expires);
+
+		error = fm_probe_send(probe);
+		if (error == FM_TRY_AGAIN) {
+			/* the probe asked to be postponed. */
+		} else {
+			if (error != FM_SEND_ERROR)
+				stats->num_sent += 1;
+
+			if (error != 0) {
+				/* complain about probes that are so broken they don't even manage to
+				 * send a single package. */
+				if (first_transmission)
+					fm_log_warning("%s: probe is DOA", probe->fullname);
+
+				fm_probe_set_error(probe, error);
+			} else if (first_transmission)
+				fm_timestamp_init(&probe->sent);
+
+			stats->num_processed += 1;
+		}
+
+		hlist_remove(&probe->link);
+		if (probe->done) {
+			/* rather than freeing it immediately, should we have a recycler list? */
+			fm_probe_free(probe);
+			continue;
+		}
+
+		if (fm_timestamp_is_set(&probe->expires))
+			fm_job_move_to_group(probe, &job_group->pending_probes);
+		else
+			fm_job_move_to_group(probe, &job_group->ready_probes);
+	}
+
+	if (runnable.first != NULL)
+		fm_job_group_postpone_remaining_runnable(job_group, &runnable_iter);
+}
+
+static void
+fm_job_group_check_for_hung_state(fm_job_group_t *job_group, const fm_sched_stats_t *stats)
+{
+	if (fm_debug_level) {
+		const struct timeval *now = fm_timestamp_now();
+		static struct timeval next_ps;
+		bool update_ts = false;
+		fm_probe_t *probe;
+
+		if (stats->num_processed != 0) {
+			fm_timestamp_clear(&next_ps);
+		} else if (!fm_timestamp_is_set(&next_ps)) {
+			update_ts = true;
+		} else
+		if (fm_timestamp_older(&next_ps, now)) {
+			struct list_iterator wait_iter;
+
+			if (job_group->pending_probes.first == NULL) {
+				fm_log_debug("%s: no pending probes", job_group->name);
+			} else {
+				fm_log_debug("%s: *** pending ***", job_group->name);
+			}
+
+			hlist_iterator_init(&wait_iter, &job_group->pending_probes);
+			while ((probe = hlist_iterator_next(&wait_iter)) != NULL) {
+				double probe_wait;
+
+				probe_wait = fm_timestamp_expires_when(&probe->expires, NULL);
+				fm_log_debug("   %4u ms %s", (unsigned int) (1000 * probe_wait), probe->name);
+			}
+			update_ts = true;
+		}
+
+		if (update_ts) {
+			fm_timestamp_set_timeout(&next_ps, 5000);
+		}
+
+	}
+}
+
+static void
+fm_job_group_get_next_schedule_time(fm_job_group_t *job_group, fm_sched_stats_t *stats)
+{
+	hlist_iterator_t wait_iter;
+	fm_probe_t *probe;
+
+	if (job_group->ready_probes.first != NULL) {
+		fm_sched_stats_update_timeout_min(stats, fm_timestamp_now(), "runnable jobs");
+		return;
+	}
+
+	hlist_iterator_init(&wait_iter, &job_group->pending_probes);
+	while ((probe = hlist_iterator_next(&wait_iter)) != NULL) {
+		fm_sched_stats_update_timeout_min(stats, &probe->expires, probe->name);
+	}
+
+	if (job_group->rate_limit && !fm_ratelimit_available(job_group->rate_limit)) {
+		struct timeval target_come_back;
+		double delay;
+
+		delay = fm_ratelimit_wait_until(job_group->rate_limit, 1);
+
+		fm_timestamp_set_timeout(&target_come_back, delay);
+		fm_sched_stats_update_timeout_max(stats, &target_come_back, job_group->name);
+	}
+}
+
+void
+fm_job_group_schedule(fm_job_group_t *job_group, fm_sched_stats_t *stats)
+{
+	fm_job_group_process_timeouts(job_group);
+	fm_job_group_process_runnable(job_group, stats);
+	fm_job_group_get_next_schedule_time(job_group, stats);
+
+	if (fm_debug_level)
+		fm_job_group_check_for_hung_state(job_group, stats);
+}
+
+/*
+ * Reap completed jobs
+ */
+bool
+fm_job_group_reap_complete(fm_job_group_t *job_group)
+{
+	hlist_iterator_t iter;
+	fm_probe_t *job;
+	bool rv = false;
+
+	/* FIXME: we should have a list for completed probes */
+	hlist_iterator_init(&iter, &job_group->pending_probes);
+	while ((job = hlist_iterator_next(&iter)) != NULL) {
+		if (job->done) {
+			fm_probe_free(job);
+			rv = true;
+		}
+	}
+
+	if (fm_job_list_is_empty(&job_group->pending_probes))
+		job_group->plugged = false;
+
+	return rv;
 }
 
 

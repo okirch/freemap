@@ -56,10 +56,10 @@ struct fm_target {
 
 	struct fm_extant_list	expecting;
 
-	fm_job_group_t		job_group;
-
 	/* This is where we report host/port state to */
 	fm_host_asset_t *	host_asset;
+
+	fm_job_group_t		job_group;
 };
 
 struct fm_target_pool {

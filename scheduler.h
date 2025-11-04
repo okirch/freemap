@@ -30,7 +30,15 @@ struct fm_sched_stats {
 };
 
 typedef struct fm_job_group {
+	char *			name;	/* usually the address of the target this is attached to */
+
 	bool			plugged;
+
+	/* For scan targets, this is target->host_rate_limit.
+	 * Can be NULL otherwise.
+	 * FIXME: maybe we should just have a rate limit for every job group.
+	 */
+	fm_ratelimit_t *	rate_limit;
 
 	/* scheduler stores per-target state here: */
 	void *			sched_state;
@@ -71,7 +79,13 @@ struct fm_scheduler {
 extern void		fm_job_move_to_group(fm_probe_t *job, struct hlist_head *head);
 extern void		fm_job_list_destroy(struct hlist_head *head);
 
+extern void		fm_job_group_init(fm_job_group_t *, const char *, fm_ratelimit_t *);
+extern fm_error_t	fm_job_group_add_new(fm_job_group_t *, fm_probe_t *probe);
+extern void		fm_job_group_process_timeouts(fm_job_group_t *job_group);
+extern void		fm_job_group_schedule(fm_job_group_t *job_group, fm_sched_stats_t *stats);
+extern bool		fm_job_group_reap_complete(fm_job_group_t *job_group);
 extern void		fm_job_group_destroy(fm_job_group_t *);
+extern bool		fm_job_group_is_done(const fm_job_group_t *);
 
 static inline bool
 fm_job_list_is_empty(const struct hlist_head *head)
