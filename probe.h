@@ -77,6 +77,9 @@ struct fm_probe {
 
 	const struct fm_probe_ops *ops;
 
+	/* The job group in which this is being scheduled. */
+	fm_job_group_t *	group;
+
 	bool			blocking;
 
 	fm_rtt_stats_t *	rtt;

@@ -71,6 +71,38 @@ fm_scheduler_detach_target(fm_scheduler_t *sched, fm_target_t *target)
 }
 
 /*
+ * fm_probe primitives
+ */
+void
+fm_job_postpone(fm_probe_t *job)
+{
+	fm_job_group_t *job_group = job->group;
+
+	assert(job_group);
+	fm_job_move_to_group(job, &job_group->postponed_probes);
+
+	if (job->blocking)
+		job_group->plugged = true;
+
+	fm_log_debug("%s: postponed", job->fullname);
+}
+
+void
+fm_job_continue(fm_probe_t *job)
+{
+	fm_job_group_t *job_group = job->group;
+
+	assert(job_group);
+	fm_job_move_to_group(job, &job_group->ready_probes);
+
+	/* stop waiting, re-visit ASAP */
+	fm_timestamp_clear(&job->expires);
+
+	if (fm_debug_level >= 2)
+		fm_log_debug("%s: moved to ready", job->fullname);
+}
+
+/*
  * fm_job_group primitives
  */
 void
@@ -122,6 +154,9 @@ fm_job_group_is_done(const fm_job_group_t *job_group)
 fm_error_t
 fm_job_group_add_new(fm_job_group_t *job_group, fm_probe_t *job)
 {
+	assert(job->group == NULL);
+	job->group = job_group;
+
 	if (job->event_listener == NULL) {
 		fm_job_move_to_group(job, &job_group->ready_probes);
 	} else {

@@ -567,7 +567,7 @@ fm_probe_finish_waiting(fm_probe_t *probe)
 	if (probe->target == NULL) {
 		fm_log_warning("%s: probe %s not associated with any target?!", __func__, probe->name);
 	} else {
-		fm_target_continue_probe(probe->target, probe);
+		fm_job_continue(probe);
 	}
 }
 

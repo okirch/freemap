@@ -40,6 +40,7 @@ typedef struct fm_network fm_network_t;
 typedef struct fm_gateway fm_gateway_t;
 typedef struct fm_target_manager fm_target_manager_t;
 typedef struct fm_target_pool fm_target_pool_t;
+typedef struct fm_job_group fm_job_group_t;
 typedef struct fm_scheduler fm_scheduler_t;
 typedef struct fm_sched_stats fm_sched_stats_t;
 typedef struct fm_scanner fm_scanner_t;

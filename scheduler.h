@@ -87,6 +87,9 @@ extern bool		fm_job_group_reap_complete(fm_job_group_t *job_group);
 extern void		fm_job_group_destroy(fm_job_group_t *);
 extern bool		fm_job_group_is_done(const fm_job_group_t *);
 
+extern void		fm_job_postpone(fm_probe_t *);
+extern void		fm_job_continue(fm_probe_t *);
+
 static inline bool
 fm_job_list_is_empty(const struct hlist_head *head)
 {

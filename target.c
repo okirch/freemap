@@ -415,27 +415,6 @@ fm_target_is_done(const fm_target_t *target)
 	return fm_job_group_is_done(&target->job_group);
 }
 
-void
-fm_target_postpone_probe(fm_target_t *target, fm_probe_t *probe)
-{
-	fm_job_move_to_group(probe, &target->job_group.postponed_probes);
-
-	if (probe->blocking)
-		target->job_group.plugged = true;
-
-	fm_log_debug("%s: postponed", probe->fullname);
-}
-
-void
-fm_target_continue_probe(fm_target_t *target, fm_probe_t *probe)
-{
-	fm_job_move_to_group(probe, &target->job_group.ready_probes);
-	fm_timestamp_clear(&probe->expires);
-
-	if (fm_debug_level >= 2)
-		fm_log_debug("%s: moved to ready", probe->fullname);
-}
-
 /*
  * A new probe has been created. Schedule it.
  */

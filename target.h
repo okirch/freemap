@@ -84,9 +84,6 @@ extern void		fm_target_forget_pending(fm_target_t *target, const fm_probe_t *pro
 extern void		fm_target_schedule(fm_target_t *, fm_sched_stats_t *);
 extern unsigned int	fm_target_get_send_quota(fm_target_t *, unsigned int quota_limit);
 
-extern void		fm_target_postpone_probe(fm_target_t *, fm_probe_t *);
-extern void		fm_target_continue_probe(fm_target_t *, fm_probe_t *);
-
 extern void		fm_target_pool_make_active(fm_target_pool_t *);
 extern fm_target_t *	fm_target_pool_find(const fm_address_t *);
 
