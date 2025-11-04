@@ -187,13 +187,21 @@ fm_scanner_get_target_pool(fm_scanner_t *scanner)
 fm_scan_action_t *
 fm_scanner_get_action(fm_scanner_t *scanner, unsigned int index)
 {
-	return fm_scan_action_array_get(&scanner->requests, index);
+	const fm_scan_action_array_t *stage = fm_scanner_get_current_stage(scanner);
+
+	return fm_scan_action_array_get(stage, index);
 }
 
 static void
 fm_scanner_queue_action(fm_scanner_t *scanner, fm_scan_action_t *action)
 {
-	fm_scan_action_array_append(&scanner->requests, action);
+	fm_scan_action_array_t *stage = fm_scanner_get_current_stage(scanner);
+
+	if (action->mode == FM_PROBE_MODE_TOPO)
+		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_TOPO);
+	else
+		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_GENERAL);
+	fm_scan_action_array_append(stage, action);
 }
 
 double
@@ -210,12 +218,17 @@ fm_scanner_abort_target(fm_target_t *target)
 }
 
 void
-fm_scanner_insert_barrier(fm_scanner_t *scanner)
+fm_scanner_insert_barrier(fm_scanner_t *scanner, int probe_mode)
 {
-	fm_scan_action_array_t *reqs = &scanner->requests;
+	fm_scan_action_array_t *stage = fm_scanner_get_current_stage(scanner);
 
-        if (reqs->count) {
-                fm_scan_action_t *action = reqs->entries[reqs->count - 1];
+	if (probe_mode == FM_PROBE_MODE_TOPO)
+		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_TOPO);
+	else
+		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_GENERAL);
+
+        if (stage->count) {
+                fm_scan_action_t *action = stage->entries[stage->count - 1];
                 action->barrier = true;
         }
 }
@@ -326,6 +339,23 @@ fm_scanner_transmit(fm_scanner_t *scanner, struct timeval *timeout)
 	return true;
 }
 
+bool
+fm_scanner_next_stage(fm_scanner_t *scanner)
+{
+	while (++(scanner->current_stage) < __FM_SCAN_STAGE_MAX) {
+		fm_scan_action_array_t *stage;
+
+		stage = fm_scanner_get_current_stage(scanner);
+		if (stage->count > 0) {
+			fm_target_manager_restart(scanner->target_manager, scanner->current_stage);
+			return true;
+		}
+	}
+	scanner->current_stage = __FM_SCAN_STAGE_MAX;
+	return false;
+}
+
+
 fm_protocol_t *
 fm_scanner_get_protocol_engine(fm_scanner_t *scanner, const char *protocol_name)
 {
@@ -335,17 +365,25 @@ fm_scanner_get_protocol_engine(fm_scanner_t *scanner, const char *protocol_name)
 void
 fm_scanner_dump_program(fm_scanner_t *scanner)
 {
-	fm_scan_action_array_t *array = &scanner->requests;
-	unsigned int i;
+	unsigned int i, j;
 
 	printf("compiled program:\n");
-	for (i = 0; i < array->count; ++i) {
-		fm_scan_action_t *action = array->entries[i];
+	for (j = 0; j < __FM_SCAN_STAGE_MAX; ++j) {
+		fm_scan_action_array_t *array = fm_scanner_get_stage(scanner, j);
 
-		printf(" %2u: %s", i, action->id);
-		if (action->barrier)
-			printf("; barrier");
-		printf("\n");
+		if (array->count == 0)
+			continue;
+
+		printf("scan stage %d\n", j);
+
+		for (i = 0; i < array->count; ++i) {
+			fm_scan_action_t *action = array->entries[i];
+
+			printf(" %2u: %s", i, action->id);
+			if (action->barrier)
+				printf("; barrier");
+			printf("\n");
+		}
 	}
 }
 

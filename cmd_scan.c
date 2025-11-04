@@ -167,13 +167,17 @@ fm_command_perform_scan(fm_command_t *cmd)
 	while (true) {
 		struct timeval timeout;
 
-		if (!fm_scanner_transmit(scanner, &timeout)) {
+		if (fm_scanner_transmit(scanner, &timeout)) {
+			fm_socket_poll_all(&timeout);
+		} else
+		if (fm_scanner_next_stage(scanner)) {
+			fm_log_notice("Proceeding to stage %d\n", scanner->current_stage);
+		} else {
 			fm_log_notice("All probes completed (%.2f msec)\n",
 					fm_scanner_elapsed(scanner));
 			break;
 		}
 
-		fm_socket_poll_all(&timeout);
 	}
 
 	return 0;

@@ -92,7 +92,8 @@ struct fm_scanner {
 
 	const fm_service_catalog_t *service_catalog;
 
-	fm_scan_action_array_t	requests;
+	unsigned int		current_stage;
+	fm_scan_action_array_t	stage_requests[__FM_SCAN_STAGE_MAX];
 
 	const fm_protocol_engine_t *proto;
 };
@@ -100,6 +101,19 @@ struct fm_scanner {
 extern fm_scan_action_t *	fm_scan_action_create(int mode, const struct fm_scan_action_ops *ops, const char *id, fm_probe_class_t *);
 extern fm_scan_action_t *	fm_scanner_add_probe(fm_scanner_t *, const fm_config_probe_t *);
 extern void			fm_scanner_set_service_catalog(fm_scanner_t *, const fm_service_catalog_t *);
+
+static inline fm_scan_action_array_t *
+fm_scanner_get_stage(fm_scanner_t *scanner, unsigned int stage)
+{
+	assert(stage < __FM_SCAN_STAGE_MAX);
+	return &scanner->stage_requests[stage];
+}
+
+static inline fm_scan_action_array_t *
+fm_scanner_get_current_stage(fm_scanner_t *scanner)
+{
+	return fm_scanner_get_stage(scanner, scanner->current_stage);
+}
 
 #endif /* FREEMAP_SCANNER_H */
 
