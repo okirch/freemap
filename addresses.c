@@ -176,6 +176,37 @@ fm_address_get_ipv6(const fm_address_t *addr, struct in6_addr *raw_addr)
 	return true;
 }
 
+void
+fm_address_set_ipv4_local_broadcast(struct sockaddr_storage *ss)
+{
+	fm_address_set_ipv4(ss, 0xffffffff);
+}
+
+void
+fm_address_set_ipv6_all_hosts_multicast(struct sockaddr_storage *ss)
+{
+	static struct in6_addr all_hosts = { .s6_addr =  { 0xff, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 } };
+
+	fm_address_set_ipv6(ss, &all_hosts);
+}
+
+bool
+fm_address_ipv6_update_scope_id(fm_address_t *ss, int ifindex)
+{
+	struct sockaddr_in6 *six;
+
+	if (ss->ss_family != AF_INET6)
+		return false;
+
+	six = (struct sockaddr_in6 *) ss;
+
+	if (ntohs(six->sin6_addr.s6_addr16[0]) != 0xFE80)
+		return false;
+
+	six->sin6_scope_id = ifindex;
+	return true;
+}
+
 unsigned int
 fm_addrfamily_sockaddr_size(int family)
 {
