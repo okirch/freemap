@@ -81,6 +81,7 @@ fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *driver, int sotype)
 	entry->lladdr = *lladdr;
 	entry->sock = sock;
 	entry->protocol = driver;
+	entry->sotype = sotype;
 
 	hlist_append(&raw_sock_cache, &entry->link);
 
