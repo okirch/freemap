@@ -335,7 +335,6 @@ fm_socket_get_pending_error(fm_socket_t *sock, int *ret)
 	int saved_errno = errno;
 
 	if (getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, ret, &opt_size) < 0) {
-		printf("getsockopt(SO_ERROR): %m\n");
 		errno = saved_errno;
 		return false;
 	}
@@ -1007,6 +1006,7 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 {
 	fm_protocol_t *proto;
 	fm_pkt_t *pkt;
+	int err;
 
 	if ((proto = sock->proto) == NULL)
 		goto bad_setup;
@@ -1023,6 +1023,11 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 			fm_pkt_free(pkt);
 		} else if (errno != EAGAIN) {
 			fm_log_error("socket %d: POLLERR set but recvmsg failed: %m", sock->fd);
+		} else if (fm_socket_get_pending_error(sock, &err)) {
+			fm_log_notice("errqueue returned again, but sock error=%s", strerror(err));
+			pkt = fm_socket_build_error_packet(&sock->peer_address, errno);
+			fm_socket_process_error(sock, proto, pkt);
+			fm_pkt_free(pkt);
 		}
 
 		bits &= ~POLLERR;
