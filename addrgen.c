@@ -489,14 +489,37 @@ fm_local_address_enumerator_add_single_address(struct fm_simple_address_enumerat
 	fm_address_array_append(&simple->addrs, addr);
 }
 
+static bool
+fm_local_address_enumerator_add_discovery(const fm_interface_t *nic, const fm_address_prefix_t *prefix, fm_target_manager_t *target_manager)
+{
+	static bool complained = false;
+	fm_address_enumerator_t *child = NULL;
+	int family;
+
+	family = prefix->address.ss_family;
+
+	child = fm_local_discovery_enumerator_create(nic, family, &prefix->source_addr);
+	if (child == NULL) {
+		if (!complained) {
+			fm_log_error("%s: trying to perform address discovery, but I lack privileges", 
+					fm_interface_get_name(nic));
+			complained = true;
+		}
+		return false;
+	}
+
+	fm_target_manager_add_address_generator(target_manager, child);
+	return true;
+}
+
 bool
 fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *target_manager)
 {
 	fm_address_prefix_array_t prefix_array = { 0 };
 	struct fm_simple_address_enumerator *simple = NULL;
 	const fm_interface_t *nic;
-	bool ipv6_complained = false;
-	unsigned int i, num_created = 0;
+	const fm_address_prefix_t *ipv6_discovery_prefix = NULL;
+	unsigned int i, old_count, num_created = 0;
 
 	if (!(nic = fm_interface_by_name(ifname))) {
 		fm_log_error("Cannot generate local address generator for interface %s: unknown interface", ifname);
@@ -505,8 +528,10 @@ fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *targ
 
 	fm_interface_get_local_prefixes(nic, &prefix_array);
 
+	old_count = fm_target_manager_get_generator_count(target_manager);
 	for (i = 0; i < prefix_array.count; ++i) {
 		const fm_address_prefix_t *prefix = &prefix_array.elements[i];
+		const fm_address_t *tgt_addr = &prefix->address;
 		fm_address_enumerator_t *child = NULL;
 
 		if (!fm_address_generator_address_eligible(&prefix->address))
@@ -520,19 +545,18 @@ fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *targ
 
 		if (prefix->address.ss_family == AF_INET) {
 			if (prefix->pfxlen == 32)
-				fm_local_address_enumerator_add_single_address(&simple, &prefix->address, target_manager);
+				fm_local_address_enumerator_add_single_address(&simple, tgt_addr, target_manager);
 			else
-				child = fm_ipv4_network_enumerator(&prefix->address, prefix->pfxlen);
+				child = fm_ipv4_network_enumerator(tgt_addr, prefix->pfxlen);
 		} else
 		if (prefix->address.ss_family == AF_INET6) {
 			if (prefix->pfxlen == 128) {
-				fm_local_address_enumerator_add_single_address(&simple, &prefix->address, target_manager);
+				fm_local_address_enumerator_add_single_address(&simple, tgt_addr, target_manager);
+			} else if (fm_global.address_generation.try_all) {
+				fm_local_address_enumerator_add_discovery(nic, prefix, target_manager);
 			} else {
-				child = fm_local_discovery_enumerator_create(nic, AF_INET6, &prefix->source_addr);
-				if (child == NULL && !ipv6_complained) {
-					fm_log_warning("Interface %s is on an IPv6 network, you I cannot perform discovery on it", ifname);
-					ipv6_complained = true;
-				}
+				if (ipv6_discovery_prefix == NULL || fm_address_is_ipv6_link_local(&ipv6_discovery_prefix->address))
+					ipv6_discovery_prefix = prefix;
 			}
 		} else {
 			/* silently ignore anything else (for those of you still on Netware IPX, I pity you) */
@@ -544,6 +568,10 @@ fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *targ
 		}
 	}
 
+	if (ipv6_discovery_prefix != NULL)
+		fm_local_address_enumerator_add_discovery(nic, ipv6_discovery_prefix, target_manager);
+
+	num_created = fm_target_manager_get_generator_count(target_manager) - old_count;
 	if (num_created == 0)
 		fm_log_warning("Empty local address generator for interface %s: no local prefixes", ifname);
 

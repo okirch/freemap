@@ -201,6 +201,12 @@ fm_target_manager_add_address_generator(fm_target_manager_t *mgr, fm_address_enu
 	fm_address_enumerator_array_append(&mgr->address_generators, agen);
 }
 
+unsigned int
+fm_target_manager_get_generator_count(const fm_target_manager_t *mgr)
+{
+	return mgr->address_generators.count;
+}
+
 fm_target_t *
 fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 {

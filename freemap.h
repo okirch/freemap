@@ -86,6 +86,7 @@ extern double		fm_ratelimit_transfer(fm_ratelimit_t *from, fm_ratelimit_t *to, u
 extern double		fm_ratelimit_wait_until(const fm_ratelimit_t *rl, unsigned int ntokens);
 
 extern fm_target_manager_t *fm_target_manager_create(void);
+extern unsigned int	fm_target_manager_get_generator_count(const fm_target_manager_t *);
 extern void		fm_target_manager_restart(fm_target_manager_t *, unsigned int stage);
 extern void		fm_target_manager_add_address_generator(fm_target_manager_t *, fm_address_enumerator_t *);
 extern bool		fm_target_manager_replenish_pool(fm_target_manager_t *mgr, fm_target_pool_t *pool);
