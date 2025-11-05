@@ -47,6 +47,9 @@ fm_protocol_asset_get_port_state(const fm_protocol_asset_t *proto, unsigned int 
 		return FM_ASSET_STATE_UNDEF;
 	}
 
+	if (port >= proto->ondisk->max_port)
+		return FM_ASSET_STATE_UNDEF;
+
 	word_index = bit_index / 32;
 	shift = bit_index % 32;
 
@@ -67,6 +70,9 @@ fm_protocol_asset_set_port_state(fm_protocol_asset_t *proto, unsigned int port, 
 		fm_log_error("%s: ignoring bogus port number %u", __func__, port);
 		return false;
 	}
+
+	if (port >= proto->ondisk->max_port)
+		proto->ondisk->max_port = port + 1;
 
 	word_index = bit_index / 32;
 	shift = bit_index % 32;
@@ -387,19 +393,14 @@ fm_host_asset_report_ports(const fm_host_asset_t *host,
 	}
 }
 
-/*
- * Write all assets to the project directory
- */
 void
-fm_assets_write(const char *project_dir)
+fm_assets_attach(const char *asset_dir)
 {
-	fm_assets_write_table(project_dir, AF_INET, &fm_host_asset_table_ipv4);
-	fm_assets_write_table(project_dir, AF_INET6, &fm_host_asset_table_ipv6);
+	fm_assetio_set_mapping(asset_dir, true);
 }
 
 void
-fm_assets_read(const char *project_dir)
+fm_assets_attach_readonly(const char *asset_dir)
 {
-	fm_assets_read_table(project_dir, AF_INET, &fm_host_asset_table_ipv4);
-	fm_assets_read_table(project_dir, AF_INET6, &fm_host_asset_table_ipv6);
+	fm_assetio_set_mapping(asset_dir, false);
 }
