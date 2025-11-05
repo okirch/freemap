@@ -30,6 +30,8 @@
 
 #include "addresses.h"
 #include "network.h"
+#include "protocols.h"
+#include "probe.h"
 
 extern const fm_address_prefix_t *	fm_local_prefix_for_address(const fm_address_t *);
 
@@ -369,6 +371,107 @@ fm_create_cidr_address_enumerator(const char *addr_string, fm_target_manager_t *
 }
 
 /*
+ * Address generator that tries to discover hosts on a local network, typically using
+ * something like icmp broadcasts
+ */
+struct fm_local_discovery_enumerator {
+	fm_address_enumerator_t base;
+
+	fm_job_t *		pending;
+	fm_completion_t *	completion;
+
+	unsigned int		index;
+	fm_address_array_t	found;
+};
+
+static fm_error_t
+fm_local_discovery_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
+{
+	struct fm_local_discovery_enumerator *disco = (struct fm_local_discovery_enumerator *) agen;
+
+	if (disco->index < disco->found.count) {
+		*ret = disco->found.elements[disco->index++];
+		return 0;
+	}
+
+	/* The discovery job is done; no more new addresses. */
+	if (disco->pending == 0)
+		return FM_SEND_ERROR;
+
+	return FM_TRY_AGAIN;
+}
+
+static void
+fm_local_discovery_enumerator_restart(fm_address_enumerator_t *agen, int stage)
+{
+	struct fm_local_discovery_enumerator *disco = (struct fm_local_discovery_enumerator *) agen;
+
+	disco->index = 0;
+}
+
+static void
+fm_local_discovery_job_callback(const fm_job_t *job, void *user_data)
+{
+	struct fm_local_discovery_enumerator *disco = user_data;
+
+	if (disco->pending != job)
+		return;
+
+	fm_log_debug("local address discovery job is complete");
+
+	fm_completion_free(disco->completion);
+	disco->pending = NULL;
+	disco->completion = NULL;
+}
+
+static void
+fm_local_discovery_info_callback(const fm_address_t *new_addr, void *user_data)
+{
+	struct fm_local_discovery_enumerator *disco = user_data;
+
+	if (fm_address_generator_address_eligible(new_addr))
+		fm_address_array_append_unique(&disco->found, new_addr);
+}
+
+static const struct fm_address_enumerator_ops fm_local_discovery_enumerator_ops = {
+	.obj_size	= sizeof(struct fm_local_discovery_enumerator),
+	.name		= "icmp-discovery",
+	.destroy	= NULL,
+	.get_one_address= fm_local_discovery_enumerator_get_one,
+	.restart	= fm_local_discovery_enumerator_restart,
+};
+
+static fm_address_enumerator_t *
+fm_local_discovery_enumerator_create(const fm_interface_t *nic, int family, const fm_address_t *src_addr)
+{
+	struct fm_local_discovery_enumerator *disco;
+	fm_probe_params_t probe_params = { 0 };
+	fm_protocol_t *proto;
+	fm_probe_t *probe;
+
+	disco = NEW_ADDRESS_ENUMERATOR(fm_local_discovery_enumerator);
+
+	proto = fm_protocol_by_id(FM_PROTO_ICMP);
+	probe_params.retries = 3;
+	probe_params.ttl = 1;
+
+	probe = NULL;
+	if (probe == NULL) {
+		free(disco);
+		return NULL;
+	}
+
+	disco->pending = &probe->job;
+	disco->completion = fm_probe_wait_for_completion(probe, fm_local_discovery_job_callback, disco);
+
+	/* fm_job_group_add_new(&probe->job, fm_scheduler_get_global_queue()); */
+	fm_probe_run_globally(probe);
+
+	return &disco->base;
+}
+
+
+/*
  * Local address enumerator
  */
 static void
@@ -420,11 +523,14 @@ fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *targ
 				child = fm_ipv4_network_enumerator(&prefix->address, prefix->pfxlen);
 		} else
 		if (prefix->address.ss_family == AF_INET6) {
-			if (prefix->pfxlen == 128)
+			if (prefix->pfxlen == 128) {
 				fm_local_address_enumerator_add_single_address(&simple, &prefix->address, target_manager);
-			else if (!ipv6_complained) {
-				fm_log_warning("Interface %s is on an IPv6 network, but I don't support this yet", ifname);
-				ipv6_complained = true;
+			} else {
+				child = fm_local_discovery_enumerator_create(nic, AF_INET6, &prefix->source_addr);
+				if (child == NULL && !ipv6_complained) {
+					fm_log_warning("Interface %s is on an IPv6 network, you I cannot perform discovery on it", ifname);
+					ipv6_complained = true;
+				}
 			}
 		} else {
 			/* silently ignore anything else (for those of you still on Netware IPX, I pity you) */

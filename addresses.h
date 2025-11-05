@@ -99,6 +99,8 @@ extern bool			fm_create_simple_address_enumerator(const char *, fm_target_manage
 extern bool			fm_create_cidr_address_enumerator(const char *, fm_target_manager_t *);
 extern bool			fm_create_local_address_enumerator(const char *, fm_target_manager_t *);
 
+extern bool			fm_address_array_append_unique(fm_address_array_t *array, const fm_address_t *addr);
+
 static inline unsigned int
 fm_addrfamily_max_addrbits(int af)
 {
