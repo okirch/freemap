@@ -42,6 +42,9 @@ typedef struct fm_icmp_request {
 	fm_probe_params_t	params;
 	fm_icmp_extra_params_t	extra_params;
 
+	fm_buffer_t *		packet_header;
+	struct fm_csum_hdr *	csum_header;
+
 	struct icmp_params {
 		int		ipproto;
 		uint32_t	ident;

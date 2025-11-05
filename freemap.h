@@ -190,6 +190,11 @@ extern fm_socket_t *	fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *
 extern const char *	fm_arp_type_to_string(int hatype);
 extern bool		fm_arp_discover(fm_protocol_t *proto, fm_target_t *target, int retries);
 
+extern fm_probe_t *	fm_icmp_create_broadcast_probe(fm_protocol_t *, int, const fm_interface_t *,
+					const fm_address_t *,
+					void (*callback)(const fm_address_t *, void *user_data), void *user_data,
+					const fm_probe_params_t *, const void *);
+
 extern void		fm_set_logfile(FILE *fp);
 extern void		fm_trace(const char *fmt, ...);
 extern void		fm_log_fatal(const char *fmt, ...);
