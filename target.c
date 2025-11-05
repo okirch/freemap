@@ -314,6 +314,7 @@ fm_target_create(const fm_address_t *address, fm_network_t *network)
 		fm_interface_get_network_address(tgt->local_device, address->ss_family, &tgt->local_bind_address);
 
 	tgt->host_asset = fm_host_asset_get(address, true);
+	fm_host_asset_attach(tgt->host_asset);
 
 	fm_job_group_init(&tgt->job_group, fm_address_format(&tgt->address), &tgt->host_rate_limit);
 
@@ -347,7 +348,9 @@ fm_target_free(fm_target_t *target)
 
 	/* destroy extant requests */
 
-	/* destroy the log, too */
+	/* Release the host asset (meaning it can be unmapped) */
+	if (target->host_asset != NULL)
+		fm_host_asset_detach(target->host_asset);
 
 	free(target);
 }

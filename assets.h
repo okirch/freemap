@@ -46,6 +46,9 @@ typedef struct fm_host_asset_ondisk {
 
 struct fm_host_asset {
 	fm_address_t		address;
+
+	int			map_flags;
+
 	fm_asset_state_t	state;
 
 	fm_protocol_asset_t *	protocols[__FM_PROTO_MAX];

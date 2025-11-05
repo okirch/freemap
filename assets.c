@@ -24,6 +24,8 @@
 #include "addresses.h"
 #include "protocols.h"
 
+#define FM_HOST_ASSET_ATTACHED	0x0001
+#define FM_HOST_ASSET_MAPPED	0x0002
 
 static fm_host_asset_table_t	fm_host_asset_table_ipv4;
 static fm_host_asset_table_t	fm_host_asset_table_ipv6;
@@ -197,6 +199,33 @@ fm_host_asset_get(const fm_address_t *addr, bool create)
 	return host;
 }
 
+/*
+ * Attach or detach a host asset
+ */
+void
+fm_host_asset_attach(fm_host_asset_t *host)
+{
+	host->map_flags |= FM_HOST_ASSET_ATTACHED;
+}
+
+void
+fm_host_asset_detach(fm_host_asset_t *host)
+{
+	host->map_flags &= ~FM_HOST_ASSET_ATTACHED;
+	if (host->map_flags & FM_HOST_ASSET_MAPPED) {
+		/* unmap on-disk data */
+		host->map_flags &= ~FM_HOST_ASSET_MAPPED;
+	}
+}
+
+static bool
+fm_host_asset_map(fm_host_asset_t *host)
+{
+	host->map_flags |= FM_HOST_ASSET_MAPPED;
+	return true;
+}
+
+
 static fm_protocol_asset_t *
 fm_host_asset_get_protocol(fm_host_asset_t *host, unsigned int proto_id, bool create)
 {
@@ -206,6 +235,9 @@ fm_host_asset_get_protocol(fm_host_asset_t *host, unsigned int proto_id, bool cr
 		fm_log_error("%s: ignoring bogus protocol id %u", __func__, proto_id);
 		return NULL;
 	}
+
+	if (!fm_host_asset_map(host))
+		return NULL;
 
 	proto = host->protocols[proto_id];
 	if (proto == NULL && create) {
@@ -220,14 +252,20 @@ fm_host_asset_get_protocol(fm_host_asset_t *host, unsigned int proto_id, bool cr
  * host state
  */
 fm_asset_state_t
-fm_host_asset_get_state(const fm_host_asset_t *host)
+fm_host_asset_get_state(fm_host_asset_t *host)
 {
+	if (!fm_host_asset_map(host))
+		return 0;
+
 	return host->state;
 }
 
 bool
 fm_host_asset_update_state(fm_host_asset_t *host, fm_asset_state_t state)
 {
+	if (!fm_host_asset_map(host))
+		return false;
+
 	/* Only update if the new state is "better", where
 	 *  open > closed > probe_sent > undef
 	 */
@@ -260,6 +298,9 @@ bool
 fm_host_asset_update_port_state(fm_host_asset_t *host, unsigned int proto_id, unsigned int port, fm_asset_state_t state)
 {
 	fm_protocol_asset_t *proto;
+
+	if (!fm_host_asset_map(host))
+		return false;
 
 	/* if we reached a port, we can obviously reach the host */
 	if (state == FM_ASSET_STATE_OPEN)
