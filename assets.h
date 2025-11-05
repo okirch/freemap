@@ -90,4 +90,10 @@ extern void		fm_assetio_unmap_host(fm_host_asset_t *host);
 
 void			fm_assetio_set_mapping(const char *project_dir, bool rw);
 
+static inline bool
+fm_host_asset_is_mapped(const fm_host_asset_t *host)
+{
+	return host->mapping != NULL;
+}
+
 #endif /* FREEMAP_ASSETS_H */

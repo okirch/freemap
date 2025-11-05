@@ -245,7 +245,7 @@ fm_host_asset_get_protocol(fm_host_asset_t *host, unsigned int proto_id, bool cr
 		return NULL;
 	}
 
-	if (!fm_host_asset_map(host))
+	if (!fm_host_asset_is_mapped(host))
 		return NULL;
 
 	return &host->protocols[proto_id];
@@ -257,7 +257,7 @@ fm_host_asset_get_protocol(fm_host_asset_t *host, unsigned int proto_id, bool cr
 fm_asset_state_t
 fm_host_asset_get_state(fm_host_asset_t *host)
 {
-	if (!fm_host_asset_map(host))
+	if (!fm_host_asset_is_mapped(host))
 		return 0;
 
 	return host->main->host_state;
@@ -266,7 +266,7 @@ fm_host_asset_get_state(fm_host_asset_t *host)
 bool
 fm_host_asset_update_state(fm_host_asset_t *host, fm_asset_state_t state)
 {
-	if (!fm_host_asset_map(host))
+	if (!fm_host_asset_is_mapped(host))
 		return false;
 
 	/* Only update if the new state is "better", where
@@ -302,7 +302,7 @@ fm_host_asset_update_port_state(fm_host_asset_t *host, unsigned int proto_id, un
 {
 	fm_protocol_asset_t *proto;
 
-	if (!fm_host_asset_map(host))
+	if (!fm_host_asset_is_mapped(host))
 		return false;
 
 	/* if we reached a port, we can obviously reach the host */
@@ -342,6 +342,7 @@ bool
 fm_host_asset_update_state_by_address(const fm_address_t *addr, fm_asset_state_t state)
 {
 	fm_host_asset_t *host;
+	bool ok;
 
 	if (addr == NULL)
 		return false;
@@ -350,7 +351,19 @@ fm_host_asset_update_state_by_address(const fm_address_t *addr, fm_asset_state_t
 	if (host == NULL)
 		return false;
 
-	if (fm_host_asset_update_state(host, state)) {
+	if (fm_host_asset_is_mapped(host)) {
+		/* easy case - already mapped */
+		ok = fm_host_asset_update_state(host, state);
+	} else {
+		/* map temporarily */
+		if (!fm_host_asset_map(host))
+			return false;
+
+		ok = fm_host_asset_update_state(host, state);
+		fm_assetio_unmap_host(host);
+	}
+
+	if (ok) {
 		/* fixme: post event */
 		return true;
 	}
