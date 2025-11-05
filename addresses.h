@@ -85,6 +85,9 @@ struct fm_address_enumerator_list {
 extern fm_address_enumerator_t *fm_address_enumerator_alloc(const struct fm_address_enumerator_ops *);
 extern void			fm_address_enumerator_array_append(fm_address_enumerator_array_t *,
 						fm_address_enumerator_t *);
+extern void			fm_address_enumerator_array_remove_shallow(fm_address_enumerator_array_t *,
+						unsigned int);
+extern void			fm_address_enumerator_array_destroy_shallow(fm_address_enumerator_array_t *);
 extern const unsigned char *	fm_address_get_raw_addr(const fm_address_t *, unsigned int *nbits);
 extern void			fm_interface_add(const char *name, const struct sockaddr_ll *);
 extern const fm_address_prefix_t *fm_local_prefix_for_address(const fm_address_t *addr);

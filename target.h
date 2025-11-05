@@ -74,10 +74,11 @@ struct fm_target_manager {
 	fm_address_enumerator_array_t address_generators;
 
 	bool			all_targets_exhausted;
-	unsigned int		current_generator;
 
 	/* Initial value for the packet send rate per target host. */
 	unsigned int		host_packet_rate;
+
+	fm_address_enumerator_array_t active_generators;
 };
 
 extern void		fm_target_forget_pending(fm_target_t *target, const fm_probe_t *probe);

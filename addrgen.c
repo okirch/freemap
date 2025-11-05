@@ -98,6 +98,28 @@ fm_address_enumerator_array_append(fm_address_enumerator_array_t *array, fm_addr
 	array->entries[array->count++] = agen;
 }
 
+void
+fm_address_enumerator_array_remove_shallow(fm_address_enumerator_array_t *array, unsigned int index)
+{
+	if (index >= array->count)
+		return;
+
+	while (index + 1 < array->count) {
+		array->entries[index] = array->entries[index + 1];
+		++index;
+	}
+	array->entries[index] = NULL;
+	array->count -= 1;
+}
+
+void
+fm_address_enumerator_array_destroy_shallow(fm_address_enumerator_array_t *array)
+{
+	if (array->entries)
+		free(array->entries);
+	memset(array, 0, sizeof(*array));
+}
+
 static bool
 fm_try_parse_cidr(const char *addr_string, struct sockaddr_storage *ss, unsigned int *nbits)
 {

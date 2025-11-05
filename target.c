@@ -204,25 +204,31 @@ fm_target_manager_add_address_generator(fm_target_manager_t *mgr, fm_address_enu
 fm_target_t *
 fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 {
-	fm_address_enumerator_t *agen;
 	fm_target_t *target = NULL;
+	unsigned int index = 0;
 
-	while (target == NULL) {
+	while (target == NULL && index < mgr->active_generators.count) {
+		fm_address_enumerator_t *agen;
 		fm_network_t *target_net;
 		fm_address_t target_addr;
 		fm_error_t error;
 
-		if (mgr->current_generator >= mgr->address_generators.count)
+		agen = mgr->active_generators.entries[index];
+		if (agen == NULL)
 			break;
 
-		agen = mgr->address_generators.entries[mgr->current_generator];
-
 		error = fm_address_enumerator_get_one(agen, &target_addr);
+		if (error == FM_TRY_AGAIN) {
+			index++;
+			continue;
+		} else
 		if (error < 0) {
 			/* This address generator is spent. Remove it from the active list */
-			mgr->current_generator++;
+			fm_address_enumerator_array_destroy_shallow(&mgr->active_generators);
 			continue;
 		}
+
+		/* fm_log_debug("agen %u returns %s", index, fm_address_format(&target_addr)); */
 
 		target_net = fm_network_for_host(&target_addr);
 		if (target_net->last_hop == NULL)
@@ -237,6 +243,12 @@ fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 				mgr->host_packet_rate / 10);
 	}
 
+	/* When all generators have completed, call it a day */
+	if (target == NULL && mgr->active_generators.count == 0) {
+		fm_log_debug("Exhausted all address generators");
+		mgr->all_targets_exhausted = true;
+	}
+
 	return target;
 }
 
@@ -247,10 +259,8 @@ fm_target_manager_replenish_pool(fm_target_manager_t *mgr, fm_target_pool_t *poo
 		while (fm_target_pool_has_free_slots(pool)) {
 			fm_target_t *target;
 
-			if ((target = fm_target_manager_get_next_target(mgr)) == NULL) {
-				mgr->all_targets_exhausted = true;
+			if ((target = fm_target_manager_get_next_target(mgr)) == NULL)
 				break;
-			}
 
 			fm_log_debug("%s added to address pool\n", fm_target_get_id(target));
 			fm_target_pool_add(pool, target);
@@ -259,7 +269,7 @@ fm_target_manager_replenish_pool(fm_target_manager_t *mgr, fm_target_pool_t *poo
 		fm_target_pool_check(pool);
 	}
 
-	return pool->count > 0;
+	return pool->count > 0 || !mgr->all_targets_exhausted;
 }
 
 void
@@ -268,11 +278,12 @@ fm_target_manager_restart(fm_target_manager_t *mgr, unsigned int stage)
 	fm_address_enumerator_array_t *array = &mgr->address_generators;
 	unsigned int i;
 
-	mgr->current_generator = 0;
+	fm_address_enumerator_array_destroy_shallow(&mgr->active_generators);
 	for (i = 0; i < array->count; ++i) {
 		fm_address_enumerator_t *gen = array->entries[i];
 
 		fm_address_enumerator_restart(gen, stage);
+		fm_address_enumerator_array_append(&mgr->active_generators, gen);
 	}
 	mgr->all_targets_exhausted = false;
 }
