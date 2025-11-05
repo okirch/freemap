@@ -27,27 +27,23 @@ typedef uint32_t		fm_asset_port_bitmap_t[MAX_PORT_PROBE_WORDS];
 struct fm_protocol_asset {
 	unsigned int		proto_id;	 /* FM_PROTO_* */
 
-	/* brute force; space optimization comes later */
-	uint32_t		ports[MAX_PORT_PROBE_WORDS];
+	uint32_t *		ports;
 };
 
 typedef struct fm_protocol_asset_ondisk {
-	unsigned int	state;
-	unsigned int	max_port;
-	void *		bitmap;
+	unsigned int		state;
+	unsigned int		max_port;
 } fm_protocol_asset_ondisk_t;
 
 typedef struct fm_host_asset_ondisk {
-	unsigned int	state;
+	unsigned int		host_state;
 
 	fm_protocol_asset_ondisk_t protocols[__FM_PROTO_MAX];
 } fm_host_asset_ondisk_t;
 
 typedef struct fm_assetio_mapped {
-	void *		addr;
-	size_t		size;
-
-	fm_host_asset_ondisk_t *main;
+	void *			addr;
+	size_t			size;
 } fm_assetio_mapped_t;
 
 struct fm_host_asset {
@@ -57,7 +53,9 @@ struct fm_host_asset {
 	fm_asset_state_t	state;
 
 	fm_assetio_mapped_t *	mapping;
-	fm_protocol_asset_t *	protocols[__FM_PROTO_MAX];
+
+	fm_host_asset_ondisk_t *main;
+	fm_protocol_asset_t	protocols[__FM_PROTO_MAX];
 };
 
 typedef struct fm_host_asset_table fm_host_asset_table_t;

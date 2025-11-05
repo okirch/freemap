@@ -267,12 +267,6 @@ fm_assetio_map(struct fm_asset_path *path, struct fm_asset_fileformat *fmt, bool
 	mapped->addr = addr;
 	mapped->size = fmt->size;
 
-	mapped->main = (fm_host_asset_ondisk_t *) (addr + fmt->main_offset);
-	for (i = 0; i < __FM_PROTO_MAX; ++i) {
-		void *port_addr = (addr + fmt->port_map_offset[i]);
-		mapped->main->protocols[i].bitmap = port_addr;
-	}
-
 	return mapped;
 }
 
@@ -332,6 +326,7 @@ fm_assetio_read_host(struct fm_asset_path *path, fm_host_asset_t *host)
 	if (!(mapped = fm_assetio_map_read(path)))
 		return;
 
+#if 0
 	disk = mapped->main;
 
 	host->state = disk->state;
@@ -349,6 +344,7 @@ fm_assetio_read_host(struct fm_asset_path *path, fm_host_asset_t *host)
 		if (proto_on_disk->max_port != 0)
 			memcpy(proto->ports, proto_on_disk->bitmap, sizeof(proto->ports));
 	}
+#endif
 
 	fm_assetio_unmap(mapped);
 }
@@ -367,6 +363,7 @@ fm_assetio_write_host(struct fm_asset_path *path, const fm_host_asset_t *host)
 	if (!(mapped = fm_assetio_map_write(path)))
 		return;
 
+#if 0
 	disk = mapped->main;
 	disk->state = host->state;
 
@@ -394,6 +391,7 @@ fm_assetio_write_host(struct fm_asset_path *path, const fm_host_asset_t *host)
 
 		proto_on_disk->bitmap = NULL;
 	}
+#endif
 
 	fm_assetio_unmap(mapped);
 }
@@ -522,6 +520,32 @@ fm_assets_write_table(const char *project_dir, int family, const fm_host_asset_t
 	fm_asset_path_destroy(&path);
 }
 
+static void *
+fm_assetio_map_range(fm_assetio_mapped_t *mapping, unsigned int offset, unsigned int len)
+{
+	if (offset >= mapping->size || mapping->size - offset < len)
+		return NULL;
+	return mapping->addr + offset;
+}
+
+static bool
+fm_assetio_setup_mapping(fm_host_asset_t *host, const struct fm_asset_fileformat *fmt)
+{
+	unsigned int i;
+
+	if (!host->mapping)
+		return false;
+
+	for (i = 0; i < __FM_PROTO_MAX; ++i) {
+		fm_protocol_asset_t *proto = &host->protocols[i];
+
+		proto->proto_id = i;
+		proto->ports = fm_assetio_map_range(host->mapping, fmt->port_map_offset[i], sizeof(fm_asset_port_bitmap_t));
+	}
+
+	return true;
+}
+
 bool
 fm_assetio_map_host(fm_host_asset_t *host)
 {
@@ -534,6 +558,8 @@ fm_assetio_map_host(fm_host_asset_t *host)
 		goto out;
 
 	host->mapping = fm_assetio_map(&path, &path.format, fm_assetio_read_write);
+
+	fm_assetio_setup_mapping(host, &path.format);
 
 out:
 	fm_asset_path_destroy(&path);

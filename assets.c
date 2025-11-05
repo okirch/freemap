@@ -36,16 +36,6 @@ static fm_host_asset_table_t	fm_host_asset_table_ipv6;
 /*
  * Protocol assets
  */
-static fm_protocol_asset_t *
-fm_protocol_asset_alloc(unsigned int proto_id)
-{
-	fm_protocol_asset_t *protocol;
-
-	protocol = calloc(1, sizeof(*protocol));
-	protocol->proto_id = proto_id;
-	return protocol;
-}
-
 static fm_asset_state_t
 fm_protocol_asset_get_port_state(const fm_protocol_asset_t *proto, unsigned int port)
 {
@@ -244,8 +234,6 @@ fm_host_asset_map(fm_host_asset_t *host)
 static fm_protocol_asset_t *
 fm_host_asset_get_protocol(fm_host_asset_t *host, unsigned int proto_id, bool create)
 {
-	fm_protocol_asset_t *proto;
-
 	if (proto_id >= __FM_PROTO_MAX) {
 		fm_log_error("%s: ignoring bogus protocol id %u", __func__, proto_id);
 		return NULL;
@@ -254,13 +242,7 @@ fm_host_asset_get_protocol(fm_host_asset_t *host, unsigned int proto_id, bool cr
 	if (!fm_host_asset_map(host))
 		return NULL;
 
-	proto = host->protocols[proto_id];
-	if (proto == NULL && create) {
-		proto = fm_protocol_asset_alloc(proto_id);
-		host->protocols[proto_id] = proto;
-	}
-
-	return proto;
+	return &host->protocols[proto_id];
 }
 
 /*
@@ -381,7 +363,7 @@ fm_host_asset_report_ports(const fm_host_asset_t *host,
 	unsigned int i;
 
 	for (i = 0; i < __FM_PROTO_MAX; ++i) {
-		const fm_protocol_asset_t *proto = host->protocols[i];
+		const fm_protocol_asset_t *proto = &host->protocols[i];
 		const char *proto_name;
 		unsigned int word_index;
 
