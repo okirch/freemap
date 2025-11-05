@@ -47,4 +47,7 @@ struct fm_host_asset_table {
 extern fm_asset_state_t	fm_protocol_asset_get_state(const fm_protocol_asset_t *proto);
 extern bool		fm_protocol_asset_is_any_port_open(const fm_protocol_asset_t *proto);
 
+extern void		fm_assets_write_table(const char *project_dir, int family, const fm_host_asset_table_t *table);
+extern void		fm_assets_read_table(const char *project_dir, int family, fm_host_asset_table_t *table);
+
 #endif /* FREEMAP_ASSETS_H */

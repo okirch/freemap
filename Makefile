@@ -24,6 +24,7 @@ OBJS	= projects.o \
 	  netlink.o \
 	  neighbor.o \
 	  assets.o \
+	  assetio.o \
 	  report.o \
 	  program.o \
 	  config.o \

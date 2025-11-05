@@ -159,6 +159,8 @@ fm_command_perform_scan(fm_command_t *cmd)
 	if (scan_options.dump)
 		fm_scanner_dump_program(scanner);
 
+	fm_assets_read(fm_project_get_asset_path(project));
+
 	if (!fm_scanner_ready(scanner)) {
 		fprintf(stderr, "scanner is not fully configured\n");
 		return 1;
@@ -179,6 +181,8 @@ fm_command_perform_scan(fm_command_t *cmd)
 		}
 
 	}
+
+	fm_assets_write(fm_project_get_asset_path(project));
 
 	return 0;
 }

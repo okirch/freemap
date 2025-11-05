@@ -348,3 +348,20 @@ fm_host_asset_report_ports(const fm_host_asset_t *host,
 		}
 	}
 }
+
+/*
+ * Write all assets to the project directory
+ */
+void
+fm_assets_write(const char *project_dir)
+{
+	fm_assets_write_table(project_dir, AF_INET, &fm_host_asset_table_ipv4);
+	fm_assets_write_table(project_dir, AF_INET6, &fm_host_asset_table_ipv6);
+}
+
+void
+fm_assets_read(const char *project_dir)
+{
+	fm_assets_read_table(project_dir, AF_INET, &fm_host_asset_table_ipv4);
+	fm_assets_read_table(project_dir, AF_INET6, &fm_host_asset_table_ipv6);
+}

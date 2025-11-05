@@ -29,6 +29,9 @@ extern bool		fm_config_load(fm_config_t *, const char *path);
 extern fm_config_library_t *fm_config_load_library(void);
 extern fm_config_routine_t *fm_config_load_routine(int mode, const char *name);
 
+extern void		fm_assets_write(const char *project_dir);
+extern void		fm_assets_read(const char *project_dir);
+
 const char *		fm_strerror(fm_error_t);
 
 extern fm_report_t *	fm_report_create(void);
