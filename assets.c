@@ -19,34 +19,11 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "assets.h"
 #include "freemap.h"
 #include "addresses.h"
 #include "protocols.h"
 
-
-#define MAX_PORT_PROBE_WORDS	(65536 * 2 / 32)
-
-struct fm_protocol_asset {
-	unsigned int		proto_id;	 /* FM_PROTO_* */
-
-	/* brute force; space optimization comes later */
-	uint32_t		ports[MAX_PORT_PROBE_WORDS];
-};
-
-struct fm_host_asset {
-	fm_address_t		address;
-	fm_asset_state_t	state;
-
-	fm_protocol_asset_t *	protocols[__FM_PROTO_MAX];
-};
-
-typedef struct fm_host_asset_table fm_host_asset_table_t;
-struct fm_host_asset_table {
-	union {
-		fm_host_asset_table_t *table[256];
-		fm_host_asset_t	*host[256];
-	};
-};
 
 static fm_host_asset_table_t	fm_host_asset_table_ipv4;
 static fm_host_asset_table_t	fm_host_asset_table_ipv6;
