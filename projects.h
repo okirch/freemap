@@ -38,6 +38,7 @@ extern bool			fm_project_exists(void);
 extern fm_project_t *		fm_project_load(void);
 extern bool			fm_project_save(fm_project_t *);
 extern void			fm_project_free(fm_project_t *);
+extern const char *		fm_project_get_asset_path(fm_project_t *);
 
 extern bool			fm_config_load_project(fm_project_t *project, const char *path);
 extern bool			fm_config_save_project(fm_project_t *project, const char *path);

@@ -71,3 +71,12 @@ fm_project_save(fm_project_t *project)
 	}
 	return true;
 }
+
+/*
+ * Get the path in the project directory where to store assets
+ */
+const char *
+fm_project_get_asset_path(fm_project_t *project)
+{
+	return ".";
+}
