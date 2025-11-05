@@ -140,6 +140,24 @@ fm_address_get_raw_addr(const struct sockaddr_storage *ss, unsigned int *nbits)
 	return fm_get_raw_addr(ss->ss_family, (struct sockaddr_storage *) ss, nbits);
 }
 
+bool
+fm_address_set_raw_addr(fm_address_t *addr, int family, const unsigned char *src_raw, size_t len)
+{
+	unsigned char *dst_raw;
+	unsigned int nbits;
+
+	memset(addr, 0, sizeof(*addr));
+	if ((dst_raw = fm_get_raw_addr(family, addr, &nbits)) == NULL)
+		return false;
+
+	if (len != nbits / 8)
+		return false;
+
+	addr->ss_family = family;
+	memcpy(dst_raw, src_raw, len);
+	return true;
+}
+
 void
 fm_address_set_ipv4(struct sockaddr_storage *ss, u_int32_t raw_addr)
 {
