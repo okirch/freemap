@@ -43,6 +43,13 @@ typedef struct fm_host_asset_ondisk {
 	fm_protocol_asset_ondisk_t protocols[__FM_PROTO_MAX];
 } fm_host_asset_ondisk_t;
 
+typedef struct fm_assetio_mapped {
+	void *		addr;
+	size_t		size;
+
+	fm_host_asset_ondisk_t *main;
+} fm_assetio_mapped_t;
+
 
 struct fm_host_asset {
 	fm_address_t		address;

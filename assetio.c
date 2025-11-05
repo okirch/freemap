@@ -48,13 +48,6 @@ struct fm_asset_path {
 	unsigned char	raw[16];
 };
 
-struct fm_assetio_mapped {
-	void *		addr;
-	size_t		size;
-
-	fm_host_asset_ondisk_t *main;
-};
-
 static void
 fm_asset_fileformat_init(struct fm_asset_fileformat *fmt)
 {
@@ -204,10 +197,10 @@ fm_asset_path_inspect_file(struct fm_asset_path *path, const char *name, unsigne
 /*
  * Helper code for mapping the file into memory
  */
-static struct fm_assetio_mapped *
+static fm_assetio_mapped_t *
 fm_assetio_map(struct fm_asset_path *path, struct fm_asset_fileformat *fmt, bool for_writing)
 {
-	struct fm_assetio_mapped *mapped = NULL;
+	fm_assetio_mapped_t *mapped = NULL;
 	const char *file_path;
 	caddr_t	addr = NULL;
 	unsigned int i;
@@ -264,7 +257,7 @@ fm_assetio_map(struct fm_asset_path *path, struct fm_asset_fileformat *fmt, bool
 }
 
 static void
-fm_assetio_unmap(struct fm_assetio_mapped *mapped)
+fm_assetio_unmap(fm_assetio_mapped_t *mapped)
 {
 	if (mapped->addr)
 		munmap(mapped->addr, mapped->size);
@@ -273,13 +266,13 @@ fm_assetio_unmap(struct fm_assetio_mapped *mapped)
 	free(mapped);
 }
 
-static struct fm_assetio_mapped *
+static fm_assetio_mapped_t *
 fm_assetio_map_read(struct fm_asset_path *path)
 {
 	return fm_assetio_map(path, &path->format, false);
 }
 
-static struct fm_assetio_mapped *
+static fm_assetio_mapped_t *
 fm_assetio_map_write(struct fm_asset_path *path)
 {
 	return fm_assetio_map(path, &path->format, true);
@@ -307,7 +300,7 @@ fm_assetio_lookup_host(struct fm_asset_path *path, fm_host_asset_table_t *table)
 static void
 fm_assetio_read_host(struct fm_asset_path *path, fm_host_asset_t *host)
 {
-	struct fm_assetio_mapped *mapped;
+	fm_assetio_mapped_t *mapped;
 	const fm_host_asset_ondisk_t *disk;
 	unsigned int i;
 
@@ -347,7 +340,7 @@ fm_assetio_read_host(struct fm_asset_path *path, fm_host_asset_t *host)
 static void
 fm_assetio_write_host(struct fm_asset_path *path, const fm_host_asset_t *host)
 {
-	struct fm_assetio_mapped *mapped;
+	fm_assetio_mapped_t *mapped;
 	fm_host_asset_ondisk_t *disk;
 	unsigned int i;
 
