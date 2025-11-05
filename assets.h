@@ -22,12 +22,27 @@
 
 #define MAX_PORT_PROBE_WORDS	(65536 * 2 / 32)
 
+typedef uint32_t		fm_asset_port_bitmap_t[MAX_PORT_PROBE_WORDS];
+
 struct fm_protocol_asset {
 	unsigned int		proto_id;	 /* FM_PROTO_* */
 
 	/* brute force; space optimization comes later */
 	uint32_t		ports[MAX_PORT_PROBE_WORDS];
 };
+
+typedef struct fm_protocol_asset_ondisk {
+	unsigned int	state;
+	unsigned int	max_port;
+	void *		bitmap;
+} fm_protocol_asset_ondisk_t;
+
+typedef struct fm_host_asset_ondisk {
+	unsigned int	state;
+
+	fm_protocol_asset_ondisk_t protocols[__FM_PROTO_MAX];
+} fm_host_asset_ondisk_t;
+
 
 struct fm_host_asset {
 	fm_address_t		address;

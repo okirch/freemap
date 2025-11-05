@@ -47,22 +47,12 @@ struct fm_asset_path {
 	unsigned char	raw[16];
 };
 
-struct fm_host_asset_on_disk {
-	unsigned int	state;
-
-	struct fm_protocol_asset_on_disk {
-		unsigned int	state;
-		unsigned int	max_port;
-		void *		bitmap;
-	} protocols[__FM_PROTO_MAX];
-};
-
 struct fm_assetio_mapped {
 	int		fd;
 	void *		addr;
 	size_t		size;
 
-	struct fm_host_asset_on_disk *main;
+	fm_host_asset_ondisk_t *main;
 };
 
 static void
@@ -241,7 +231,7 @@ fm_assetio_map(int fd, struct fm_assetio_mapped *mapped, struct fm_asset_filefor
 	mapped->addr = addr;
 	mapped->size = fmt->size;
 
-	mapped->main = (struct fm_host_asset_on_disk *) (addr + fmt->main_offset);
+	mapped->main = (fm_host_asset_ondisk_t *) (addr + fmt->main_offset);
 	for (i = 0; i < __FM_PROTO_MAX; ++i) {
 		void *port_addr = (addr + fmt->port_map_offset[i]);
 		mapped->main->protocols[i].bitmap = port_addr;
@@ -343,7 +333,7 @@ static void
 fm_assetio_read_host(struct fm_asset_path *path, fm_host_asset_t *host)
 {
 	struct fm_assetio_mapped *mapped;
-	const struct fm_host_asset_on_disk *disk;
+	const fm_host_asset_ondisk_t *disk;
 	unsigned int i;
 
 	if (fm_debug_level > 3)
@@ -359,7 +349,7 @@ fm_assetio_read_host(struct fm_asset_path *path, fm_host_asset_t *host)
 	host->state = disk->state;
 
 	for (i = 0; i < __FM_PROTO_MAX; ++i) {
-		const struct fm_protocol_asset_on_disk *proto_on_disk = &disk->protocols[i];
+		const fm_protocol_asset_ondisk_t *proto_on_disk = &disk->protocols[i];
 		fm_protocol_asset_t *proto = host->protocols[i];
 
 		if (proto_on_disk->state == FM_ASSET_STATE_UNDEF)
@@ -383,7 +373,7 @@ static void
 fm_assetio_write_host(struct fm_asset_path *path, const fm_host_asset_t *host)
 {
 	struct fm_assetio_mapped *mapped;
-	struct fm_host_asset_on_disk *disk;
+	fm_host_asset_ondisk_t *disk;
 	unsigned int i;
 
 	if (!(mapped = fm_assetio_map_write(path)))
@@ -393,7 +383,7 @@ fm_assetio_write_host(struct fm_asset_path *path, const fm_host_asset_t *host)
 	disk->state = host->state;
 
 	for (i = 0; i < __FM_PROTO_MAX; ++i) {
-		struct fm_protocol_asset_on_disk *proto_on_disk = &disk->protocols[i];
+		fm_protocol_asset_ondisk_t *proto_on_disk = &disk->protocols[i];
 		const fm_protocol_asset_t *proto = host->protocols[i];
 
 		if (proto == NULL)
@@ -412,7 +402,7 @@ fm_assetio_write_host(struct fm_asset_path *path, const fm_host_asset_t *host)
 	}
 
 	for (i = 0; i < __FM_PROTO_MAX; ++i) {
-		struct fm_protocol_asset_on_disk *proto_on_disk = &disk->protocols[i];
+		fm_protocol_asset_ondisk_t *proto_on_disk = &disk->protocols[i];
 
 		proto_on_disk->bitmap = NULL;
 	}
