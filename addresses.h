@@ -89,7 +89,8 @@ extern const unsigned char *	fm_address_get_raw_addr(const fm_address_t *, unsig
 extern void			fm_interface_add(const char *name, const struct sockaddr_ll *);
 extern const fm_address_prefix_t *fm_local_prefix_for_address(const fm_address_t *addr);
 extern bool			fm_address_mask_from_prefixlen(int af, unsigned int pfxlen, unsigned char *mask, unsigned int size);
-extern void			fm_local_cache_arp_entry(int ifindex, u_int32_t ipaddr, const struct sockaddr_ll *lladdr);
+extern void			fm_local_neighbor_cache_update(const fm_address_t *net_addr, const fm_address_t *lladdr);
+extern void			fm_local_cache_arp_entry(u_int32_t ipaddr, const fm_address_t *lladdr);
 
 static inline unsigned int
 fm_addrfamily_max_addrbits(int af)

@@ -156,7 +156,7 @@ fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 
 			if (ifindex > 0) {
 				src_lladdr.sll_ifindex = ifindex;
-				fm_local_cache_arp_entry(ifindex, src_ipaddr, &src_lladdr);
+				fm_local_cache_arp_entry(src_ipaddr, (fm_address_t *) &src_lladdr);
 			}
 		}
 

@@ -271,27 +271,40 @@ fm_interface_get_local_prefixes(const fm_interface_t *nic, fm_address_prefix_arr
 /*
  * Neighbor cache
  */
-extern void
-fm_local_cache_arp_entry(int ifindex, u_int32_t ipaddr, const struct sockaddr_ll *lladdr)
+void
+fm_local_neighbor_cache_update(const fm_address_t *net_addr, const fm_address_t *link_addr)
 {
-	fm_address_t network_address;
 	const fm_interface_t *nic;
+	int ifindex;
 
-	fm_address_set_ipv4(&network_address, ipaddr);
+	if (link_addr->ss_family != AF_PACKET || net_addr->ss_family == AF_UNSPEC)
+		return; /* you don't even deserve an error message for that */
+
+	ifindex = ((const struct sockaddr_ll *) link_addr)->sll_ifindex;
+	if (ifindex == 0) {
+		fm_log_error("%s: link address has invalid ifindex 0", __func__);
+		return;
+	}
 
 	if ((nic = fm_interface_by_index(ifindex)) == NULL) {
 		fm_log_error("%s: no interface for index %u", __func__, ifindex);
 		return;
 	}
 
-	if (lladdr->sll_family != AF_PACKET || lladdr->sll_ifindex != ifindex) {
-		fm_log_error("%s: link address for %s has wrong ifindex %u", __func__,
-				fm_address_format(&network_address),
-				lladdr->sll_ifindex);
-		return;
-	}
+	fm_log_debug("%s: update neighbor cache %s -> %s", nic->name,
+				fm_address_format(net_addr),
+				fm_address_format(link_addr));
 
-	fm_neighbor_cache_update(nic->neighbor_cache, &network_address, lladdr);
+	fm_neighbor_cache_update(nic->neighbor_cache, net_addr, (const struct sockaddr_ll *) link_addr);
+}
+
+void
+fm_local_cache_arp_entry(u_int32_t ipaddr, const fm_address_t *lladdr)
+{
+	fm_address_t network_address;
+
+	fm_address_set_ipv4(&network_address, ipaddr);
+	fm_local_neighbor_cache_update(&network_address, lladdr);
 }
 
 fm_neighbor_t *
