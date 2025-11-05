@@ -135,6 +135,7 @@ extern void		fm_target_update_host_state(fm_target_t *target, unsigned int proto
 extern fm_error_t	fm_probe_send(fm_probe_t *);
 extern void		fm_probe_free(fm_probe_t *);
 extern void		fm_probe_set_expiry(fm_probe_t *probe, double seconds);
+extern void		fm_probe_run_globally(fm_probe_t *);
 
 extern bool		fm_probe_wait_for_event(fm_probe_t *, fm_event_callback_t *, fm_event_t);
 extern void		fm_probe_finish_waiting(fm_probe_t *);

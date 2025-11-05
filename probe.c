@@ -151,6 +151,14 @@ fm_probe_free(fm_probe_t *probe)
 	free(probe);
 }
 
+/*
+ * Add a probe to the global scheduler queue
+ */
+void
+fm_probe_run_globally(fm_probe_t *probe)
+{
+	fm_job_group_add_new(fm_scheduler_create_global_queue(), &probe->job);
+}
 
 /*
  * The probe<->job glue

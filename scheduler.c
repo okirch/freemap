@@ -25,6 +25,10 @@
 #include "scheduler.h"
 #include "events.h"
 
+
+static fm_job_group_t *fm_global_group = NULL;
+
+
 fm_scheduler_t *
 fm_scheduler_alloc(fm_scanner_t *scanner, const struct fm_scheduler_ops *ops)
 {
@@ -557,6 +561,25 @@ fm_job_group_reap_complete(fm_job_group_t *job_group)
 	return rv;
 }
 
+/*
+ * We maintain a single, global queue not associated with a target
+ * for things like discovery tasks
+ */
+fm_job_group_t *
+fm_scheduler_create_global_queue(void)
+{
+	if (fm_global_group == NULL) {
+		fm_global_group = calloc(1, sizeof(*fm_global_group));
+		fm_job_group_init(fm_global_group, "GLOBAL", NULL);
+	}
+	return fm_global_group;
+}
+
+fm_job_group_t *
+fm_scheduler_get_global_queue(void)
+{
+	return fm_global_group;
+}
 
 /*
  * Linear scheduler

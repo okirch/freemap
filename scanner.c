@@ -273,10 +273,12 @@ fm_scanner_schedule_job_group(fm_scanner_t *scanner, fm_job_group_t *job_group, 
 void
 fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 {
+	fm_job_group_t *global_queue;
 	unsigned int num_visited = 0;
 
-	if (global_stats->job_quota != 0 && scanner->global_job_group)
-		fm_scanner_schedule_job_group(scanner, scanner->global_job_group, global_stats);
+	if (global_stats->job_quota != 0
+	 && (global_queue = fm_scheduler_get_global_queue()) != NULL)
+		fm_scanner_schedule_job_group(scanner, global_queue, global_stats);
 
 	while (true) {
 		fm_target_t *target;

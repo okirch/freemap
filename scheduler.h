@@ -121,6 +121,9 @@ struct fm_scheduler {
 	} *ops;
 };
 
+extern fm_job_group_t *	fm_scheduler_create_global_queue(void);
+extern fm_job_group_t *	fm_scheduler_get_global_queue(void);
+
 extern void		fm_job_move_to_group(fm_job_t *job, struct hlist_head *head);
 extern void		fm_job_list_destroy(struct hlist_head *head);
 
