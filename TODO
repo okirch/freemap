@@ -1,5 +1,4 @@
- * store asset information
- * topo scanner: do not scan each host in a network
+ * DOCUMENTATION
  * reduce the zoo of types (exec steps vs actions vs probe). The current
    implementation is too complex, and many settings are evaluated too late for
    timely error reporting.
