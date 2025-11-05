@@ -26,6 +26,7 @@ extern fm_buffer_t *	fm_buffer_alloc(size_t payload);
 extern void		fm_buffer_free(fm_buffer_t *pkt);
 extern void		fm_buffer_compact(fm_buffer_t *pkt);
 extern fm_buffer_t *	fm_buffer_pull_packet(fm_buffer_t *pkt, unsigned int count);
+extern void		fm_buffer_dump(const fm_buffer_t *, const char *);
 
 static inline const void *
 fm_buffer_head(const fm_buffer_t *pkt)
@@ -103,7 +104,7 @@ fm_buffer_pull(fm_buffer_t *pkt, size_t len)
 }
 
 static inline unsigned int
-fm_buffer_len(fm_buffer_t *pkt, void *base)
+fm_buffer_len(fm_buffer_t *pkt, const void *base)
 {
 	size_t offset = (unsigned char *) base - pkt->data;
 

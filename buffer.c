@@ -18,10 +18,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
-#include <unistd.h>
-#include <assert.h>
 
+#include "freemap.h"
 #include "buffer.h"
 
 fm_buffer_t *
@@ -76,3 +74,12 @@ fm_buffer_pull_packet(fm_buffer_t *pkt, unsigned int count)
 	return ret;
 }
 
+void
+fm_buffer_dump(const fm_buffer_t *bp, const char *msg)
+{
+	unsigned int len = fm_buffer_available(bp);
+
+	if (msg)
+		fm_log_notice("%s (%u bytes)", msg, len);
+	fm_print_hexdump(fm_buffer_head(bp), len);
+}
