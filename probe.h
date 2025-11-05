@@ -37,6 +37,7 @@ struct fm_probe_class {
 	int			modes;		/* bitwise OR of FM_PROBE_MODE_ values */
 	int			features;	/* usually a copy of proto->supported_parameters */
 
+	unsigned int		family;
 	unsigned int		proto_id;
 	fm_protocol_t *		proto;
 

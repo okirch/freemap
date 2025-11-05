@@ -767,6 +767,20 @@ fm_scan_action_reachability_check(void)
 /*
  * Generic scan action representing a probe.
  */
+static bool
+fm_probe_scan_action_validate(fm_scan_action_t *action, fm_target_t *target)
+{
+	if (action->probe_class->family != AF_UNSPEC
+	 && action->probe_class->family != target->address.ss_family) {
+		fm_log_debug("%s: skipping incompatible probe %s",
+				fm_address_format(&target->address),
+				action->probe_class->name);
+		return false;
+	}
+
+	return true;
+}
+
 static fm_probe_t *
 fm_probe_scan_action_get_next_probe(const fm_scan_action_t *action, fm_target_t *target, unsigned int index)
 {
@@ -800,6 +814,7 @@ fm_probe_scan_action_get_next_probe(const fm_scan_action_t *action, fm_target_t 
 static const struct fm_scan_action_ops	fm_probe_scan_action_ops = {
 	.obj_size	= sizeof(fm_scan_action_t),
 	.get_next_probe	= fm_probe_scan_action_get_next_probe,
+	.validate	= fm_probe_scan_action_validate,
 };
 
 fm_scan_action_t *
