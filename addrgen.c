@@ -82,7 +82,7 @@ fm_address_enumerator_name(const fm_address_enumerator_t *agen)
 	return agen->ops->name;
 }
 
-bool
+fm_error_t
 fm_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
 {
 	assert(agen->ops != NULL);
@@ -138,15 +138,16 @@ struct fm_simple_address_enumerator {
 	fm_address_array_t	addrs;
 };
 
-static bool
+static fm_error_t
 fm_simple_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
 {
 	struct fm_simple_address_enumerator *simple = (struct fm_simple_address_enumerator *) agen;
 
 	if (simple->next >= simple->addrs.count)
-		return false;
+		return FM_SEND_ERROR;
+
 	*ret = simple->addrs.elements[simple->next++];
-	return true;
+	return 0;
 }
 
 static void
@@ -169,8 +170,8 @@ static const struct fm_address_enumerator_ops fm_simple_address_enumerator_ops =
  * Note, when hostname resolution is supported, this function will return a list of
  * generators rather than a single one.
  */
-fm_address_enumerator_t *
-fm_create_simple_address_enumerator(const char *addr_string)
+bool
+fm_create_simple_address_enumerator(const char *addr_string, fm_target_manager_t *target_manager)
 {
 	struct fm_simple_address_enumerator *simple;
 
@@ -178,10 +179,11 @@ fm_create_simple_address_enumerator(const char *addr_string)
 
 	if (!fm_address_resolve(addr_string, &simple->addrs)) {
 		free(simple);
-		return NULL;
+		return false;
 	}
 
-	return &simple->base;
+	fm_target_manager_add_address_generator(target_manager, &simple->base);
+	return true;
 }
 
 static struct fm_simple_address_enumerator *
@@ -216,7 +218,7 @@ struct fm_ipv4_network_enumerator {
 	uint32_t	last_host;
 };
 
-bool
+fm_error_t
 fm_ipv4_network_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
 {
 	struct fm_ipv4_network_enumerator *sagen = (struct fm_ipv4_network_enumerator *) agen;
@@ -224,7 +226,7 @@ fm_ipv4_network_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *
 	uint32_t addr;
 
 	if (sagen->next_host > sagen->last_host || sagen->next_host == 0)
-		return false;
+		return FM_SEND_ERROR;
 
 	if (sagen->stride <= 1) {
 		addr = sagen->ipv4_net | sagen->next_host++;
@@ -244,7 +246,7 @@ fm_ipv4_network_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *
 	sin->sin_family = AF_INET;
 	sin->sin_addr.s_addr = htonl(addr);
 
-	return true;
+	return 0;
 }
 
 static void
@@ -290,27 +292,28 @@ fm_ipv4_network_enumerator(const fm_address_t *addr, unsigned int pfxlen)
  * Note, when hostname resolution is supported, this function will return a list of
  * generators rather than a single one.
  */
-fm_address_enumerator_t *
-fm_create_cidr_address_enumerator(const char *addr_string)
+bool
+fm_create_cidr_address_enumerator(const char *addr_string, fm_target_manager_t *target_manager)
 {
 	struct sockaddr_storage ss;
 	unsigned int cidr_bits, host_bits;
+	fm_address_enumerator_t *agen = NULL;
 
 	if (!fm_try_parse_cidr(addr_string, &ss, &cidr_bits)) {
 		/* TBD: resolve hostname, apply opts to filter which addresses to use */
-		return NULL;
+		return false;
 	}
 
 	if (!fm_address_generator_address_eligible(&ss))
-		return NULL;
+		return false;
 
 	host_bits = fm_addrfamily_max_addrbits(ss.ss_family);
 	if (host_bits == 0)
-		return NULL;
+		return false;
 
 	if (cidr_bits > host_bits) {
 		fm_log_error("%s: network size of %lu bits bigger than address size", addr_string, cidr_bits);
-		return NULL;
+		return false;
 	}
 	host_bits -= cidr_bits;
 
@@ -320,24 +323,27 @@ fm_create_cidr_address_enumerator(const char *addr_string)
 		local_prefix = fm_local_prefix_for_address(&ss);
 		if (local_prefix == NULL || cidr_bits < local_prefix->pfxlen) {
 			fm_log_error("%s: remote network enumeration not supported for IPv6", addr_string);
-			return NULL;
+			return false;
 		}
 
-		return fm_local_ipv6_address_enumerator(local_prefix->ifname, &ss, cidr_bits);
-	}
-
+		agen = fm_local_ipv6_address_enumerator(local_prefix->ifname, &ss, cidr_bits);
+	} else
 	if (ss.ss_family == AF_INET) {
 		/* This limit is somewhat arbitrary and we need to increase it, at least for
 		 * local networks. */
 		if (host_bits > 8) {
 			fm_log_error("%s: IPv4 address enumeration limited to /24 networks", addr_string);
-			return NULL;
+			return false;
 		}
 
-		return fm_ipv4_network_enumerator(&ss, cidr_bits);
+		agen = fm_ipv4_network_enumerator(&ss, cidr_bits);
 	}
 
-	return NULL;
+	if (agen == NULL)
+		return false;
+
+	fm_target_manager_add_address_generator(target_manager, agen);
+	return true;
 }
 
 /*
@@ -352,21 +358,23 @@ struct fm_local_network_enumerator {
 	struct fm_simple_address_enumerator *simple;
 };
 
-bool
+static fm_error_t
 fm_local_network_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
 {
 	struct fm_local_network_enumerator *local = (struct fm_local_network_enumerator *) agen;
+	fm_error_t error, overall_error = FM_SEND_ERROR;
 
 	while (local->current < local->children.count) {
 		fm_address_enumerator_t *child = local->children.entries[local->current];
 
-		if (fm_address_enumerator_get_one(child, ret))
-			return true;
+		error = fm_address_enumerator_get_one(child, ret);
+		if (error != FM_TRY_AGAIN)
+			return error;
 
 		local->current++;
 	}
 
-	return false;
+	return overall_error;
 }
 
 static void
@@ -393,33 +401,33 @@ static const struct fm_address_enumerator_ops fm_local_network_enumerator_ops = 
 };
 
 static void
-fm_local_address_enumerator_add_single_address(struct fm_local_network_enumerator *local, const fm_address_t *addr)
+fm_local_address_enumerator_add_single_address(struct fm_simple_address_enumerator **simple_p, const fm_address_t *addr, fm_target_manager_t *target_manager)
 {
-	if (local->simple == NULL) {
-		local->simple = fm_create_simple_address_enumerator_empty();
-		fm_address_enumerator_array_append(&local->children, &local->simple->base);
+	struct fm_simple_address_enumerator *simple = *simple_p;
+
+	if (simple == NULL) {
+		*simple_p = simple = fm_create_simple_address_enumerator_empty();
+		fm_target_manager_add_address_generator(target_manager, &simple->base);
 	}
 
-	fm_address_array_append(&local->simple->addrs, addr);
+	fm_address_array_append(&simple->addrs, addr);
 }
 
-fm_address_enumerator_t *
-fm_create_local_address_enumerator(const char *ifname)
+bool
+fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *target_manager)
 {
-	struct fm_local_network_enumerator *local;
 	fm_address_prefix_array_t prefix_array = { 0 };
+	struct fm_simple_address_enumerator *simple = NULL;
 	const fm_interface_t *nic;
 	bool ipv6_complained = false;
-	unsigned int i;
+	unsigned int i, num_created = 0;
 
 	if (!(nic = fm_interface_by_name(ifname))) {
 		fm_log_error("Cannot generate local address generator for interface %s: unknown interface", ifname);
-		return NULL;
+		return false;
 	}
 
 	fm_interface_get_local_prefixes(nic, &prefix_array);
-
-	local = NEW_ADDRESS_ENUMERATOR(fm_local_network_enumerator);
 
 	for (i = 0; i < prefix_array.count; ++i) {
 		const fm_address_prefix_t *prefix = &prefix_array.elements[i];
@@ -430,19 +438,19 @@ fm_create_local_address_enumerator(const char *ifname)
 
 		if (fm_interface_is_loopback(nic)) {
 			/* Bravely talking to myself. Hullo, self... */
-			fm_local_address_enumerator_add_single_address(local, &prefix->source_addr);
+			fm_local_address_enumerator_add_single_address(&simple, &prefix->source_addr, target_manager);
 			continue;
 		}
 
 		if (prefix->address.ss_family == AF_INET) {
 			if (prefix->pfxlen == 32)
-				fm_local_address_enumerator_add_single_address(local, &prefix->address);
+				fm_local_address_enumerator_add_single_address(&simple, &prefix->address, target_manager);
 			else
 				child = fm_ipv4_network_enumerator(&prefix->address, prefix->pfxlen);
 		} else
 		if (prefix->address.ss_family == AF_INET6) {
 			if (prefix->pfxlen == 128)
-				fm_local_address_enumerator_add_single_address(local, &prefix->address);
+				fm_local_address_enumerator_add_single_address(&simple, &prefix->address, target_manager);
 			else if (!ipv6_complained) {
 				fm_log_warning("Interface %s is on an IPv6 network, but I don't support this yet", ifname);
 				ipv6_complained = true;
@@ -451,13 +459,15 @@ fm_create_local_address_enumerator(const char *ifname)
 			/* silently ignore anything else (for those of you still on Netware IPX, I pity you) */
 		}
 
-		if (child != NULL)
-			fm_address_enumerator_array_append(&local->children, child);
+		if (child != NULL) {
+			fm_target_manager_add_address_generator(target_manager, child);
+			num_created += 1;
+		}
 	}
 
-	if (local->children.count == 0)
+	if (num_created == 0)
 		fm_log_warning("Empty local address generator for interface %s: no local prefixes", ifname);
 
 	fm_address_prefix_array_destroy(&prefix_array);
-	return &local->base;
+	return true;
 }

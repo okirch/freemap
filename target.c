@@ -210,14 +210,16 @@ fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 	while (target == NULL) {
 		fm_network_t *target_net;
 		fm_address_t target_addr;
+		fm_error_t error;
 
 		if (mgr->current_generator >= mgr->address_generators.count)
 			break;
 
 		agen = mgr->address_generators.entries[mgr->current_generator];
 
-		if (!fm_address_enumerator_get_one(agen, &target_addr)) {
-			/* This address generator is spent; move to the next */
+		error = fm_address_enumerator_get_one(agen, &target_addr);
+		if (error < 0) {
+			/* This address generator is spent. Remove it from the active list */
 			mgr->current_generator++;
 			continue;
 		}

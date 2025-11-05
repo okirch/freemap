@@ -135,21 +135,18 @@ fm_scanner_create(void)
 bool
 fm_scanner_add_target_from_spec(fm_scanner_t *scanner, const char *spec)
 {
-	fm_address_enumerator_t *agen;
+	fm_target_manager_t *target_manager = scanner->target_manager;
+	bool okay;
 
 	if (strchr(spec, '/')) {
-		agen = fm_create_cidr_address_enumerator(spec);
+		okay = fm_create_cidr_address_enumerator(spec, target_manager);
 	} else if (spec[0] == '%') {
-		agen = fm_create_local_address_enumerator(spec + 1);
+		okay = fm_create_local_address_enumerator(spec + 1, target_manager);
 	} else {
-		agen = fm_create_simple_address_enumerator(spec);
+		okay = fm_create_simple_address_enumerator(spec, target_manager);
 	}
 
-	if (agen == NULL)
-		return false;
-
-	fm_target_manager_add_address_generator(scanner->target_manager, agen);
-	return true;
+	return okay;
 }
 
 bool

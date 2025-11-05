@@ -31,10 +31,6 @@ extern fm_config_routine_t *fm_config_load_routine(int mode, const char *name);
 
 const char *		fm_strerror(fm_error_t);
 
-extern fm_address_enumerator_t *fm_create_simple_address_enumerator(const char *addr_string);
-extern fm_address_enumerator_t *fm_create_cidr_address_enumerator(const char *addr_string);
-extern fm_address_enumerator_t *fm_create_local_address_enumerator(const char *addr_string);
-
 extern fm_report_t *	fm_report_create(void);
 extern void		fm_report_write(const fm_report_t *, const fm_target_t *);
 extern void		fm_report_enable_standard_output(fm_report_t *, bool);
@@ -43,7 +39,7 @@ extern void		fm_report_flush(fm_report_t *);
 extern void		fm_report_free(fm_report_t *);
 
 extern const char *	fm_address_enumerator_name(const fm_address_enumerator_t *);
-extern bool		fm_address_enumerator_get_one(fm_address_enumerator_t *, fm_address_t *);
+extern fm_error_t	fm_address_enumerator_get_one(fm_address_enumerator_t *, fm_address_t *);
 extern void		fm_address_enumerator_destroy(fm_address_enumerator_t *);
 extern void		fm_address_enumerator_restart(fm_address_enumerator_t *, int);
 

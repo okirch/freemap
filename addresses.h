@@ -69,7 +69,7 @@ struct fm_address_enumerator {
 		const char *	name;
 		void		(*destroy)(fm_address_enumerator_t *);
 		void		(*restart)(fm_address_enumerator_t *, int);
-		bool		(*get_one_address)(fm_address_enumerator_t *, fm_address_t *);
+		fm_error_t	(*get_one_address)(fm_address_enumerator_t *, fm_address_t *);
 	} *ops;
 };
 
@@ -91,6 +91,10 @@ extern const fm_address_prefix_t *fm_local_prefix_for_address(const fm_address_t
 extern bool			fm_address_mask_from_prefixlen(int af, unsigned int pfxlen, unsigned char *mask, unsigned int size);
 extern void			fm_local_neighbor_cache_update(const fm_address_t *net_addr, const fm_address_t *lladdr);
 extern void			fm_local_cache_arp_entry(u_int32_t ipaddr, const fm_address_t *lladdr);
+
+extern bool			fm_create_simple_address_enumerator(const char *, fm_target_manager_t *);
+extern bool			fm_create_cidr_address_enumerator(const char *, fm_target_manager_t *);
+extern bool			fm_create_local_address_enumerator(const char *, fm_target_manager_t *);
 
 static inline unsigned int
 fm_addrfamily_max_addrbits(int af)
