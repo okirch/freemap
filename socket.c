@@ -249,6 +249,8 @@ fm_socket_enable_hdrincl(fm_socket_t *sock)
 {
 	if (sock->family == AF_INET)
 		return fm_socket_option_set(sock, "IP_HDRINCL", SOL_IP, IP_HDRINCL, true);
+	if (sock->family == AF_INET6)
+		return fm_socket_option_set(sock, "IPV6_HDRINCL", SOL_IPV6, IPV6_HDRINCL, true);
 	fm_log_error("Cannot set HDRINCL socket option on %s sockets", fm_socket_family_name(sock));
 	return true;
 }
