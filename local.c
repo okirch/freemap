@@ -241,6 +241,27 @@ fm_interface_get_lladdr(const fm_interface_t *nic, struct sockaddr_ll *lladdr)
 	return true;
 }
 
+bool
+fm_interface_get_llbroadcast(const fm_interface_t *nic, struct sockaddr_ll *lladdr)
+{
+	if (nic == NULL || lladdr == NULL)
+		return false;
+
+	if (nic->llbcast.sll_family == AF_UNSPEC)
+		return false;
+
+	*lladdr = nic->llbcast;
+
+	if (lladdr->sll_hatype == ARPHRD_ETHER) {
+		static const unsigned char ether_all_nodes[ETH_ALEN] = { 0x33, 0x33, 0, 0, 0, 1 };
+
+		assert(lladdr->sll_halen == sizeof(ether_all_nodes));
+		memcpy(lladdr->sll_addr, ether_all_nodes, sizeof(ether_all_nodes));
+	}
+
+	return true;
+}
+
 const char *
 fm_interface_get_name(const fm_interface_t *nic)
 {
