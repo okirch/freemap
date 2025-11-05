@@ -191,18 +191,26 @@ fm_address_set_ipv6_all_hosts_multicast(struct sockaddr_storage *ss)
 }
 
 bool
+fm_address_is_ipv6_link_local(const fm_address_t *addr)
+{
+	struct sockaddr_in6 *six;
+
+	if (addr->ss_family != AF_INET6)
+		return false;
+
+	six = (struct sockaddr_in6 *) addr;
+	return ntohs(six->sin6_addr.s6_addr16[0]) == 0xFE80;
+}
+
+bool
 fm_address_ipv6_update_scope_id(fm_address_t *ss, int ifindex)
 {
 	struct sockaddr_in6 *six;
 
-	if (ss->ss_family != AF_INET6)
+	if (!fm_address_is_ipv6_link_local(ss))
 		return false;
 
 	six = (struct sockaddr_in6 *) ss;
-
-	if (ntohs(six->sin6_addr.s6_addr16[0]) != 0xFE80)
-		return false;
-
 	six->sin6_scope_id = ifindex;
 	return true;
 }

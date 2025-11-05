@@ -158,6 +158,7 @@ extern bool		fm_address_get_ipv6(const fm_address_t *addr, struct in6_addr *raw_
 extern bool		fm_address_set_port(fm_address_t *address, unsigned short port);
 extern void		fm_address_set_ipv4_local_broadcast(struct sockaddr_storage *ss);
 extern void		fm_address_set_ipv6_all_hosts_multicast(struct sockaddr_storage *ss);
+extern bool		fm_address_is_ipv6_link_local(const fm_address_t *addr);
 extern bool		fm_address_ipv6_update_scope_id(fm_address_t *, int ifindex);
 extern unsigned short	fm_address_get_port(const struct sockaddr_storage *ss);
 extern unsigned int	fm_addrfamily_sockaddr_size(int family);
