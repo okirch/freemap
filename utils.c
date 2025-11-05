@@ -221,5 +221,6 @@ fm_print_hexdump(const unsigned char *p, unsigned int len)
 		}
 		printf("\n");
 	}
+	fflush(stdout);
 }
 
