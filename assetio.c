@@ -63,7 +63,7 @@ fm_asset_fileformat_init(struct fm_asset_fileformat *fmt)
 	/* the main data */
 	fmt->size = 4096;
 
-	section_size = sizeof(proto->ports);
+	section_size = sizeof(fm_asset_port_bitmap_t);
 	for (i = 0; i < __FM_PROTO_MAX; ++i) {
 		fmt->port_map_offset[i] = fmt->size;
 		fmt->size += section_size;
@@ -333,16 +333,12 @@ fm_assetio_read_host(struct fm_asset_path *path, fm_host_asset_t *host)
 
 	for (i = 0; i < __FM_PROTO_MAX; ++i) {
 		const fm_protocol_asset_ondisk_t *proto_on_disk = &disk->protocols[i];
-		fm_protocol_asset_t *proto = host->protocols[i];
+		fm_protocol_asset_t *proto = &host->protocols[i];
 
 		if (proto_on_disk->state == FM_ASSET_STATE_UNDEF)
 			continue;
 
-		proto = calloc(1, sizeof(*proto));
 		proto->proto_id = i;
-
-		if (proto_on_disk->max_port != 0)
-			memcpy(proto->ports, proto_on_disk->bitmap, sizeof(proto->ports));
 	}
 #endif
 
@@ -366,10 +362,9 @@ fm_assetio_write_host(struct fm_asset_path *path, const fm_host_asset_t *host)
 #if 0
 	disk = mapped->main;
 	disk->state = host->state;
-
 	for (i = 0; i < __FM_PROTO_MAX; ++i) {
 		fm_protocol_asset_ondisk_t *proto_on_disk = &disk->protocols[i];
-		const fm_protocol_asset_t *proto = host->protocols[i];
+		const fm_protocol_asset_t *proto = &host->protocols[i];
 
 		if (proto == NULL)
 			continue;
@@ -486,7 +481,7 @@ fm_assetio_traverse(const fm_host_asset_table_t *table, struct fm_asset_path *pa
 		for (i = 0; i < 256; ++i) {
 			const fm_host_asset_t *host_asset = table->host[i];
 
-			if (host_asset == NULL || host_asset->state == FM_ASSET_STATE_UNDEF)
+			if (host_asset == NULL || host_asset->main->host_state == FM_ASSET_STATE_UNDEF)
 				continue;
 
 			path->raw[depth] = i;
@@ -536,10 +531,13 @@ fm_assetio_setup_mapping(fm_host_asset_t *host, const struct fm_asset_fileformat
 	if (!host->mapping)
 		return false;
 
+	host->main = fm_assetio_map_range(host->mapping, fmt->main_offset, sizeof(*host->main));
+
 	for (i = 0; i < __FM_PROTO_MAX; ++i) {
 		fm_protocol_asset_t *proto = &host->protocols[i];
 
 		proto->proto_id = i;
+		proto->ondisk = &host->main->protocols[i];
 		proto->ports = fm_assetio_map_range(host->mapping, fmt->port_map_offset[i], sizeof(fm_asset_port_bitmap_t));
 	}
 

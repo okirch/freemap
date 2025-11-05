@@ -22,13 +22,16 @@
 
 #define MAX_PORT_PROBE_WORDS	(65536 * 2 / 32)
 
+
+/*
+ * on-disk asset data.
+ * For a "live" asset, these regions are mapped into the address
+ * space and the in-memory host_asset object has pointers to it
+ *
+ * Note that the bitmap fields describing the port state should be
+ * aligned to 4k page boundaries.
+ */
 typedef uint32_t		fm_asset_port_bitmap_t[MAX_PORT_PROBE_WORDS];
-
-struct fm_protocol_asset {
-	unsigned int		proto_id;	 /* FM_PROTO_* */
-
-	uint32_t *		ports;
-};
 
 typedef struct fm_protocol_asset_ondisk {
 	unsigned int		state;
@@ -46,17 +49,27 @@ typedef struct fm_assetio_mapped {
 	size_t			size;
 } fm_assetio_mapped_t;
 
+/*
+ * In-memory data structurs
+ */
+struct fm_protocol_asset {
+	unsigned int		proto_id;	 /* FM_PROTO_* */
+
+	fm_protocol_asset_ondisk_t *ondisk;
+	uint32_t *		ports;
+};
+
 struct fm_host_asset {
 	fm_address_t		address;
 
 	int			map_flags;
-	fm_asset_state_t	state;
 
 	fm_assetio_mapped_t *	mapping;
 
 	fm_host_asset_ondisk_t *main;
 	fm_protocol_asset_t	protocols[__FM_PROTO_MAX];
 };
+
 
 typedef struct fm_host_asset_table fm_host_asset_table_t;
 struct fm_host_asset_table {

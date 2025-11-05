@@ -254,7 +254,7 @@ fm_host_asset_get_state(fm_host_asset_t *host)
 	if (!fm_host_asset_map(host))
 		return 0;
 
-	return host->state;
+	return host->main->host_state;
 }
 
 bool
@@ -266,10 +266,10 @@ fm_host_asset_update_state(fm_host_asset_t *host, fm_asset_state_t state)
 	/* Only update if the new state is "better", where
 	 *  open > closed > probe_sent > undef
 	 */
-	if (state <= host->state)
+	if (state <= host->main->host_state)
 		return false;
 
-	host->state = state;
+	host->main->host_state = state;
 
 	printf("STATUS %s: %s\n",
 			fm_address_format(&host->address),
@@ -301,7 +301,7 @@ fm_host_asset_update_port_state(fm_host_asset_t *host, unsigned int proto_id, un
 
 	/* if we reached a port, we can obviously reach the host */
 	if (state == FM_ASSET_STATE_OPEN)
-		host->state = FM_ASSET_STATE_OPEN;
+		host->main->host_state = FM_ASSET_STATE_OPEN;
 
 	if ((proto = fm_host_asset_get_protocol(host, proto_id, true)) == NULL)
 		return false;
