@@ -715,10 +715,6 @@ fm_icmp_request_send(fm_icmp_request_t *icmp, fm_icmp_extant_info_t *extant_info
 	}
 
 	pkt = fm_icmp_request_build_packet(icmp, extant_info);
-	if (fm_socket_get_family(sock) == AF_PACKET) {
-		fm_log_debug("sending packet to %s", fm_address_format(&pkt->peer_addr));
-		fm_print_hexdump(pkt->payload->data, pkt->payload->wpos);
-	}
 
 	if (!fm_socket_send_pkt_and_burn(sock, pkt)) {
 		fm_log_error("Unable to send ICMP packet: %m");
