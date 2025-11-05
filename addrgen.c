@@ -349,57 +349,6 @@ fm_create_cidr_address_enumerator(const char *addr_string, fm_target_manager_t *
 /*
  * Local address enumerator
  */
-struct fm_local_network_enumerator {
-	fm_address_enumerator_t base;
-
-	unsigned int	current;
-	fm_address_enumerator_array_t children;
-
-	struct fm_simple_address_enumerator *simple;
-};
-
-static fm_error_t
-fm_local_network_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
-{
-	struct fm_local_network_enumerator *local = (struct fm_local_network_enumerator *) agen;
-	fm_error_t error, overall_error = FM_SEND_ERROR;
-
-	while (local->current < local->children.count) {
-		fm_address_enumerator_t *child = local->children.entries[local->current];
-
-		error = fm_address_enumerator_get_one(child, ret);
-		if (error != FM_TRY_AGAIN)
-			return error;
-
-		local->current++;
-	}
-
-	return overall_error;
-}
-
-static void
-fm_local_network_enumerator_restart(fm_address_enumerator_t *agen, int stage)
-{
-	struct fm_local_network_enumerator *local = (struct fm_local_network_enumerator *) agen;
-	unsigned int i;
-
-	for (i = 0; i < local->children.count; ++i) {
-		fm_address_enumerator_t *child = local->children.entries[i];
-
-		fm_address_enumerator_restart(child, stage);
-	}
-
-	local->current = 0;
-}
-
-static const struct fm_address_enumerator_ops fm_local_network_enumerator_ops = {
-	.obj_size	= sizeof(struct fm_local_network_enumerator),
-	.name		= "local",
-	.destroy	= NULL,
-	.get_one_address= fm_local_network_enumerator_get_one,
-	.restart	= fm_local_network_enumerator_restart,
-};
-
 static void
 fm_local_address_enumerator_add_single_address(struct fm_simple_address_enumerator **simple_p, const fm_address_t *addr, fm_target_manager_t *target_manager)
 {
