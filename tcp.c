@@ -339,13 +339,20 @@ fm_tcp_build_raw_packet(fm_tcp_request_t *tcp)
 		return NULL;
 
 	/* Prepare the checksum pseudo header */
-	if (tcp->csum_header == NULL) {
+	if (tcp->csum_header == NULL && tcp->family == AF_INET6) {
 		tcp->csum_header = fm_ipv6_checksum_header(&tcp->local_address, &tcp->host_address, IPPROTO_TCP);
+		if (tcp->csum_header == NULL) {
+			fm_log_error("refusing to create TCP checksum header for %s -> %s",
+					fm_address_format(&tcp->local_address),
+					fm_address_format(&tcp->host_address));
+			return NULL;
+		}
 		tcp->csum_header->checksum.offset = 16;
 		tcp->csum_header->checksum.width = 2;
 	}
 
-	if (!fm_raw_packet_csum(tcp->csum_header, tcp_hdr_addr, fm_buffer_len(payload, tcp_hdr_addr))) {
+	if (tcp->csum_header != NULL
+	 && !fm_raw_packet_csum(tcp->csum_header, tcp_hdr_addr, fm_buffer_len(payload, tcp_hdr_addr))) {
 		fm_log_fatal("got my wires crossed in the tcp checksum thing");
 	}
 
