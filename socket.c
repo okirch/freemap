@@ -304,6 +304,12 @@ fm_socket_set_send_ttl(fm_socket_t *sock, unsigned int ttl)
 	return false;
 }
 
+bool
+fm_socket_enable_broadcast(fm_socket_t *sock)
+{
+	return fm_socket_option_set(sock, "SO_BROADCAST", SOL_SOCKET, SO_BROADCAST, 1);
+}
+
 /*
  * Access to socket level errors
  */
