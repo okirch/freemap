@@ -30,6 +30,7 @@
 #include "target.h" /* for fm_probe_t */
 #include "socket.h"
 #include "rawpacket.h"
+#include "buffer.h"
 
 typedef struct fm_tcp_extra_params {
 	unsigned char		flags;
@@ -45,6 +46,8 @@ typedef struct fm_tcp_request {
 	int			family;
 	fm_address_t		host_address;
 	fm_address_t		local_address;
+	fm_csum_hdr_t *		csum_header;
+
 	fm_probe_params_t	params;
 	fm_tcp_extra_params_t	extra_params;
 } fm_tcp_request_t;
@@ -223,28 +226,33 @@ fm_tcp_locate_probe(int af, const fm_address_t *target_addr, fm_asset_state_t st
 
 /*
  * Handle TCP reply packet
+ * We only get here for raw sockets
  */
 static bool
 fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
 	fm_asset_state_t state = FM_ASSET_STATE_UNDEF;
 	fm_extant_t *extant;
-	fm_ip_header_info_t ip;
 	fm_tcp_header_info_t tcp_info;
 
-	if (!fm_raw_packet_pull_ip_hdr(pkt, &ip))
-		return false;
+	/* iff we ever use HDRINCL */
+	if (false) {
+		fm_ip_header_info_t ip;
 
-	fm_log_debug("%s: packet %s -> %s; proto %d",
-			proto->name,
-			fm_address_format(&ip.src_addr),
-			fm_address_format(&ip.dst_addr),
-			ip.ipproto);
+		if (!fm_raw_packet_pull_ip_hdr(pkt, &ip))
+			return false;
 
-	if (ip.ipproto != IPPROTO_TCP) {
-		/* do we get icmp packets here? */
-		fm_log_warning("%s: weird, unexpected ipproto %d", __func__, ip.ipproto);
-		return false;
+		fm_log_debug("%s: packet %s -> %s; proto %d",
+				proto->name,
+				fm_address_format(&ip.src_addr),
+				fm_address_format(&ip.dst_addr),
+				ip.ipproto);
+
+		if (ip.ipproto != IPPROTO_TCP) {
+			/* do we get icmp packets here? */
+			fm_log_warning("%s: weird, unexpected ipproto %d", __func__, ip.ipproto);
+			return false;
+		}
 	}
 
 	if (!fm_raw_packet_pull_tcp_header(pkt->payload, &tcp_info)) {
@@ -312,21 +320,39 @@ static fm_pkt_t *
 fm_tcp_build_raw_packet(fm_tcp_request_t *tcp)
 {
 	fm_tcp_header_info_t hdrinfo;
+	void *tcp_hdr_addr;
+	fm_buffer_t *payload;
 	fm_pkt_t *pkt;
 
 	memset(&hdrinfo, 0, sizeof(hdrinfo));
 	hdrinfo.flags = tcp->extra_params.flags;
 	hdrinfo.seq = tcp->extra_params.sequence;
 
-	if (hdrinfo.flags)
+	if (hdrinfo.flags & TH_ACK)
 		hdrinfo.ack_seq = tcp->extra_params.ack;
 	hdrinfo.mtu = 576;
 
-	pkt = fm_pkt_alloc(tcp->family, 128);
-	if (!fm_raw_packet_add_tcp_header(pkt->payload, &tcp->local_address, &tcp->host_address, &hdrinfo, 0))
+	payload = fm_buffer_alloc(128);
+	tcp_hdr_addr = (void *) fm_buffer_head(payload);
+
+	if (!fm_raw_packet_add_tcp_header(payload, &tcp->local_address, &tcp->host_address, &hdrinfo, 0))
 		return NULL;
 
+	/* Prepare the checksum pseudo header */
+	if (tcp->csum_header == NULL) {
+		tcp->csum_header = fm_ipv6_checksum_header(&tcp->local_address, &tcp->host_address, IPPROTO_TCP);
+		tcp->csum_header->checksum.offset = 16;
+		tcp->csum_header->checksum.width = 2;
+	}
+
+	if (!fm_raw_packet_csum(tcp->csum_header, tcp_hdr_addr, fm_buffer_len(payload, tcp_hdr_addr))) {
+		fm_log_fatal("got my wires crossed in the tcp checksum thing");
+	}
+
+	pkt = fm_pkt_alloc(tcp->family, 0);
+	pkt->payload = payload;
 	pkt->peer_addr = tcp->host_address;
+	fm_address_set_port(&pkt->peer_addr, 0);
 	return pkt;
 }
 
@@ -374,7 +400,6 @@ fm_tcp_request_send(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
 		fm_log_debug("Created TCP connection %s -> %s",
 					fm_address_format(&tcp->local_address),
 					fm_address_format(&tcp->host_address));
-
 	}
 
 	if (tcp->sock->type == SOCK_RAW) {
