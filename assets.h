@@ -44,4 +44,7 @@ struct fm_host_asset_table {
 	};
 };
 
+extern fm_asset_state_t	fm_protocol_asset_get_state(const fm_protocol_asset_t *proto);
+extern bool		fm_protocol_asset_is_any_port_open(const fm_protocol_asset_t *proto);
+
 #endif /* FREEMAP_ASSETS_H */

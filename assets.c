@@ -85,7 +85,26 @@ fm_protocol_asset_set_port_state(fm_protocol_asset_t *proto, unsigned int port, 
 	return true;
 }
 
-static bool
+/*
+ * This is a hack, and it's not working as designed.
+ */
+fm_asset_state_t
+fm_protocol_asset_get_state(const fm_protocol_asset_t *proto)
+{
+	unsigned int i;
+	uint32_t fold = 0;
+
+	for (i = 0; i < MAX_PORT_PROBE_WORDS; ++i)
+		fold |= proto->ports[i];
+
+	fold |= (fold >> 16);
+	fold |= (fold >>  8);
+	fold |= (fold >>  4);
+	fold |= (fold >>  2);
+	return fold & 0x03;
+}
+
+bool
 fm_protocol_asset_is_any_port_open(const fm_protocol_asset_t *proto)
 {
 	unsigned int i;
