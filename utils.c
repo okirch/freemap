@@ -15,9 +15,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <sys/stat.h>
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <errno.h>
+
 #include "utils.h"
 
 /*
@@ -222,5 +225,34 @@ fm_print_hexdump(const unsigned char *p, unsigned int len)
 		printf("\n");
 	}
 	fflush(stdout);
+}
+
+/*
+ * Make sure a directory tree exists
+ * path must be writable.
+ */
+bool
+fm_makedirs(char *path)
+{
+	char *s;
+	bool ok;
+
+	if (mkdir(path, 0755) == 0 || errno == EEXIST)
+		return true;
+
+	if (errno != ENOENT)
+		return false;
+
+	if ((s = strrchr(path, '/')) == NULL)
+		return false;
+
+	*s = '\0';
+	ok = fm_makedirs(path);
+	*s = '/';
+
+	if (ok && mkdir(path, 0755) < 0)
+		ok = false;
+
+	return ok;
 }
 
