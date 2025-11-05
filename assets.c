@@ -27,6 +27,9 @@
 #define FM_HOST_ASSET_ATTACHED	0x0001
 #define FM_HOST_ASSET_MAPPED	0x0002
 
+
+static bool			fm_host_asset_map(fm_host_asset_t *host);
+
 static fm_host_asset_table_t	fm_host_asset_table_ipv4;
 static fm_host_asset_table_t	fm_host_asset_table_ipv6;
 
@@ -206,22 +209,34 @@ void
 fm_host_asset_attach(fm_host_asset_t *host)
 {
 	host->map_flags |= FM_HOST_ASSET_ATTACHED;
+	if (!fm_host_asset_map(host)) {
+		fm_log_error("Cannot attach backing data for %s", fm_address_format(&host->address));
+		/* What can we do? We can abort, we can refuse to update, or we can write
+		 * results to some sort of emergency file which than can be merged later, somehow */
+	}
 }
 
 void
 fm_host_asset_detach(fm_host_asset_t *host)
 {
 	host->map_flags &= ~FM_HOST_ASSET_ATTACHED;
-	if (host->map_flags & FM_HOST_ASSET_MAPPED) {
+
+	if (host->mapping != NULL) {
 		/* unmap on-disk data */
-		host->map_flags &= ~FM_HOST_ASSET_MAPPED;
+		fm_assetio_unmap_host(host);
 	}
 }
 
 static bool
 fm_host_asset_map(fm_host_asset_t *host)
 {
-	host->map_flags |= FM_HOST_ASSET_MAPPED;
+	if (host->mapping != NULL)
+		return true;
+
+	if (!fm_assetio_map_host(host))
+		return false;
+
+	assert(host->mapping != NULL);
 	return true;
 }
 

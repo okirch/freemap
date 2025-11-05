@@ -48,6 +48,9 @@ struct fm_asset_path {
 	unsigned char	raw[16];
 };
 
+static char *		fm_assetio_base_dir;
+static bool		fm_assetio_read_write;
+
 static void
 fm_asset_fileformat_init(struct fm_asset_fileformat *fmt)
 {
@@ -99,6 +102,23 @@ static void
 fm_asset_path_destroy(struct fm_asset_path *path)
 {
 	drop_string(&path->asset_dir);
+}
+
+static bool
+fm_asset_path_init_address(struct fm_asset_path *path, const char *project_dir, const fm_address_t *addr)
+{
+	unsigned int nbits;
+	const void *raw_addr;
+
+	raw_addr = fm_address_get_raw_addr(addr, &nbits);
+	if (raw_addr == NULL || nbits / 8 > sizeof(path->raw))
+		return false;
+
+	if (!fm_asset_path_init(path, project_dir, addr->ss_family))
+		return false;
+
+	memcpy(path->raw, raw_addr, nbits / 8);
+	return true;
 }
 
 /*
@@ -502,3 +522,39 @@ fm_assets_write_table(const char *project_dir, int family, const fm_host_asset_t
 	fm_asset_path_destroy(&path);
 }
 
+bool
+fm_assetio_map_host(fm_host_asset_t *host)
+{
+	struct fm_asset_path path;
+
+	if (host->mapping != NULL)
+		return true;
+
+	if (!fm_asset_path_init_address(&path, fm_assetio_base_dir, &host->address))
+		goto out;
+
+	host->mapping = fm_assetio_map(&path, &path.format, fm_assetio_read_write);
+
+out:
+	fm_asset_path_destroy(&path);
+	return !!host->mapping;
+}
+
+void
+fm_assetio_unmap_host(fm_host_asset_t *host)
+{
+	if (host->mapping == NULL)
+		return;
+
+	fm_assetio_unmap(host->mapping);
+	host->mapping = NULL;
+}
+
+void
+fm_assetio_set_mapping(const char *project_dir, bool rw)
+{
+	drop_string(&fm_assetio_base_dir);
+	fm_assetio_base_dir = strdup(project_dir);
+
+	fm_assetio_read_write = rw;
+}

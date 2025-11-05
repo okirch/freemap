@@ -50,14 +50,13 @@ typedef struct fm_assetio_mapped {
 	fm_host_asset_ondisk_t *main;
 } fm_assetio_mapped_t;
 
-
 struct fm_host_asset {
 	fm_address_t		address;
 
 	int			map_flags;
-
 	fm_asset_state_t	state;
 
+	fm_assetio_mapped_t *	mapping;
 	fm_protocol_asset_t *	protocols[__FM_PROTO_MAX];
 };
 
@@ -74,5 +73,10 @@ extern bool		fm_protocol_asset_is_any_port_open(const fm_protocol_asset_t *proto
 
 extern void		fm_assets_write_table(const char *project_dir, int family, const fm_host_asset_table_t *table);
 extern void		fm_assets_read_table(const char *project_dir, int family, fm_host_asset_table_t *table);
+
+extern bool		fm_assetio_map_host(fm_host_asset_t *host);
+extern void		fm_assetio_unmap_host(fm_host_asset_t *host);
+
+void			fm_assetio_set_mapping(const char *project_dir, bool rw);
 
 #endif /* FREEMAP_ASSETS_H */
