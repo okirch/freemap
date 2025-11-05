@@ -170,6 +170,7 @@ extern fm_socket_t *	fm_socket_create(int family, int type, int proto, fm_protoc
 extern void		fm_socket_free(fm_socket_t *);
 extern bool		fm_socket_connect(fm_socket_t *, const fm_address_t *);
 extern bool		fm_socket_bind(fm_socket_t *, const fm_address_t *);
+extern int		fm_socket_get_family(const fm_socket_t *);
 extern bool		fm_socket_get_local_address(const fm_socket_t *, fm_address_t *);
 extern bool		fm_socket_enable_recverr(fm_socket_t *);
 extern bool		fm_socket_enable_hdrincl(fm_socket_t *sock);

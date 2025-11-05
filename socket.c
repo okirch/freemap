@@ -413,6 +413,12 @@ fm_socket_get_local_address(const fm_socket_t *sock, fm_address_t *addr)
 	return true;
 }
 
+int
+fm_socket_get_family(const fm_socket_t *sock)
+{
+	return sock->family;
+}
+
 /*
  * sendmsg convenience functions
  */
