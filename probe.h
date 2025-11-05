@@ -111,9 +111,9 @@ typedef struct fm_extant {
 	fm_probe_t *		probe;
 } fm_extant_t;
 
-struct fm_extant_list {
+typedef struct fm_extant_list {
 	struct hlist_head	hlist;
-};
+} fm_extant_list_t;
 
 extern void		fm_probe_class_register(struct fm_probe_class *);
 extern fm_probe_class_t *fm_probe_class_find(const char *name, int mode);
@@ -129,6 +129,9 @@ extern const char *	fm_probe_mode_to_string(int mode);
 
 extern fm_extant_t *	fm_extant_alloc(fm_probe_t *, int af, int ipproto,
 				const void *payload, size_t payload_size);
+extern fm_extant_t *	fm_extant_alloc_list(fm_probe_t *probe, int af, int ipproto,
+				const void *payload, size_t payload_size,
+				fm_extant_list_t *exlist);
 extern void		fm_extant_free(fm_extant_t *extant);
 
 extern void		fm_probe_set_rtt_estimator(fm_probe_t *, fm_rtt_stats_t *);

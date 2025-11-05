@@ -389,17 +389,9 @@ fm_probe_finish_waiting(fm_probe_t *probe)
  * Tracking of extant requests
  */
 fm_extant_t *
-fm_extant_alloc(fm_probe_t *probe, int af, int ipproto, const void *payload, size_t payload_size)
+fm_extant_alloc_list(fm_probe_t *probe, int af, int ipproto, const void *payload, size_t payload_size, fm_extant_list_t *exlist)
 {
-	fm_target_t *target;
 	fm_extant_t *extant;
-
-	if ((target = probe->_target) == NULL) {
-		/* Dont do that */
-		fm_log_warning("%s: cannot allocate and extant because the probe is not associated with a specific target",
-				fm_probe_name(probe));
-		return NULL;
-	}
 
 	extant = calloc(1, sizeof(*extant) + payload_size);
 
@@ -412,10 +404,40 @@ fm_extant_alloc(fm_probe_t *probe, int af, int ipproto, const void *payload, siz
 	if (payload != NULL)
 		memcpy(extant + 1, payload, payload_size);
 
-	fm_extant_append(&target->expecting, extant);
+	fm_extant_append(exlist, extant);
 
 	return extant;
 }
+
+fm_extant_t *
+fm_extant_alloc(fm_probe_t *probe, int af, int ipproto, const void *payload, size_t payload_size)
+{
+	fm_target_t *target;
+
+	if ((target = probe->_target) == NULL) {
+		/* Dont do that */
+		fm_log_warning("%s: cannot allocate an extant because the probe is not associated with a specific target",
+				fm_probe_name(probe));
+		return NULL;
+	}
+
+	return fm_extant_alloc_list(probe, af, ipproto, payload, payload_size, &target->expecting);
+}
+
+void
+fm_extant_list_forget_probe(fm_extant_list_t *list, const fm_probe_t *probe)
+{
+	hlist_iterator_t iter;
+	fm_extant_t *extant;
+
+	fm_extant_iterator_init(&iter, list);
+	while ((extant = fm_extant_iterator_next(&iter)) != NULL) {
+		if (extant->probe == probe)
+			fm_extant_free(extant);
+	}
+}
+
+
 
 void
 fm_extant_free(fm_extant_t *extant)
