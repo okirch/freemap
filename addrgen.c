@@ -455,7 +455,9 @@ fm_local_discovery_enumerator_create(const fm_interface_t *nic, int family, cons
 	probe_params.retries = 3;
 	probe_params.ttl = 1;
 
-	probe = NULL;
+	probe = fm_icmp_create_broadcast_probe(proto, family, nic, src_addr,
+					fm_local_discovery_info_callback, disco,
+					&probe_params, NULL);
 	if (probe == NULL) {
 		free(disco);
 		return NULL;
