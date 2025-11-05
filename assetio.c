@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <assert.h>
 
 #include "assets.h"
 #include "addresses.h"
@@ -48,7 +49,6 @@ struct fm_asset_path {
 };
 
 struct fm_assetio_mapped {
-	int		fd;
 	void *		addr;
 	size_t		size;
 
@@ -204,30 +204,53 @@ fm_asset_path_inspect_file(struct fm_asset_path *path, const char *name, unsigne
 /*
  * Helper code for mapping the file into memory
  */
-static bool
-fm_assetio_map(int fd, struct fm_assetio_mapped *mapped, struct fm_asset_fileformat *fmt, bool for_writing)
+static struct fm_assetio_mapped *
+fm_assetio_map(struct fm_asset_path *path, struct fm_asset_fileformat *fmt, bool for_writing)
 {
+	struct fm_assetio_mapped *mapped = NULL;
+	const char *file_path;
 	caddr_t	addr = NULL;
 	unsigned int i;
+	int fd;
 
-	mapped->fd = fd;
+	if (!(file_path = fm_asset_path_get(path, for_writing)))
+		return NULL;
+
 	if (for_writing) {
+		if (fm_debug_level > 3)
+			fm_log_debug("creating asset file %s", file_path);
+
+		fd = open(file_path, O_RDWR|O_CREAT, 0644);
+		if (fd < 0) {
+			fm_log_error("cannot create %s: %m", file_path);
+			return NULL;
+		}
+
 		if (lseek(fd, fmt->size - 1, SEEK_SET) < 0
 		 || write(fd, "", 1) < 0) {
-			fm_log_error("unable to resize map file (size %u): %m", fmt->size);
-			return false;
+			fm_log_error("unable to resize map file %s (size %u): %m", file_path,  fmt->size);
+			close(fd);
+			return NULL;
 		}
 
 		addr = mmap(NULL, fmt->size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 	} else {
+		fd = open(file_path, O_RDONLY);
+		if (fd < 0) {
+			fm_log_error("cannot open %s: %m", file_path);
+			return NULL;
+		}
+
 		addr = mmap(NULL, fmt->size, PROT_READ|PROT_WRITE, MAP_PRIVATE, fd, 0);
 	}
+	close(fd);
 
 	if (addr == NULL) {
-		fm_log_error("mmap failed: %m");
-		return false;
+		fm_log_error("failed to mmap %s: %m", file_path);
+		return NULL;
 	}
 
+	mapped = calloc(1, sizeof(*mapped));
 	mapped->addr = addr;
 	mapped->size = fmt->size;
 
@@ -237,7 +260,7 @@ fm_assetio_map(int fd, struct fm_assetio_mapped *mapped, struct fm_asset_filefor
 		mapped->main->protocols[i].bitmap = port_addr;
 	}
 
-	return true;
+	return mapped;
 }
 
 static void
@@ -246,68 +269,20 @@ fm_assetio_unmap(struct fm_assetio_mapped *mapped)
 	if (mapped->addr)
 		munmap(mapped->addr, mapped->size);
 
-	if (mapped->fd >= 0)
-		close(mapped->fd);
-
 	memset(mapped, 0, sizeof(*mapped));
-	mapped->fd = -1;
-
 	free(mapped);
 }
 
 static struct fm_assetio_mapped *
 fm_assetio_map_read(struct fm_asset_path *path)
 {
-	struct fm_assetio_mapped *result;
-	const char *file_path;
-	int fd;
-
-	if (!(file_path = fm_asset_path_get(path, false)))
-		return NULL;
-
-	fd = open(file_path, O_RDONLY);
-	if (fd < 0) {
-		fm_log_error("cannot open %s: %m", file_path);
-		return NULL;
-	}
-
-	result = calloc(1, sizeof(*result));
-	if (!fm_assetio_map(fd, result, &path->format, false)) {
-		fm_log_error("cannot map %s: %m", file_path);
-		fm_assetio_unmap(result);
-		return NULL;
-	}
-
-	return result;
+	return fm_assetio_map(path, &path->format, false);
 }
 
 static struct fm_assetio_mapped *
 fm_assetio_map_write(struct fm_asset_path *path)
 {
-	struct fm_assetio_mapped *result;
-	const char *file_path;
-	int fd;
-
-	if (!(file_path = fm_asset_path_get(path, true)))
-		return NULL;
-
-	if (fm_debug_level > 3)
-		fm_log_debug("creating asset file %s", file_path);
-
-	fd = open(file_path, O_RDWR|O_CREAT, 0644);
-	if (fd < 0) {
-		fm_log_error("cannot create %s: %m", file_path);
-		return NULL;
-	}
-
-	result = calloc(1, sizeof(*result));
-	if (!fm_assetio_map(fd, result, &path->format, true)) {
-		fm_log_error("cannot map %s: %m", file_path);
-		fm_assetio_unmap(result);
-		return NULL;
-	}
-
-	return result;
+	return fm_assetio_map(path, &path->format, true);
 }
 
 /*
@@ -523,6 +498,9 @@ void
 fm_assets_write_table(const char *project_dir, int family, const fm_host_asset_table_t *table)
 {
 	struct fm_asset_path path;
+	fm_protocol_asset_t *ppp;
+
+	assert(sizeof(ppp->ports) == sizeof(fm_asset_port_bitmap_t));
 
 	if (!fm_asset_path_init(&path, project_dir, family))
 		return;
