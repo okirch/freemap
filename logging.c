@@ -107,7 +107,6 @@ fm_log_notice(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	fprintf(fp, "Warning: ");
 	vfprintf(fp, fmt, ap);
 	if (strchr(fmt, '\n') == NULL)
 		fputc('\n', fp);
