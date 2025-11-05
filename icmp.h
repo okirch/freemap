@@ -49,5 +49,16 @@ typedef struct fm_icmp_request {
 	} icmp;
 } fm_icmp_request_t;
 
+typedef struct fm_icmp_extant_info {
+	struct {
+		unsigned int	len;
+		union {
+			struct icmp		icmp4;
+			struct icmp6_hdr	icmp6;
+			unsigned char		raw[64];
+		};
+	} sent_hdr, expect_hdr;
+} fm_icmp_extant_info_t;
+
 
 #endif /* FREEMAP_ICMP_H */
