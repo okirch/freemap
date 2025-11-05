@@ -149,6 +149,15 @@ fm_raw_packet_pull_ipv6_hdr(fm_buffer_t *bp, fm_ip_header_info_t *info)
 bool
 fm_raw_packet_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_header_info_t *info)
 {
+	if (pkt->family == AF_PACKET) {
+		const struct sockaddr_ll *sll = (struct sockaddr_ll *) &pkt->peer_addr;
+
+		if (sll->sll_protocol == htons(ETH_P_IP))
+			pkt->family = AF_INET;
+		else if (sll->sll_protocol == htons(ETH_P_IPV6))
+			pkt->family = AF_INET6;
+	}
+
 	if (pkt->family == AF_INET)
 		return fm_raw_packet_pull_ipv4_hdr(pkt->payload, info);
 	if (pkt->family == AF_INET6)
