@@ -224,11 +224,10 @@ fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 		} else
 		if (error < 0) {
 			/* This address generator is spent. Remove it from the active list */
-			fm_address_enumerator_array_destroy_shallow(&mgr->active_generators);
+			fm_address_enumerator_array_remove_shallow(&mgr->active_generators, index);
+			fm_log_notice("agen %s retired", agen->ops->name);
 			continue;
 		}
-
-		/* fm_log_debug("agen %u returns %s", index, fm_address_format(&target_addr)); */
 
 		target_net = fm_network_for_host(&target_addr);
 		if (target_net->last_hop == NULL)
