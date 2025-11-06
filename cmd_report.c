@@ -55,6 +55,39 @@ fm_command_register_report(fm_cmdparser_t *parser)
 	fm_cmdparser_add_subcommand(parser, "report", FM_CMDID_REPORT, NULL, report_long_options, handle_report_options);
 }
 
+/*
+ * Map state to string
+ */
+static const char *
+fm_report_asset_state(fm_asset_state_t state)
+{
+	switch (state) {
+	case FM_ASSET_STATE_UNDEF:
+		return "undefined";
+
+	case FM_ASSET_STATE_PROBE_SENT:
+		return "noresponse";
+
+	case FM_ASSET_STATE_CLOSED:
+		return "unreachable";
+
+	case FM_ASSET_STATE_OPEN:
+		return "open";
+	}
+	return "BAD";
+}
+
+/*
+ * This visitor pattern is ugly; we should use an iterator
+ */
+static bool
+fm_report_port_visitor(const fm_host_asset_t *host, const char *proto, unsigned int port, fm_asset_state_t state, void *user_data)
+{
+	printf("   %s/%u %s\n", proto, port, fm_report_asset_state(state));
+	return true;
+}
+
+
 int
 fm_command_perform_report(fm_command_t *cmd)
 {
@@ -74,7 +107,20 @@ fm_command_perform_report(fm_command_t *cmd)
 
 	fm_host_asset_iterator_init(&iter);
 	while ((host = fm_host_asset_iterator_next(&iter)) != NULL) {
-		printf("ASSET %s\n", fm_address_format(&host->address));
+		fm_asset_state_t state;
+
+		if (!fm_host_iterator_hot_map(host))
+			continue;
+
+		state = fm_host_asset_get_state(host);
+		if (state == FM_ASSET_STATE_UNDEF)
+			continue;
+
+		printf("== %s ==\n", fm_address_format(&host->address));
+		printf("   host: %s\n", fm_report_asset_state(state));
+
+		fm_host_asset_report_ports(host, fm_report_port_visitor, NULL);
+		printf("\n");
 	}
 
 	return 0;

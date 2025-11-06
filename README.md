@@ -54,7 +54,19 @@ The host reachability scan performs various probes to identify hosts which are r
 at all. Typically, this would be an ICMP ping or an ARP lookup, but other, more
 exotic probes are possible as well.
 
-Finally, the services scan will probe whether services are listening on UDP and TCP ports.
+Finally, the port scan will probe whether services are listening on UDP and TCP ports.
+In the case of UDP, it is possible to define probing packets to send to the port,
+in order to verify the kind of service that is running there.
 
-Note, the goal is for freemap to save reachability information (and additional stuff,
-like topology, rtt estimates etc) across invocations. This is not implemented yet, however.
+All results from these probing activities are stored in the project directory. These
+are mapped into memory as needed. In particular, these files will appear fairly large,
+but they usually occupy only a few blocks on disk - the rest is holes.
+
+Last but not least, the data that has been collected can be displayed using
+
+```
+  freemap report
+```
+
+This is possible even while a scan is ongoing, as the files are mapped into memory,
+so any update is instantly visible to other processes.

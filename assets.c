@@ -489,11 +489,14 @@ fm_host_asset_iterator_next(fm_host_asset_iterator_t *iter)
  * Iterate over a host asset (for reporting)
  */
 void
-fm_host_asset_report_ports(const fm_host_asset_t *host,
+fm_host_asset_report_ports(fm_host_asset_t *host,
 			bool (*visitor)(const fm_host_asset_t *host, const char *proto, unsigned int port, fm_asset_state_t state, void *user_data),
 			void *user_data)
 {
 	unsigned int i;
+
+	if (!fm_host_asset_is_mapped(host))
+		return;
 
 	for (i = 0; i < __FM_PROTO_MAX; ++i) {
 		const fm_protocol_asset_t *proto = &host->protocols[i];
@@ -511,6 +514,9 @@ fm_host_asset_report_ports(const fm_host_asset_t *host,
 
 			if (word == 0)
 				continue;
+
+			if (16 * word_index >= proto->ondisk->max_port)
+				break;
 
 			for (port = word_index * 16; word; ++port, word >>= 2) {
 				if (word & 0x03)
