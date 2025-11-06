@@ -89,7 +89,7 @@ typedef struct fm_host_asset_iterator {
 extern fm_asset_state_t	fm_protocol_asset_get_state(const fm_protocol_asset_t *proto);
 extern bool		fm_protocol_asset_is_any_port_open(const fm_protocol_asset_t *proto);
 
-extern void		fm_assets_write_table(const char *project_dir, int family, const fm_host_asset_table_t *table);
+extern void		fm_host_asset_cache_prime(void);
 extern void		fm_assets_read_table(int family, fm_host_asset_table_t *table);
 
 extern bool		fm_assetio_map_host(fm_host_asset_t *host);
@@ -97,7 +97,6 @@ extern void		fm_assetio_unmap_host(fm_host_asset_t *host);
 
 extern void		fm_assetio_set_mapping(const char *project_dir, bool rw);
 
-extern void		fm_host_asset_cache_prime(void);
 extern void		fm_host_asset_iterator_init(fm_host_asset_iterator_t *);
 extern fm_host_asset_t *fm_host_asset_iterator_next(fm_host_asset_iterator_t *);
 

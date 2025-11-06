@@ -225,7 +225,6 @@ fm_assetio_map(struct fm_asset_path *path, struct fm_asset_fileformat *fmt, bool
 	fm_assetio_mapped_t *mapped = NULL;
 	const char *file_path;
 	caddr_t	addr = NULL;
-	unsigned int i;
 	int fd;
 
 	if (!(file_path = fm_asset_path_get(path, for_writing)))
@@ -281,18 +280,6 @@ fm_assetio_unmap(fm_assetio_mapped_t *mapped)
 	free(mapped);
 }
 
-static fm_assetio_mapped_t *
-fm_assetio_map_read(struct fm_asset_path *path)
-{
-	return fm_assetio_map(path, &path->format, false);
-}
-
-static fm_assetio_mapped_t *
-fm_assetio_map_write(struct fm_asset_path *path)
-{
-	return fm_assetio_map(path, &path->format, true);
-}
-
 /*
  * Read case: we've reached a file, look up (ie create) the in-memory asset entry
  * that goes with it.
@@ -308,52 +295,6 @@ fm_assetio_lookup_host(struct fm_asset_path *path, fm_host_asset_table_t *table)
 	if (fm_debug_level > 3)
 		fm_log_debug("found asset file for %s", fm_address_format(&host_address));
 	return fm_host_asset_get(&host_address, true);
-}
-
-/*
- * Write case: We have a path, and we have the host asset.
- * Map the file into memory and copy data to disk.
- */
-static void
-fm_assetio_write_host(struct fm_asset_path *path, const fm_host_asset_t *host)
-{
-	fm_assetio_mapped_t *mapped;
-	fm_host_asset_ondisk_t *disk;
-	unsigned int i;
-
-	if (!(mapped = fm_assetio_map_write(path)))
-		return;
-
-#if 0
-	disk = mapped->main;
-	disk->state = host->state;
-	for (i = 0; i < __FM_PROTO_MAX; ++i) {
-		fm_protocol_asset_ondisk_t *proto_on_disk = &disk->protocols[i];
-		const fm_protocol_asset_t *proto = &host->protocols[i];
-
-		if (proto == NULL)
-			continue;
-
-		proto_on_disk->state = fm_protocol_asset_get_state(proto);
-		if (proto_on_disk->state == FM_ASSET_STATE_UNDEF) {
-			proto_on_disk->max_port = 0;
-			continue;
-		}
-
-		/* just copy the entire port state as-is.
-		 * might be wasteful... */
-		memcpy(proto_on_disk->bitmap, proto->ports, sizeof(proto->ports));
-		proto_on_disk->max_port = 65536;
-	}
-
-	for (i = 0; i < __FM_PROTO_MAX; ++i) {
-		fm_protocol_asset_ondisk_t *proto_on_disk = &disk->protocols[i];
-
-		proto_on_disk->bitmap = NULL;
-	}
-#endif
-
-	fm_assetio_unmap(mapped);
 }
 
 /*
@@ -426,52 +367,6 @@ fm_assets_read_table(int family, fm_host_asset_table_t *table)
 
 	/* Start searching */
 	fm_asset_dir_scan(&path, -1, 0, table);
-}
-
-/*
- * Write case: traverse the in-memory assets and write them to disk.
- */
-static void
-fm_assetio_traverse(const fm_host_asset_table_t *table, struct fm_asset_path *path, unsigned int depth)
-{
-	unsigned int i;
-
-	if (depth + 1 == path->addr_size) {
-		for (i = 0; i < 256; ++i) {
-			const fm_host_asset_t *host_asset = table->host[i];
-
-			if (host_asset == NULL || host_asset->main->host_state == FM_ASSET_STATE_UNDEF)
-				continue;
-
-			path->raw[depth] = i;
-			fm_assetio_write_host(path, host_asset);
-		}
-	} else {
-		for (i = 0; i < 256; ++i) {
-			const fm_host_asset_table_t *sub_table = table->table[i];
-
-			if (sub_table == NULL)
-				continue;
-
-			path->raw[depth] = i;
-			fm_assetio_traverse(sub_table, path, depth + 1);
-		}
-	}
-}
-
-void
-fm_assets_write_table(const char *project_dir, int family, const fm_host_asset_table_t *table)
-{
-	struct fm_asset_path path;
-	fm_protocol_asset_t *ppp;
-
-	assert(sizeof(ppp->ports) == sizeof(fm_asset_port_bitmap_t));
-
-	if (!fm_asset_path_init(&path, project_dir, family))
-		return;
-
-	fm_assetio_traverse(table, &path, 0);
-	fm_asset_path_destroy(&path);
 }
 
 static void *
