@@ -207,7 +207,7 @@ fm_command_perform_report(fm_command_t *cmd)
 	while ((host = fm_host_asset_iterator_next(&iter)) != NULL) {
 		fm_asset_state_t state;
 
-		if (!fm_host_iterator_hot_map(host))
+		if (!fm_host_asset_hot_map(host))
 			continue;
 
 		state = fm_host_asset_get_state(host);

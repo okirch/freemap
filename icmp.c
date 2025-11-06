@@ -167,7 +167,7 @@ fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 		pkt->peer_addr = ip.src_addr;
 	}
 
-	fm_host_asset_update_state_by_address(&pkt->peer_addr, FM_ASSET_STATE_OPEN);
+	fm_host_asset_update_state_by_address(&pkt->peer_addr, FM_PROTO_ICMP, FM_ASSET_STATE_OPEN);
 
 	if (proto == &fm_icmp_bsdsock_ops) {
 		/* When using dgram/icmp sockets, the kernel will overwrite the icmp sequence
@@ -239,9 +239,9 @@ fm_icmp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 
 		/* update asset state right away */
 		if (ee->ee_type == ICMP_DEST_UNREACH)
-			fm_host_asset_update_state_by_address(&pkt->peer_addr, FM_ASSET_STATE_CLOSED);
+			fm_host_asset_update_state_by_address(&pkt->peer_addr, FM_PROTO_ICMP, FM_ASSET_STATE_CLOSED);
 		if (pkt->info.offender != NULL)
-			fm_host_asset_update_state_by_address(pkt->info.offender, FM_ASSET_STATE_OPEN);
+			fm_host_asset_update_state_by_address(pkt->info.offender, FM_PROTO_ICMP, FM_ASSET_STATE_OPEN);
 
 		/* The errqueue stuff is a bit non-intuitive at times. When receiving an
 		 * ICMP packet, the "from" address is the IP we originally sent the packet

@@ -118,7 +118,7 @@ extern void		fm_assetio_set_mapping(const char *project_dir, bool rw);
 extern void		fm_host_asset_iterator_init(fm_host_asset_iterator_t *);
 extern fm_host_asset_t *fm_host_asset_iterator_next(fm_host_asset_iterator_t *);
 
-extern bool		fm_host_iterator_hot_map(fm_host_asset_t *);
+extern bool		fm_host_asset_hot_map(fm_host_asset_t *);
 
 static inline bool
 fm_host_asset_is_mapped(const fm_host_asset_t *host)

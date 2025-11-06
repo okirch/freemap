@@ -336,7 +336,7 @@ fm_host_asset_get_protocol(fm_host_asset_t *host, unsigned int proto_id, bool cr
  * message from a gateway and want to record that information
  */
 bool
-fm_host_iterator_hot_map(fm_host_asset_t *host)
+fm_host_asset_hot_map(fm_host_asset_t *host)
 {
 	unsigned int index = fm_asset_hotmap_cache.next;
 	fm_host_asset_t *evict;
@@ -518,7 +518,7 @@ fm_host_asset_update_routing_hop(fm_host_asset_t *host, unsigned int ttl, const 
  * It's a bit slower, so avoid if possible.
  */
 bool
-fm_host_asset_update_state_by_address(const fm_address_t *addr, fm_asset_state_t state)
+fm_host_asset_update_state_by_address(const fm_address_t *addr, unsigned int proto_id, fm_asset_state_t state)
 {
 	fm_host_asset_t *host;
 
@@ -530,7 +530,7 @@ fm_host_asset_update_state_by_address(const fm_address_t *addr, fm_asset_state_t
 		return false;
 
 	/* If it's not mapped, hot-map it just for this update */
-	if (!fm_host_iterator_hot_map(host))
+	if (!fm_host_asset_hot_map(host))
 		return false; /* could be a permission issue */
 
 	return fm_host_asset_update_state(host, state);
