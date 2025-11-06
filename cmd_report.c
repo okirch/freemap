@@ -37,8 +37,14 @@ static fm_long_option_t report_long_options[] = {
 };
 
 struct fm_cmd_report_options {
-	bool		skip_noresponse;
-	bool		skip_unreachable;
+	bool			skip_noresponse;
+	bool			skip_unreachable;
+
+	struct {
+		bool			required;
+		fm_address_array_t	addrs;
+		fm_string_array_t	names;
+	} match;
 };
 
 static struct fm_cmd_report_options report_options;
@@ -68,6 +74,63 @@ fm_command_register_report(fm_cmdparser_t *parser)
 	fm_cmdparser_add_subcommand(parser, "report", FM_CMDID_REPORT, NULL, report_long_options, handle_report_options);
 }
 
+/*
+ * Parse the remaining command line arguments
+ */
+static bool
+fm_report_parse_arguments(fm_command_t *cmd)
+{
+	unsigned int i;
+
+	if (cmd->nvalues == 0)
+		return true;
+
+	for (i = 0; i < cmd->nvalues; ++i) {
+		const char *name = cmd->values[i];
+		fm_address_t address;
+
+		if (fm_address_parse(name, &address)) {
+			fm_address_array_append(&report_options.match.addrs, &address);
+		} else {
+			fm_string_array_append(&report_options.match.names, name);
+		}
+	}
+
+	report_options.match.required = true;
+	return true;
+}
+
+static bool
+fm_report_filter_host(const fm_host_asset_t *host)
+{
+	unsigned int i;
+
+	if (!report_options.match.required)
+		return true;
+
+	for (i = 0; i < report_options.match.addrs.count; ++i) {
+		const fm_address_t *check = &report_options.match.addrs.elements[i];
+
+		if (fm_address_equal(check, &host->address, false))
+			return true;
+	}
+
+	if (report_options.match.names.count != 0) {
+		const char *hostname = fm_host_asset_get_hostname(host);
+
+		if (hostname == NULL)
+			return false;
+
+		if (fm_string_array_contains(&report_options.match.names, hostname))
+			return true;
+	}
+
+	return false;
+}
+
+/*
+ * Check whether we are supposed to suppress hosts and ports below a certain state.
+ */
 static inline bool
 fm_report_skip_state(fm_asset_state_t state)
 {
@@ -222,6 +285,9 @@ fm_command_perform_report(fm_command_t *cmd)
 	fm_host_asset_iterator_t iter;
 	fm_host_asset_t *host;
 
+	if (!fm_report_parse_arguments(cmd))
+		return 1;
+
 	project = fm_project_load();
 	if (project == NULL) {
 		fm_log_error("could not detect scan project, please initialize first\n");
@@ -237,6 +303,9 @@ fm_command_perform_report(fm_command_t *cmd)
 		fm_asset_state_t state;
 
 		if (!fm_host_asset_hot_map(host))
+			continue;
+
+		if (!fm_report_filter_host(host))
 			continue;
 
 		state = fm_host_asset_get_state(host);
