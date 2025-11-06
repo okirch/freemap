@@ -455,7 +455,7 @@ fm_arp_type_to_string(int hatype)
 		return "tunnel";
 	}
 
-	snprintf(buf, sizeof(buf), "arp%u", hatype);
+	snprintf(buf, sizeof(buf), "arp%04x", hatype);
 	return buf;
 }
 

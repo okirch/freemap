@@ -428,6 +428,10 @@ fm_address_resolve(const char *hostname, fm_address_array_t *array)
 			seen_af_mask |= af_mask;
 		}
 
+		/* Record the hostname we used in the query rather than some
+		 * weird canonical name (which could be something in a cloud). */
+		fm_host_asset_update_hostname_by_address(&address, hostname);
+
 		fm_address_array_append_unique(array, &address);
 	}
 

@@ -132,6 +132,7 @@ fm_neighbor_cache_update(fm_neighbor_cache_t *cache, const fm_address_t *network
 	/* inform any probes that were waiting for this to be resolved */
 	fm_event_post(FM_EVENT_ID_NEIGHBOR_CACHE);
 
+	fm_host_asset_update_link_address_by_address(network_address, (const fm_address_t *) link_address);
 	return true;
 }
 

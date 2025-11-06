@@ -49,10 +49,19 @@ typedef struct fm_route_asset_ondisk {
 	fm_address_asset_t	address[MAX_TOPO_PROBE_ADDRS];
 } fm_route_asset_ondisk_t;
 
+typedef struct fm_name_asset_ondisk {
+	char			hostname[256];
+
+	uint16_t		arp_type;
+	unsigned char		link_addr_len;
+	unsigned char		link_addr[13];
+} fm_name_asset_ondisk_t;
+
 typedef struct fm_host_asset_ondisk {
 	unsigned int		host_state;
 
 	fm_protocol_asset_ondisk_t protocols[__FM_PROTO_MAX];
+	fm_name_asset_ondisk_t	names;
 } fm_host_asset_ondisk_t;
 
 typedef struct fm_assetio_mapped {

@@ -153,6 +153,11 @@ extern bool		fm_host_asset_update_state(fm_host_asset_t *host, fm_asset_state_t 
 extern fm_asset_state_t	fm_host_asset_get_port_state(fm_host_asset_t *host, unsigned int proto_id, unsigned int port, fm_asset_state_t state);
 extern bool		fm_host_asset_update_port_state(fm_host_asset_t *host, unsigned int proto_id, unsigned int port, fm_asset_state_t state);
 extern bool		fm_host_asset_update_state_by_address(const fm_address_t *addr, unsigned int proto_id, fm_asset_state_t state);
+extern bool		fm_host_asset_update_link_address(fm_host_asset_t *, const fm_address_t *link_addr);
+extern bool		fm_host_asset_update_link_address_by_address(const fm_address_t *net_addr, const fm_address_t *link_addr);
+extern bool		fm_host_asset_update_hostname(fm_host_asset_t *, const char *);
+extern bool		fm_host_asset_update_hostname_by_address(const fm_address_t *net_addr, const char *);
+extern const char *	fm_host_asset_get_hostname(const fm_host_asset_t *);
 extern bool		fm_host_asset_clear_routing(fm_host_asset_t *host, int family);
 extern bool		fm_host_asset_update_routing_hop(fm_host_asset_t *host, unsigned int ttl, const fm_address_t *address, const double *rtt, bool alternative);
 extern void		fm_host_asset_report_ports(fm_host_asset_t *host,

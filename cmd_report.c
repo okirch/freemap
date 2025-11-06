@@ -105,28 +105,57 @@ fm_report_asset_state(fm_asset_state_t state)
 	return "BAD";
 }
 
+/*
+ * Display the host state
+ */
 static void
 fm_report_host_state(const fm_host_asset_t *host)
 {
-	unsigned int k, nprinted = 0;
+	const char *hostname = NULL;
+	const char *separator = " (";
+	unsigned int k;
 
 	printf("   host: %s", fm_report_asset_state(host->main->host_state));
+
+	if ((hostname = fm_host_asset_get_hostname(host)) != NULL) {
+		printf("%s%s", separator, hostname);
+		separator = "; ";
+	}
+
 	for (k = 0; k < __FM_PROTO_MAX; ++k) {
 		fm_asset_state_t state = host->main->protocols[k].state;
 
 		if (fm_report_skip_state(state))
 			continue;
 
-		printf("%s%s=%s",
-				nprinted? ", " : " (",
+		printf("%s%s=%s", separator,
 				fm_protocol_id_to_string(k),
 				fm_report_asset_state(state));
-		nprinted++;
+		separator = ", ";
 	}
 
-	if (nprinted != 0)
+	if (strcmp(separator, " ("))
 		printf(")");
 	printf("\n");
+}
+
+/*
+ * Display the host link address if we have it
+ */
+static void
+fm_report_link_address(const fm_host_asset_t *host)
+{
+	fm_name_asset_ondisk_t *names = &host->main->names;
+
+	if (names->link_addr_len != 0) {
+		unsigned int k;
+
+		printf("   link addr: ");
+		for (k = 0; k < names->link_addr_len; ++k)
+			printf("%s%02x", k? ":" : "", names->link_addr[k]);
+
+		printf(" (%s)\n", fm_arp_type_to_string(names->arp_type));
+	}
 }
 
 static void
@@ -218,6 +247,7 @@ fm_command_perform_report(fm_command_t *cmd)
 		printf("%s\n", fm_address_format(&host->address));
 
 		fm_report_host_state(host);
+		fm_report_link_address(host);
 
 		fm_report_route(host, host->ipv4_route, AF_INET);
 		fm_report_route(host, host->ipv6_route, AF_INET6);

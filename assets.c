@@ -18,6 +18,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <linux/if_packet.h>
 
 #include "assets.h"
 #include "freemap.h"
@@ -509,9 +510,108 @@ fm_host_asset_update_routing_hop(fm_host_asset_t *host, unsigned int ttl, const 
 	if (ttl > route->last_ttl)
 		route->last_ttl = ttl;
 
-	fm_log_notice("fm_host_asset_update_routing_hop %u %s flap=%d", ttl, fm_address_format(address), alternative);
 	return true;
 }
+
+/*
+ * Update ancillary information such as hostnames, link-level addresses etc.
+ */
+bool
+fm_host_asset_update_link_address(fm_host_asset_t *host, const fm_address_t *link_addr)
+{
+	const struct sockaddr_ll *sll = (const struct sockaddr_ll *) link_addr;
+	fm_name_asset_ondisk_t *names;
+	unsigned int halen;
+
+	if (!fm_host_asset_is_mapped(host))
+		return false;
+
+	names = &host->main->names;
+
+	halen = sll->sll_halen;
+	if (halen > sizeof(names->link_addr))
+		return false;
+
+	memcpy(names->link_addr, sll->sll_addr, halen);
+	names->arp_type = sll->sll_hatype;
+	names->link_addr_len = halen;
+
+	return true;
+}
+
+bool
+fm_host_asset_update_link_address_by_address(const fm_address_t *net_addr, const fm_address_t *link_addr)
+{
+	fm_host_asset_t *host;
+
+	if (net_addr == NULL)
+		return false;
+
+	host = fm_host_asset_get(net_addr, true);
+	if (host == NULL)
+		return false;
+
+	/* If it's not mapped, hot-map it just for this update */
+	if (!fm_host_asset_hot_map(host))
+		return false; /* could be a permission issue */
+
+	return fm_host_asset_update_link_address(host, link_addr);
+}
+
+bool
+fm_host_asset_update_hostname(fm_host_asset_t *host, const char *fqdn)
+{
+	fm_name_asset_ondisk_t *names;
+	int name_len;
+
+	if (!fm_host_asset_is_mapped(host))
+		return false;
+
+	names = &host->main->names;
+
+	name_len = strlen(fqdn);
+	if (name_len >= sizeof(names->hostname))
+		return false;
+
+	strcpy(names->hostname, fqdn);
+	return true;
+}
+
+
+bool
+fm_host_asset_update_hostname_by_address(const fm_address_t *net_addr, const char *fqdn)
+{
+	fm_host_asset_t *host;
+
+	if (net_addr == NULL)
+		return false;
+
+	host = fm_host_asset_get(net_addr, true);
+	if (host == NULL)
+		return false;
+
+	/* If it's not mapped, hot-map it just for this update */
+	if (!fm_host_asset_hot_map(host))
+		return false; /* could be a permission issue */
+
+	return fm_host_asset_update_hostname(host, fqdn);
+}
+
+const char *
+fm_host_asset_get_hostname(const fm_host_asset_t *host)
+{
+	fm_name_asset_ondisk_t *names;
+
+	if (!fm_host_asset_is_mapped(host))
+		return false;
+
+	names = &host->main->names;
+	if (names->hostname[0] == 0)
+		return NULL;
+
+	return names->hostname;
+}
+
 
 /*
  * This is for situations where we do not have a pointer to the host asset handy.
