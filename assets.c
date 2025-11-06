@@ -209,7 +209,7 @@ fm_host_asset_iterator_update(fm_host_asset_iterator_t *iter, int depth, unsigne
 {
 	assert(depth < 16);
 
-	if (value >= 256 && depth >= 0) {
+	while (value >= 256 && depth >= 0) {
 		iter->raw[depth] = 0;
 		/* This will actually read raw[-1] at some point, but we don't mind */
 		value = iter->raw[--depth] + 1;
@@ -217,8 +217,10 @@ fm_host_asset_iterator_update(fm_host_asset_iterator_t *iter, int depth, unsigne
 
 	if (depth < 0) {
 		iter->done = true;
-	} else {
+	} else if (iter->raw[depth] != value) {
 		iter->raw[depth] = value;
+		if (depth < 15)
+			iter->raw[depth + 1] = 0;
 	}
 	return depth;
 }
@@ -242,26 +244,27 @@ fm_host_asset_find_next(fm_host_asset_table_t *root, fm_host_asset_iterator_t *i
 
 		index = iter->raw[depth];
 		do {
-			child = table->table[index++];
-		} while (!child && index < 256);
+			child = table->table[index];
+		} while (!child && ++index < 256);
 
 		if (child != NULL) {
-			fm_host_asset_iterator_update(iter, depth, index);
-
 			if (fm_debug_level > 4) {
 				int k;
 
-				printf("%*.*s %u %p; raw=", depth, depth, "", index, child);
-				for (k = 0; k <= depth; ++k)
-					printf(" %d", iter->raw[k]);
-				printf("\n");
+				printf("%*.*s key=", depth, depth, "", index);
+				for (k = 0; k < depth; ++k)
+					printf("%02x", iter->raw[k]);
+				printf("%02x\n", index);
+				fflush(stdout);
 			}
 
-			if (++depth >= max_depth)
+			if (depth + 1 >= max_depth) {
+				fm_host_asset_iterator_update(iter, depth, index + 1);
 				return (fm_host_asset_t *) child;
+			}
 
-			tables[depth] = child;
-			iter->raw[depth] = 0; /* start scanning next level at index 0 */
+			fm_host_asset_iterator_update(iter, depth, index);
+			tables[++depth] = child;
 			continue;
 		}
 
@@ -558,8 +561,8 @@ fm_host_asset_iterator_next(fm_host_asset_iterator_t *iter)
 			break;
 
 		table = fm_host_asset_table_get(iter->family);
-
-		host = fm_host_asset_find_next(table, iter);
+		if (table != NULL)
+			host = fm_host_asset_find_next(table, iter);
 
 		/* If we're done with IPv4, continue with IPv6 */
 		if (iter->done && iter->family == AF_INET) {
