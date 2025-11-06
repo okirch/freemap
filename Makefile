@@ -39,7 +39,8 @@ UTILS	= freemap
 freemap_OBJS = \
 	  main.o \
 	  cmd_project.o \
-	  cmd_scan.o
+	  cmd_scan.o \
+	  cmd_report.o
 
 all::	$(LIB) $(UTILS)
 
