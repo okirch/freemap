@@ -511,3 +511,10 @@ fm_assets_attach_readonly(const char *asset_dir)
 {
 	fm_assetio_set_mapping(asset_dir, false);
 }
+
+void
+fm_host_asset_cache_prime(void)
+{
+	fm_assets_read_table(AF_INET, &fm_host_asset_table_ipv4);
+	fm_assets_read_table(AF_INET6, &fm_host_asset_table_ipv6);
+}

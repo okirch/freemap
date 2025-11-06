@@ -54,7 +54,6 @@ static bool		fm_assetio_read_write;
 static void
 fm_asset_fileformat_init(struct fm_asset_fileformat *fmt)
 {
-	const fm_protocol_asset_t *proto;
 	unsigned int section_size;
 	unsigned int i;
 
@@ -81,6 +80,9 @@ fm_asset_path_init(struct fm_asset_path *path, const char *project_dir, int fami
 {
 	memset(path, 0, sizeof(*path));
 	path->family = family;
+
+	if (project_dir == NULL)
+		return false;
 
 	path->addr_size = fm_addrfamily_max_addrbits(family) / 8;
 	if (path->addr_size == 0)
@@ -239,8 +241,7 @@ fm_assetio_map(struct fm_asset_path *path, struct fm_asset_fileformat *fmt, bool
 			return NULL;
 		}
 
-		if (lseek(fd, fmt->size - 1, SEEK_SET) < 0
-		 || write(fd, "", 1) < 0) {
+		if (ftruncate(fd, fmt->size) < 0) {
 			fm_log_error("unable to resize map file %s (size %u): %m", file_path,  fmt->size);
 			close(fd);
 			return NULL;
@@ -304,45 +305,9 @@ fm_assetio_lookup_host(struct fm_asset_path *path, fm_host_asset_table_t *table)
 	if (!fm_address_set_raw_addr(&host_address, path->family, path->raw, path->addr_size))
 		return NULL;
 
-	return fm_host_asset_get(&host_address, true);
-}
-
-/*
- * Read case: we have a path, and we have the host asset.
- * map the file into memory and copy data from disk.
- */
-static void
-fm_assetio_read_host(struct fm_asset_path *path, fm_host_asset_t *host)
-{
-	fm_assetio_mapped_t *mapped;
-	const fm_host_asset_ondisk_t *disk;
-	unsigned int i;
-
 	if (fm_debug_level > 3)
-		fm_log_debug("loading assets for %s from %s\n",
-				fm_address_format(&host->address),
-				fm_asset_path_get(path, false));
-
-	if (!(mapped = fm_assetio_map_read(path)))
-		return;
-
-#if 0
-	disk = mapped->main;
-
-	host->state = disk->state;
-
-	for (i = 0; i < __FM_PROTO_MAX; ++i) {
-		const fm_protocol_asset_ondisk_t *proto_on_disk = &disk->protocols[i];
-		fm_protocol_asset_t *proto = &host->protocols[i];
-
-		if (proto_on_disk->state == FM_ASSET_STATE_UNDEF)
-			continue;
-
-		proto->proto_id = i;
-	}
-#endif
-
-	fm_assetio_unmap(mapped);
+		fm_log_debug("found asset file for %s", fm_address_format(&host_address));
+	return fm_host_asset_get(&host_address, true);
 }
 
 /*
@@ -434,19 +399,13 @@ fm_asset_dir_scan(struct fm_asset_path *path, int fd, unsigned int depth, fm_hos
 		}
 	} else {
 		while ((de = readdir(dir)) != NULL) {
-			fm_host_asset_t *host_asset;
-
 			if (de->d_type != DT_REG)
 				continue;
 
 			if (!fm_asset_path_inspect_file(path, de->d_name, depth))
 				continue;
 
-			host_asset = fm_assetio_lookup_host(path, table);
-			if (host_asset == NULL)
-				continue;
-
-			fm_assetio_read_host(path, host_asset);
+			fm_assetio_lookup_host(path, table);
 		}
 	}
 
@@ -458,11 +417,11 @@ out:
 }
 
 void
-fm_assets_read_table(const char *project_dir, int family, fm_host_asset_table_t *table)
+fm_assets_read_table(int family, fm_host_asset_table_t *table)
 {
 	struct fm_asset_path path;
 
-	if (!fm_asset_path_init(&path, project_dir, family))
+	if (!fm_asset_path_init(&path, fm_assetio_base_dir, family))
 		return;
 
 	/* Start searching */
