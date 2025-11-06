@@ -66,9 +66,6 @@ struct fm_protocol_engine {
 
 extern fm_protocol_engine_t *fm_protocol_engine_create_default(void);
 
-extern const char *	fm_protocol_id_to_string(unsigned int id);
-extern unsigned int	fm_protocol_string_to_id(const char *name);
-
 extern void		fm_protocol_directory_add(struct fm_protocol *ops);
 extern void		fm_protocol_directory_display(void);
 

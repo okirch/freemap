@@ -204,6 +204,9 @@ extern fm_probe_t *	fm_icmp_create_broadcast_probe(fm_protocol_t *, int, const f
 					void (*callback)(const fm_address_t *, void *user_data), void *user_data,
 					const fm_probe_params_t *, const void *);
 
+extern const char *	fm_protocol_id_to_string(unsigned int id);
+extern unsigned int	fm_protocol_string_to_id(const char *name);
+
 extern void		fm_set_logfile(FILE *fp);
 extern void		fm_trace(const char *fmt, ...);
 extern void		fm_log_fatal(const char *fmt, ...);

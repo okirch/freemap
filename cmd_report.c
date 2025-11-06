@@ -106,6 +106,30 @@ fm_report_asset_state(fm_asset_state_t state)
 }
 
 static void
+fm_report_host_state(const fm_host_asset_t *host)
+{
+	unsigned int k, nprinted = 0;
+
+	printf("   host: %s", fm_report_asset_state(host->main->host_state));
+	for (k = 0; k < __FM_PROTO_MAX; ++k) {
+		fm_asset_state_t state = host->main->protocols[k].state;
+
+		if (fm_report_skip_state(state))
+			continue;
+
+		printf("%s%s=%s",
+				nprinted? ", " : " (",
+				fm_protocol_id_to_string(k),
+				fm_report_asset_state(state));
+		nprinted++;
+	}
+
+	if (nprinted != 0)
+		printf(")");
+	printf("\n");
+}
+
+static void
 fm_report_route(const fm_host_asset_t *host, const fm_route_asset_ondisk_t *route, int family)
 {
 	unsigned int ttl;
@@ -191,8 +215,9 @@ fm_command_perform_report(fm_command_t *cmd)
 		if (fm_report_skip_state(state))
 			continue;
 
-		printf("== %s ==\n", fm_address_format(&host->address));
-		printf("   host: %s\n", fm_report_asset_state(state));
+		printf("%s\n", fm_address_format(&host->address));
+
+		fm_report_host_state(host);
 
 		fm_report_route(host, host->ipv4_route, AF_INET);
 		fm_report_route(host, host->ipv6_route, AF_INET6);
