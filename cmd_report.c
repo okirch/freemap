@@ -30,11 +30,15 @@
 #include "addresses.h"
 
 static fm_long_option_t report_long_options[] = {
+	{ "skip-noresponse",	FM_ARG_NONE,		OPT_SKIP_NORESPONSE },
+	{ "skip-unreachable",	FM_ARG_NONE,		OPT_SKIP_UNREACHABLE },
+
 	{ NULL },
 };
 
 struct fm_cmd_report_options {
-	bool		dummy;
+	bool		skip_noresponse;
+	bool		skip_unreachable;
 };
 
 static struct fm_cmd_report_options report_options;
@@ -43,6 +47,14 @@ static bool
 handle_report_options(int c, const char *arg_value)
 {
 	switch (c) {
+	case OPT_SKIP_NORESPONSE:
+		report_options.skip_noresponse = true;
+		break;
+
+	case OPT_SKIP_UNREACHABLE:
+		report_options.skip_unreachable = true;
+		break;
+
 	default:
 		return false;
 	}
@@ -54,6 +66,21 @@ void
 fm_command_register_report(fm_cmdparser_t *parser)
 {
 	fm_cmdparser_add_subcommand(parser, "report", FM_CMDID_REPORT, NULL, report_long_options, handle_report_options);
+}
+
+static inline bool
+fm_report_skip_state(fm_asset_state_t state)
+{
+	if (state == FM_ASSET_STATE_UNDEF)
+		return true;
+
+	if (report_options.skip_noresponse && state <= FM_ASSET_STATE_PROBE_SENT)
+		return true;
+
+	if (report_options.skip_unreachable && state <= FM_ASSET_STATE_CLOSED)
+		return true;
+
+	return false;
 }
 
 /*
@@ -129,7 +156,8 @@ fm_report_route(const fm_host_asset_t *host, const fm_route_asset_ondisk_t *rout
 static bool
 fm_report_port_visitor(const fm_host_asset_t *host, const char *proto, unsigned int port, fm_asset_state_t state, void *user_data)
 {
-	printf("   %s/%u %s\n", proto, port, fm_report_asset_state(state));
+	if (!fm_report_skip_state(state))
+		printf("   %s/%u %s\n", proto, port, fm_report_asset_state(state));
 	return true;
 }
 
@@ -159,10 +187,9 @@ fm_command_perform_report(fm_command_t *cmd)
 			continue;
 
 		state = fm_host_asset_get_state(host);
-		if (state == FM_ASSET_STATE_UNDEF) {
-			fm_log_debug("-- %s (state=undef) --\n", fm_address_format(&host->address));
+
+		if (fm_report_skip_state(state))
 			continue;
-		}
 
 		printf("== %s ==\n", fm_address_format(&host->address));
 		printf("   host: %s\n", fm_report_asset_state(state));

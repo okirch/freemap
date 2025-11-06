@@ -39,6 +39,8 @@ enum {
 	OPT_IPV6_ONLY,
 	OPT_ALL_ADDRS,
 	OPT_FORCE,
+	OPT_SKIP_NORESPONSE,
+	OPT_SKIP_UNREACHABLE,
 };
 
 extern void	fm_command_register_scan(fm_cmdparser_t *);
