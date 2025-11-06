@@ -32,6 +32,12 @@ topology-scan traceroute {
 	}
 }
 
+topology-scan traceroute-tcp {
+	topo-probe traceroute {
+		packet-proto tcp;
+	}
+}
+
 port-scan minimal {
 	port-probe tcp {
 		port 22, 25, 80;

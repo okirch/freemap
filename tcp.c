@@ -48,12 +48,17 @@ typedef struct fm_tcp_request {
 	fm_address_t		local_address;
 	fm_csum_hdr_t *		csum_header;
 
+	/* This is used primarily for connected sockets and
+	 * for traceroute */
+	unsigned int		src_port;
+
 	fm_probe_params_t	params;
 	fm_tcp_extra_params_t	extra_params;
 } fm_tcp_request_t;
 
 typedef struct tcp_extant_info {
-	unsigned int		port;
+	unsigned int		src_port;
+	unsigned int		dst_port;
 } fm_tcp_extant_info_t;
 
 
@@ -193,31 +198,47 @@ fm_tcp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_p
 static void
 fm_tcp_extant_info_build(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
 {
-	extant_info->port = tcp->params.port;
+	extant_info->src_port = tcp->src_port;
+	extant_info->dst_port = tcp->params.port;
 }
 
 static fm_extant_t *
-fm_tcp_locate_probe(int af, const fm_address_t *target_addr, fm_asset_state_t state)
+fm_tcp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt,  fm_asset_state_t state)
 {
 	fm_target_t *target;
-	unsigned short port;
+	unsigned short src_port;
+	unsigned short dst_port;
 	hlist_iterator_t iter;
 	fm_extant_t *extant;
 
-	target = fm_target_pool_find(target_addr);
+	target = fm_target_pool_find(&pkt->peer_addr);
 	if (target == NULL)
 		return NULL;
 
-	port = fm_address_get_port(target_addr);
+	src_port = fm_address_get_port(&pkt->local_addr);
+	dst_port = fm_address_get_port(&pkt->peer_addr);
+
+	if (dst_port == 0) {
+		fm_buffer_t *bp = pkt->payload;
+		fm_tcp_header_info_t tcp_info;
+
+		if (bp == NULL || !fm_raw_packet_pull_tcp_header(bp, &tcp_info))
+			return false;
+
+		src_port = tcp_info.src_port;
+		dst_port = tcp_info.dst_port;
+	}
+
 
 	/* update the asset */
-	fm_target_update_port_state(target, FM_PROTO_TCP, port, state);
+	fm_target_update_port_state(target, FM_PROTO_TCP, dst_port, state);
 
 	fm_extant_iterator_init(&iter, &target->expecting);
-	while ((extant = fm_extant_iterator_match(&iter, af, IPPROTO_TCP)) != NULL) {
+	while ((extant = fm_extant_iterator_match(&iter, pkt->family, IPPROTO_TCP)) != NULL) {
 		const struct tcp_extant_info *info = (struct tcp_extant_info *) (extant + 1);
 
-		if (info->port == port)
+		if (info->dst_port == dst_port
+		 && (src_port == 0 || info->src_port == src_port))
 			return extant;
 	}
 
@@ -279,7 +300,7 @@ fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 		return false;
 	}
 
-	extant = fm_tcp_locate_probe(pkt->family, &pkt->peer_addr, state);
+	extant = fm_tcp_locate_probe(proto, pkt, state);
 	if (extant != NULL) {
 		fm_extant_received_reply(extant, pkt);
 		fm_extant_free(extant);
@@ -291,10 +312,9 @@ fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 static bool
 fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
-	const fm_address_t *target_addr = &pkt->peer_addr;
 	fm_extant_t *extant;
 
-	extant = fm_tcp_locate_probe(target_addr->ss_family, target_addr, FM_ASSET_STATE_OPEN);
+	extant = fm_tcp_locate_probe(proto, pkt, FM_ASSET_STATE_OPEN);
 	if (extant != NULL) {
 		fm_extant_received_reply(extant, NULL);
 		fm_extant_free(extant);
@@ -308,10 +328,16 @@ fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
 	fm_extant_t *extant;
 
-	extant = fm_tcp_locate_probe(pkt->family, &pkt->peer_addr, FM_ASSET_STATE_CLOSED);
+	fm_buffer_dump(pkt->payload, "ICMP error for TCP probe");
+
+	extant = fm_tcp_locate_probe(proto, pkt, FM_ASSET_STATE_CLOSED);
 	if (extant != NULL) {
+		fm_log_debug("%s(): located probe %s", __func__, extant->probe->job.fullname);
 		fm_extant_received_error(extant, pkt);
 		fm_extant_free(extant);
+	}
+	else {
+		fm_log_debug("%s(): extant not found", __func__);
 	}
 
 	return true;
@@ -404,7 +430,12 @@ fm_tcp_request_send(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
 			return FM_SEND_ERROR;
 		}
 
-		fm_socket_get_local_address(tcp->sock, &tcp->local_address);
+		if (!fm_socket_get_local_address(tcp->sock, &tcp->local_address)) {
+			fm_log_warning("TCP: unable to get local address after connect: %m");
+		} else {
+			tcp->src_port = fm_address_get_port(&tcp->local_address);
+		}
+
 		fm_log_debug("Created TCP connection %s -> %s",
 					fm_address_format(&tcp->local_address),
 					fm_address_format(&tcp->host_address));
@@ -416,6 +447,9 @@ fm_tcp_request_send(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
 
 		if (!(pkt = fm_tcp_build_raw_packet(tcp)))
 			return FM_SEND_ERROR;
+
+		/* apply ttl, tos etc */
+		fm_pkt_apply_probe_params(pkt, &tcp->params, tcp->proto->supported_parameters);
 
 		if (!fm_socket_send_pkt_and_burn(tcp->sock, pkt))
 			return FM_SEND_ERROR;
