@@ -30,11 +30,18 @@
 #include "assets.h"
 #include "addresses.h"
 
+typedef struct fm_asset_pos {
+	unsigned int	offset;
+	unsigned int	size;
+} fm_asset_pos_t;
+
 struct fm_asset_fileformat {
 	unsigned int	size;
 
-	unsigned int	main_offset;
-	unsigned int	port_map_offset[__FM_PROTO_MAX];
+	fm_asset_pos_t	main;
+	fm_asset_pos_t	port_map[__FM_PROTO_MAX];
+	fm_asset_pos_t	ipv4_route;
+	fm_asset_pos_t	ipv6_route;
 };
 
 struct fm_asset_path {
@@ -51,6 +58,28 @@ struct fm_asset_path {
 static char *		fm_assetio_base_dir;
 static bool		fm_assetio_read_write;
 
+/*
+ * Information on the on-disk file format
+ */
+static inline unsigned int
+fm_round_to_pagesize(unsigned int size)
+{
+	static const unsigned int page_size = 4096;
+
+	return (size + page_size - 1) & ~(page_size - 1);
+}
+
+static void
+fm_asset_fileformat_define_section(struct fm_asset_fileformat *fmt, fm_asset_pos_t *pos, unsigned int len)
+{
+	pos->size = fm_round_to_pagesize(len);
+	if (pos->size == 0)
+		return;
+
+	pos->offset = fmt->size;
+	fmt->size += pos->size;
+}
+
 static void
 fm_asset_fileformat_init(struct fm_asset_fileformat *fmt)
 {
@@ -60,12 +89,13 @@ fm_asset_fileformat_init(struct fm_asset_fileformat *fmt)
 	memset(fmt, 0, sizeof(*fmt));
 
 	/* the main data */
-	fmt->size = 4096;
+	fm_asset_fileformat_define_section(fmt, &fmt->main, sizeof(fm_host_asset_ondisk_t));
 
+	/* FIXME: do we really need port information for all protocols?
+	 * ARP, IPv4 and IPv6 don't need that. */
 	section_size = sizeof(fm_asset_port_bitmap_t);
 	for (i = 0; i < __FM_PROTO_MAX; ++i) {
-		fmt->port_map_offset[i] = fmt->size;
-		fmt->size += section_size;
+		fm_asset_fileformat_define_section(fmt, &fmt->port_map[i], fm_round_to_pagesize(section_size));
 	}
 }
 
@@ -225,6 +255,7 @@ fm_assetio_map(struct fm_asset_path *path, struct fm_asset_fileformat *fmt, bool
 	fm_assetio_mapped_t *mapped = NULL;
 	const char *file_path;
 	caddr_t	addr = NULL;
+	size_t true_size;
 	int fd;
 
 	if (!(file_path = fm_asset_path_get(path, for_writing)))
@@ -240,10 +271,15 @@ fm_assetio_map(struct fm_asset_path *path, struct fm_asset_fileformat *fmt, bool
 			return NULL;
 		}
 
-		if (ftruncate(fd, fmt->size) < 0) {
-			fm_log_error("unable to resize map file %s (size %u): %m", file_path,  fmt->size);
-			close(fd);
-			return NULL;
+		true_size = lseek(fd, 0, SEEK_END);
+
+		if (true_size < fmt->size) {
+			if (ftruncate(fd, fmt->size) < 0) {
+				fm_log_error("unable to resize map file %s (size %u): %m", file_path,  fmt->size);
+				close(fd);
+				return NULL;
+			}
+			true_size = fmt->size;
 		}
 
 		addr = mmap(NULL, fmt->size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
@@ -254,7 +290,9 @@ fm_assetio_map(struct fm_asset_path *path, struct fm_asset_fileformat *fmt, bool
 			return NULL;
 		}
 
-		addr = mmap(NULL, fmt->size, PROT_READ|PROT_WRITE, MAP_PRIVATE, fd, 0);
+		true_size = lseek(fd, 0, SEEK_END);
+
+		addr = mmap(NULL, true_size, PROT_READ|PROT_WRITE, MAP_PRIVATE, fd, 0);
 	}
 	close(fd);
 
@@ -265,7 +303,7 @@ fm_assetio_map(struct fm_asset_path *path, struct fm_asset_fileformat *fmt, bool
 
 	mapped = calloc(1, sizeof(*mapped));
 	mapped->addr = addr;
-	mapped->size = fmt->size;
+	mapped->size = true_size;
 
 	return mapped;
 }
@@ -370,12 +408,22 @@ fm_assets_read_table(int family, fm_host_asset_table_t *table)
 }
 
 static void *
-fm_assetio_map_range(fm_assetio_mapped_t *mapping, unsigned int offset, unsigned int len)
+fm_assetio_map_range(fm_assetio_mapped_t *mapping, const fm_asset_pos_t *pos, unsigned int actual_size)
 {
-	if (offset >= mapping->size || mapping->size - offset < len)
+	if (pos->size == 0)
 		return NULL;
-	return mapping->addr + offset;
+
+	if (pos->offset >= mapping->size || mapping->size - pos->offset < pos->size)
+		return NULL;
+
+	return mapping->addr + pos->offset;
 }
+
+#define MAP_SECTION(var, mapping, pos) do { \
+	typeof(var) __value; \
+	__value = fm_assetio_map_range((mapping), (pos), sizeof(*__value)); \
+	var = __value; \
+} while (0)
 
 static bool
 fm_assetio_setup_mapping(fm_host_asset_t *host, const struct fm_asset_fileformat *fmt)
@@ -385,14 +433,14 @@ fm_assetio_setup_mapping(fm_host_asset_t *host, const struct fm_asset_fileformat
 	if (!host->mapping)
 		return false;
 
-	host->main = fm_assetio_map_range(host->mapping, fmt->main_offset, sizeof(*host->main));
+	MAP_SECTION(host->main, host->mapping, &fmt->main);
 
 	for (i = 0; i < __FM_PROTO_MAX; ++i) {
 		fm_protocol_asset_t *proto = &host->protocols[i];
 
 		proto->proto_id = i;
 		proto->ondisk = &host->main->protocols[i];
-		proto->ports = fm_assetio_map_range(host->mapping, fmt->port_map_offset[i], sizeof(fm_asset_port_bitmap_t));
+		MAP_SECTION(proto->ports, host->mapping, &fmt->port_map[i]);
 	}
 
 	return true;
