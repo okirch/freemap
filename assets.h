@@ -21,7 +21,7 @@
 #include "freemap.h"
 
 #define MAX_PORT_PROBE_WORDS	(65536 * 2 / 32)
-#define MAX_TOPO_PROBE_ADDRS	32
+#define MAX_TOPO_PROBE_ADDRS	64
 
 
 /*
