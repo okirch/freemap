@@ -97,6 +97,9 @@ fm_asset_fileformat_init(struct fm_asset_fileformat *fmt)
 	for (i = 0; i < __FM_PROTO_MAX; ++i) {
 		fm_asset_fileformat_define_section(fmt, &fmt->port_map[i], fm_round_to_pagesize(section_size));
 	}
+
+	fm_asset_fileformat_define_section(fmt, &fmt->ipv4_route, sizeof(fm_route_asset_ondisk_t));
+	fm_asset_fileformat_define_section(fmt, &fmt->ipv6_route, sizeof(fm_route_asset_ondisk_t));
 }
 
 /*
@@ -442,6 +445,9 @@ fm_assetio_setup_mapping(fm_host_asset_t *host, const struct fm_asset_fileformat
 		proto->ondisk = &host->main->protocols[i];
 		MAP_SECTION(proto->ports, host->mapping, &fmt->port_map[i]);
 	}
+
+	MAP_SECTION(host->ipv4_route, host->mapping, &fmt->ipv4_route);
+	MAP_SECTION(host->ipv6_route, host->mapping, &fmt->ipv6_route);
 
 	return true;
 }

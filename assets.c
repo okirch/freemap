@@ -335,7 +335,7 @@ fm_host_asset_get_protocol(fm_host_asset_t *host, unsigned int proto_id, bool cr
 bool
 fm_host_iterator_hot_map(fm_host_asset_t *host)
 {
-	unsigned int index = fm_asset_hotmap_cache.next++;
+	unsigned int index = fm_asset_hotmap_cache.next;
 	fm_host_asset_t *evict;
 
 	if (fm_host_asset_is_mapped(host))
@@ -349,6 +349,8 @@ fm_host_iterator_hot_map(fm_host_asset_t *host)
 		fm_assetio_unmap_host(evict);
 
 	fm_asset_hotmap_cache.hot_mapped[index] = host;
+
+	fm_asset_hotmap_cache.next = (fm_asset_hotmap_cache.next + 1) % FM_ASSET_HOTMAP_SIZE;
 	return true;
 }
 
@@ -436,6 +438,76 @@ fm_host_asset_is_any_port_open(fm_host_asset_t *host, unsigned int proto_id)
 	if ((proto = fm_host_asset_get_protocol(host, proto_id, true)) == NULL)
 		return false;
 	return fm_protocol_asset_is_any_port_open(proto);
+}
+
+/*
+ * Manage the asset's recorded route
+ */
+static fm_route_asset_ondisk_t *
+fm_host_asset_route_for_family(fm_host_asset_t *host, int family)
+{
+	if (family == AF_INET)
+		return host->ipv4_route;
+	if (family == AF_INET6)
+		return host->ipv6_route;
+	return NULL;
+}
+
+bool
+fm_host_asset_clear_routing(fm_host_asset_t *host, int family)
+{
+	fm_route_asset_ondisk_t *route;
+
+	if (!fm_host_asset_is_mapped(host))
+		return false;
+
+	if ((route = fm_host_asset_route_for_family(host, family)) == NULL)
+		return false;
+
+	route->last_ttl = 0;
+	memset(&route->present, 0, sizeof(route->present));
+	memset(&route->flapping, 0, sizeof(route->flapping));
+	return false;
+}
+
+bool
+fm_host_asset_update_routing_hop(fm_host_asset_t *host, unsigned int ttl, const fm_address_t *address, const double *rtt, bool alternative)
+{
+	fm_route_asset_ondisk_t *route = NULL;
+	const unsigned char *raw_addr;
+	unsigned int nbits;
+
+	if (!fm_host_asset_is_mapped(host))
+		return false;
+
+	route = fm_host_asset_route_for_family(host, address->ss_family);
+	if (route == NULL)
+		return false;
+
+	if (ttl >= MAX_TOPO_PROBE_ADDRS)
+		return false;
+
+	if ((raw_addr = fm_address_get_raw_addr(address, &nbits)) == NULL)
+		return false;
+
+	if (nbits > sizeof(route->address[0]) * 8)
+		return false;
+
+	if (alternative) {
+		route->flapping[ttl / 32] |= (1 << (ttl % 32));
+	} else {
+		memcpy(&route->address[ttl], raw_addr, nbits / 8);
+		route->present[ttl / 32] |= (1 << (ttl % 32));
+
+		if (rtt != NULL)
+			route->rtt[ttl] = 1e6 * *rtt;
+	}
+
+	if (ttl > route->last_ttl)
+		route->last_ttl = ttl;
+
+	fm_log_notice("fm_host_asset_update_routing_hop %u %s flap=%d", ttl, fm_address_format(address), alternative);
+	return true;
 }
 
 /*

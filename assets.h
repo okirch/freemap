@@ -21,6 +21,7 @@
 #include "freemap.h"
 
 #define MAX_PORT_PROBE_WORDS	(65536 * 2 / 32)
+#define MAX_TOPO_PROBE_ADDRS	32
 
 
 /*
@@ -32,11 +33,21 @@
  * aligned to 4k page boundaries.
  */
 typedef uint32_t		fm_asset_port_bitmap_t[MAX_PORT_PROBE_WORDS];
+typedef unsigned char		fm_address_asset_t[16];
 
 typedef struct fm_protocol_asset_ondisk {
 	unsigned int		state;
 	unsigned int		max_port;
 } fm_protocol_asset_ondisk_t;
+
+typedef struct fm_route_asset_ondisk {
+	unsigned int		last_ttl;
+
+	uint32_t		present[(MAX_TOPO_PROBE_ADDRS + 31)/32];
+	uint32_t		flapping[(MAX_TOPO_PROBE_ADDRS + 31)/32];
+	unsigned int		rtt[MAX_TOPO_PROBE_ADDRS];
+	fm_address_asset_t	address[MAX_TOPO_PROBE_ADDRS];
+} fm_route_asset_ondisk_t;
 
 typedef struct fm_host_asset_ondisk {
 	unsigned int		host_state;
@@ -68,6 +79,9 @@ struct fm_host_asset {
 
 	fm_host_asset_ondisk_t *main;
 	fm_protocol_asset_t	protocols[__FM_PROTO_MAX];
+
+	fm_route_asset_ondisk_t	*ipv4_route;
+	fm_route_asset_ondisk_t	*ipv6_route;
 };
 
 

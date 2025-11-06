@@ -67,6 +67,7 @@ typedef struct fm_topo_state {
 	fm_protocol_t *		proto;
 	fm_target_t *		target;
 	fm_socket_t *		sock;
+	fm_host_asset_t *	host_asset;
 
 	int			family;
 	fm_address_t		host_address;

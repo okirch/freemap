@@ -62,6 +62,11 @@ fm_topo_state_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_pa
 
 	topo->family = target->address.ss_family;
 	topo->host_address = target->address;
+	topo->host_asset = target->host_asset;
+	if (topo->host_asset != NULL) {
+		fm_host_asset_clear_routing(topo->host_asset, topo->family);
+		fm_host_asset_update_state(topo->host_asset, FM_ASSET_STATE_PROBE_SENT);
+	}
 
 	if (topo->params.port == 0)
 		topo->params.port = 44444; /* make this configurable */
@@ -215,6 +220,12 @@ fm_topo_state_report_flapping_gateways(fm_topo_state_t *topo)
 					hop->distance,
 					fm_address_format(&hop->gateway->address),
 					fm_address_format(&hop->alt_gateway->address));
+
+			if (topo->host_asset != NULL)
+				fm_host_asset_update_routing_hop(topo->host_asset, ttl,
+						&hop->alt_gateway->address, NULL,
+						true);
+
 			/* report just once */
 			hop->flags |= FM_TOPO_HOP_GW_FLAP;
 		}
@@ -435,7 +446,21 @@ fm_topo_state_check_gateways(fm_topo_state_t *topo)
 
 		if (hop->gateway != NULL) {
 			gw = hop->gateway;
+			gw_ttl = ttl;
 			if (hop->flags & FM_TOPO_HOP_GW_CHANGED) {
+				/* Update the route asset */
+				if (topo->host_asset != NULL) {
+					double rtt = 0;
+
+					/* When we get here, by definition we should have a sample... but you never know */
+					if (gw->rtt.nsamples != 0)
+						rtt = gw->rtt.rtt_sum / gw->rtt.nsamples;
+
+					fm_host_asset_update_routing_hop(topo->host_asset, ttl,
+							&gw->address, &rtt,
+							false);
+				}
+
 				hop->flags &= ~FM_TOPO_HOP_GW_CHANGED;
 				changed = true;
 			}
