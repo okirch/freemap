@@ -150,11 +150,11 @@ fm_address_set_raw_addr(fm_address_t *addr, int family, const unsigned char *src
 	if ((dst_raw = fm_get_raw_addr(family, addr, &nbits)) == NULL)
 		return false;
 
-	if (len != nbits / 8)
+	if (len < nbits / 8)
 		return false;
 
 	addr->ss_family = family;
-	memcpy(dst_raw, src_raw, len);
+	memcpy(dst_raw, src_raw, nbits / 8);
 	return true;
 }
 
