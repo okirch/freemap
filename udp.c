@@ -271,15 +271,8 @@ fm_udp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt, fm_asset_state_t state)
 
 	/* If this is an ICMP error, we might as well mark the router/end host
 	 * as reachable. */
-	if (pkt->info.offender != NULL) {
-		fm_host_asset_t *host = fm_host_asset_get(pkt->info.offender, true);
-
-		if (host) {
-			fm_host_asset_update_state(host, FM_ASSET_STATE_OPEN);
-
-			/* while we're at it, why don't we update the rtt for this asset? */
-		}
-	}
+	if (pkt->info.offender != NULL)
+		fm_host_asset_update_state_by_address(pkt->info.offender, proto->id, FM_ASSET_STATE_OPEN);
 
 	fm_extant_iterator_init(&iter, &target->expecting);
 	while ((extant = fm_extant_iterator_match(&iter, pkt->family, IPPROTO_UDP)) != NULL) {
