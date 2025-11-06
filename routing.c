@@ -167,6 +167,8 @@ fm_routing_cache_dump(fm_routing_cache_t *cache)
 		fm_route_show(cache->entries[i]);
 	}
 	printf("\n");
+
+	fflush(stdout);
 }
 
 static const char *
@@ -219,6 +221,7 @@ fm_route_show(fm_route_t *r)
 	if (r->pref_src_addr.ss_family != AF_UNSPEC)
 		printf(" prefsrc %s", fm_address_format(&r->pref_src_addr));
 	printf("\n");
+	fflush(stdout);
 }
 
 /*
