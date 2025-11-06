@@ -198,6 +198,76 @@ fm_host_asset_get(const fm_address_t *addr, bool create)
 	return host;
 }
 
+static inline int
+fm_host_asset_iterator_update(fm_host_asset_iterator_t *iter, int depth, unsigned int value)
+{
+	assert(depth < 16);
+
+	if (value >= 256 && depth >= 0) {
+		iter->raw[depth] = 0;
+		/* This will actually read raw[-1] at some point, but we don't mind */
+		value = iter->raw[--depth] + 1;
+	}
+
+	if (depth < 0) {
+		iter->done = true;
+	} else {
+		iter->raw[depth] = value;
+	}
+	return depth;
+}
+
+static fm_host_asset_t *
+fm_host_asset_find_next(fm_host_asset_table_t *root, fm_host_asset_iterator_t *iter)
+{
+	fm_host_asset_table_t *tables[16];
+	int depth, max_depth;
+
+	tables[0] = root;
+	max_depth = iter->addr_len;
+	depth = 0;
+
+	while (depth >= 0) {
+		fm_host_asset_table_t *table;
+		fm_host_asset_table_t *child;
+		unsigned int index;
+
+		table = tables[depth];
+
+		index = iter->raw[depth];
+		do {
+			child = table->table[index++];
+		} while (!child && index < 256);
+
+		if (child != NULL) {
+			fm_host_asset_iterator_update(iter, depth, index);
+
+			if (fm_debug_level > 4) {
+				int k;
+
+				printf("%*.*s %u %p; raw=", depth, depth, "", index, child);
+				for (k = 0; k <= depth; ++k)
+					printf(" %d", iter->raw[k]);
+				printf("\n");
+			}
+
+			if (++depth >= max_depth)
+				return (fm_host_asset_t *) child;
+
+			tables[depth] = child;
+			iter->raw[depth] = 0; /* start scanning next level at index 0 */
+			continue;
+		}
+
+		depth = fm_host_asset_iterator_update(iter, depth, index);
+		if (depth < 0)
+			return NULL;
+	}
+
+	return NULL;
+}
+
+
 /*
  * Attach or detach a host asset
  */
@@ -370,6 +440,30 @@ fm_host_asset_update_state_by_address(const fm_address_t *addr, fm_asset_state_t
 
 	return false;
 }
+
+/*
+ * Iterate over host assets
+ */
+void
+fm_host_asset_iterator_init(fm_host_asset_iterator_t *iter)
+{
+	memset(iter, 0, sizeof(*iter));
+	iter->family = AF_INET;
+	iter->addr_len = 4;
+}
+
+fm_host_asset_t *
+fm_host_asset_iterator_next(fm_host_asset_iterator_t *iter)
+{
+	fm_host_asset_table_t *table;
+
+	if (iter->family == AF_UNSPEC || iter->done)
+		return NULL;
+
+	table = fm_host_asset_table_get(iter->family);
+	return fm_host_asset_find_next(table, iter);
+}
+
 
 /*
  * Iterate over a host asset (for reporting)

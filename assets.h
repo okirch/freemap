@@ -79,6 +79,13 @@ struct fm_host_asset_table {
 	};
 };
 
+typedef struct fm_host_asset_iterator {
+	unsigned int		family;
+	unsigned int		addr_len;
+	unsigned char		raw[16];
+	bool			done;
+} fm_host_asset_iterator_t;
+
 extern fm_asset_state_t	fm_protocol_asset_get_state(const fm_protocol_asset_t *proto);
 extern bool		fm_protocol_asset_is_any_port_open(const fm_protocol_asset_t *proto);
 
@@ -88,7 +95,10 @@ extern void		fm_assets_read_table(const char *project_dir, int family, fm_host_a
 extern bool		fm_assetio_map_host(fm_host_asset_t *host);
 extern void		fm_assetio_unmap_host(fm_host_asset_t *host);
 
-void			fm_assetio_set_mapping(const char *project_dir, bool rw);
+extern void		fm_assetio_set_mapping(const char *project_dir, bool rw);
+
+extern void		fm_host_asset_iterator_init(fm_host_asset_iterator_t *);
+extern fm_host_asset_t *fm_host_asset_iterator_next(fm_host_asset_iterator_t *);
 
 static inline bool
 fm_host_asset_is_mapped(const fm_host_asset_t *host)
