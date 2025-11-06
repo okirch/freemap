@@ -61,7 +61,7 @@ static fm_socket_t *	fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af);
 static fm_socket_t *	fm_tcp_create_raw_socket(fm_protocol_t *proto, int af);
 static bool		fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
-static bool		fm_tcp_connecton_established(fm_protocol_t *proto, const fm_address_t *);
+static bool		fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *);
 
 static fm_tcp_request_t *fm_tcp_probe_get_request(const fm_probe_t *probe);
 static void		fm_tcp_probe_set_request(fm_probe_t *probe, fm_tcp_request_t *tcp);
@@ -289,8 +289,9 @@ fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 }
 
 static bool
-fm_tcp_connecton_established(fm_protocol_t *proto, const fm_address_t *target_addr)
+fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
+	const fm_address_t *target_addr = &pkt->peer_addr;
 	fm_extant_t *extant;
 
 	extant = fm_tcp_locate_probe(target_addr->ss_family, target_addr, FM_ASSET_STATE_OPEN);

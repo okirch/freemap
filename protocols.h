@@ -44,7 +44,7 @@ struct fm_protocol {
 	fm_socket_t *	(*create_socket)(fm_protocol_t *, int af);
 	bool		(*process_packet)(fm_protocol_t *, fm_pkt_t *);
 	bool		(*process_error)(fm_protocol_t *, fm_pkt_t *);
-	bool		(*connection_established)(fm_protocol_t *, const fm_address_t *);
+	bool		(*connection_established)(fm_protocol_t *, fm_pkt_t *);
 };
 
 #define FM_PARAM_TYPE_RETRIES_MASK	(1 << FM_PARAM_TYPE_RETRIES)

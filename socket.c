@@ -1092,7 +1092,9 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 			fm_socket_process_error(sock, proto, pkt);
 			fm_pkt_free(pkt);
 		} else {
-			proto->connection_established(proto, &sock->peer_address);
+			pkt = fm_socket_build_dummy_packet(sock);
+			proto->connection_established(proto, pkt);
+			fm_pkt_free(pkt);
 		}
 
 		bits &= ~POLLOUT;
