@@ -385,6 +385,9 @@ fm_host_asset_update_port_state(fm_host_asset_t *host, unsigned int proto_id, un
 	if (!fm_protocol_asset_set_port_state(proto, port, state))
 		return false;
 
+	if (state > proto->ondisk->state)
+		proto->ondisk->state = state;
+
 	printf("STATUS %s %s port %u: %s\n",
 			fm_address_format(&host->address),
 			fm_protocol_id_to_string(proto_id),
