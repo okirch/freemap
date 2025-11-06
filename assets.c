@@ -476,12 +476,29 @@ fm_host_asset_t *
 fm_host_asset_iterator_next(fm_host_asset_iterator_t *iter)
 {
 	fm_host_asset_table_t *table;
+	fm_host_asset_t *host;
 
-	if (iter->family == AF_UNSPEC || iter->done)
+	if (iter->done)
 		return NULL;
 
-	table = fm_host_asset_table_get(iter->family);
-	return fm_host_asset_find_next(table, iter);
+	do {
+		if (iter->family == AF_UNSPEC || iter->done)
+			break;
+
+		table = fm_host_asset_table_get(iter->family);
+
+		host = fm_host_asset_find_next(table, iter);
+
+		/* If we're done with IPv4, continue with IPv6 */
+		if (iter->done && iter->family == AF_INET) {
+			iter->family = AF_INET6;
+			memset(iter->raw, 0, sizeof(iter->raw));
+			iter->addr_len = 16;
+			iter->done = false;
+		}
+	} while (host == NULL && !iter->done);
+
+	return host;
 }
 
 

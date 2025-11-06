@@ -118,7 +118,7 @@ fm_asset_path_init(struct fm_asset_path *path, const char *project_dir, int fami
 	if (path->addr_size == 0)
 		return false;
 
-	if (family == AF_INET6)
+	if (family == AF_INET)
 		path->dir_size = 3;
 	else if (family == AF_INET6)
 		path->dir_size = 8;
@@ -175,7 +175,7 @@ fm_asset_path_get(const struct fm_asset_path *path, bool create_dirs)
 		uint16_t raw16[8], i;
 
 		for (i = 0; i < 8; ++i)
-			raw16[i] = ((uint16_t) path->raw[2 * i]) | path->raw[2 * i + 1];
+			raw16[i] = (((uint16_t) path->raw[2 * i]) << 8) | path->raw[2 * i + 1];
 
 		snprintf(dir_path, sizeof(dir_path), "%s/%04x/%04x/%04x/%04x",
 				path->asset_dir,
@@ -236,8 +236,8 @@ fm_asset_path_inspect_file(struct fm_asset_path *path, const char *name, unsigne
 	} else if (path->family == AF_INET6) {
 		assert(depth == 8);
 		for (i = 0; i < 3; ++i) {
-			fm_asset_path_inspect_work(path, name, &depth, &end);
-			if (*end != ':')
+			fm_asset_path_inspect_work(path, name, &depth, (char **) &name);
+			if (*name++ != ':')
 				return false;
 		}
 		fm_asset_path_inspect_work(path, name, &depth, &end);
