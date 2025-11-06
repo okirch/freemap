@@ -251,7 +251,7 @@ fm_host_asset_find_next(fm_host_asset_table_t *root, fm_host_asset_iterator_t *i
 			if (fm_debug_level > 4) {
 				int k;
 
-				printf("%*.*s key=", depth, depth, "", index);
+				printf("%*.*s key=", depth, depth, "");
 				for (k = 0; k < depth; ++k)
 					printf("%02x", iter->raw[k]);
 				printf("%02x\n", index);
