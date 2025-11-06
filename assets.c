@@ -27,6 +27,12 @@
 #define FM_HOST_ASSET_ATTACHED	0x0001
 #define FM_HOST_ASSET_MAPPED	0x0002
 
+#define FM_ASSET_HOTMAP_SIZE	16
+
+struct {
+	unsigned int		next;
+	fm_host_asset_t *	hot_mapped[FM_ASSET_HOTMAP_SIZE];
+} fm_asset_hotmap_cache;
 
 static bool			fm_host_asset_map(fm_host_asset_t *host);
 
@@ -322,6 +328,31 @@ fm_host_asset_get_protocol(fm_host_asset_t *host, unsigned int proto_id, bool cr
 }
 
 /*
+ * Hot-mapping of assets is needed sometimes, for instance when
+ * we loop over all assets for reporting, or when we receive an ICMP
+ * message from a gateway and want to record that information
+ */
+bool
+fm_host_iterator_hot_map(fm_host_asset_t *host)
+{
+	unsigned int index = fm_asset_hotmap_cache.next++;
+	fm_host_asset_t *evict;
+
+	if (fm_host_asset_is_mapped(host))
+		return true;
+
+	if (!fm_host_asset_map(host))
+		return false;
+
+	evict = fm_asset_hotmap_cache.hot_mapped[index];
+	if (evict != NULL)
+		fm_assetio_unmap_host(evict);
+
+	fm_asset_hotmap_cache.hot_mapped[index] = host;
+	return true;
+}
+
+/*
  * host state
  */
 fm_asset_state_t
@@ -415,7 +446,6 @@ bool
 fm_host_asset_update_state_by_address(const fm_address_t *addr, fm_asset_state_t state)
 {
 	fm_host_asset_t *host;
-	bool ok;
 
 	if (addr == NULL)
 		return false;
@@ -424,24 +454,11 @@ fm_host_asset_update_state_by_address(const fm_address_t *addr, fm_asset_state_t
 	if (host == NULL)
 		return false;
 
-	if (fm_host_asset_is_mapped(host)) {
-		/* easy case - already mapped */
-		ok = fm_host_asset_update_state(host, state);
-	} else {
-		/* map temporarily */
-		if (!fm_host_asset_map(host))
-			return false;
+	/* If it's not mapped, hot-map it just for this update */
+	if (!fm_host_iterator_hot_map(host))
+		return false; /* could be a permission issue */
 
-		ok = fm_host_asset_update_state(host, state);
-		fm_assetio_unmap_host(host);
-	}
-
-	if (ok) {
-		/* fixme: post event */
-		return true;
-	}
-
-	return false;
+	return fm_host_asset_update_state(host, state);
 }
 
 /*
