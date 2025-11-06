@@ -87,6 +87,25 @@ fm_pkt_pull(fm_pkt_t *pkt, unsigned int wanted)
 	return fm_buffer_pull(pkt->payload, wanted);
 }
 
+bool
+fm_pkt_is_ttl_exceeded(const fm_pkt_t *pkt)
+{
+	const struct sock_extended_err *ee;
+	if (pkt == NULL || (ee = pkt->info.ee) == NULL)
+		return false;
+
+	if (ee->ee_origin == SO_EE_ORIGIN_ICMP)
+		return ee->ee_type == ICMP_TIME_EXCEEDED;
+
+	if (ee->ee_origin == SO_EE_ORIGIN_ICMP6)
+		return ee->ee_type == ICMP6_TIME_EXCEEDED;
+
+	return false;
+}
+
+/*
+ * Socket functions
+ */
 static fm_socket_t *
 fm_socket_allocate(int fd, int family, int type, socklen_t len)
 {
