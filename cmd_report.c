@@ -27,6 +27,7 @@
 #include "projects.h"
 #include "program.h"
 #include "assets.h"
+#include "addresses.h"
 
 static fm_long_option_t report_long_options[] = {
 	{ NULL },
@@ -77,6 +78,51 @@ fm_report_asset_state(fm_asset_state_t state)
 	return "BAD";
 }
 
+static void
+fm_report_route(const fm_host_asset_t *host, const fm_route_asset_ondisk_t *route, int family)
+{
+	unsigned int ttl;
+	bool reached = false;
+
+	if (route == NULL || route->last_ttl == 0)
+		return;
+
+	printf("   %s route (found %u hops)\n", fm_addrfamily_name(family), route->last_ttl);
+
+	printf("     %4s %8s %s\n", "ttl", "rtt/ms", "address");
+
+	for (ttl = 1; ttl <= route->last_ttl; ++ttl) {
+		fm_address_t hop_address;
+
+		if (!fm_address_set_raw_addr(&hop_address, family, route->address[ttl], sizeof(route->address[ttl]))) {
+			printf("     %3u:        * <bad address>\n", ttl);
+			continue;
+		}
+
+		if (!(route->present[ttl/32] & (1 << (ttl % 32)))) {
+			printf("     %3u:        * ?\n", ttl);
+		} else {
+			printf("     %3u: %8.5f %s", ttl,
+							route->rtt[ttl] * 1e-6,
+							fm_address_format(&hop_address));
+
+			if (route->flapping[ttl/32] & (1 << (ttl % 32)))
+				printf(", flapping route");
+
+			if (fm_address_equal(&hop_address, &host->address, false)) {
+				printf("; REACHED");
+				reached = true;
+			}
+
+			printf("\n");
+		}
+	}
+
+	if (!reached)
+		printf("     *** losing its trail in the mists of the net\n");
+	printf("\n");
+}
+
 /*
  * This visitor pattern is ugly; we should use an iterator
  */
@@ -113,13 +159,19 @@ fm_command_perform_report(fm_command_t *cmd)
 			continue;
 
 		state = fm_host_asset_get_state(host);
-		if (state == FM_ASSET_STATE_UNDEF)
+		if (state == FM_ASSET_STATE_UNDEF) {
+			fm_log_debug("-- %s (state=undef) --\n", fm_address_format(&host->address));
 			continue;
+		}
 
 		printf("== %s ==\n", fm_address_format(&host->address));
 		printf("   host: %s\n", fm_report_asset_state(state));
 
+		fm_report_route(host, host->ipv4_route, AF_INET);
+		fm_report_route(host, host->ipv6_route, AF_INET6);
+
 		fm_host_asset_report_ports(host, fm_report_port_visitor, NULL);
+
 		printf("\n");
 	}
 
