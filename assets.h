@@ -85,6 +85,10 @@ struct fm_host_asset {
 };
 
 
+/*
+ * Actually, the host asset table implementation is total crap for IPv6
+ * because it wastes 8 levels of table on randomized addresses.
+ */
 typedef struct fm_host_asset_table fm_host_asset_table_t;
 struct fm_host_asset_table {
 	union {
