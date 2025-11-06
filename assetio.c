@@ -35,19 +35,19 @@ typedef struct fm_asset_pos {
 	unsigned int	size;
 } fm_asset_pos_t;
 
-struct fm_asset_fileformat {
+typedef struct fm_asset_fileformat {
 	unsigned int	size;
 
 	fm_asset_pos_t	main;
 	fm_asset_pos_t	port_map[__FM_PROTO_MAX];
 	fm_asset_pos_t	ipv4_route;
 	fm_asset_pos_t	ipv6_route;
-};
+} fm_asset_fileformat_t;
 
 struct fm_asset_path {
 	char *		asset_dir;
 
-	struct fm_asset_fileformat format;
+	const fm_asset_fileformat_t *format;
 
 	int		family;
 	unsigned int	addr_size;
@@ -70,7 +70,7 @@ fm_round_to_pagesize(unsigned int size)
 }
 
 static void
-fm_asset_fileformat_define_section(struct fm_asset_fileformat *fmt, fm_asset_pos_t *pos, unsigned int len)
+fm_asset_fileformat_define_section(fm_asset_fileformat_t *fmt, fm_asset_pos_t *pos, unsigned int len)
 {
 	pos->size = fm_round_to_pagesize(len);
 	if (pos->size == 0)
@@ -81,7 +81,7 @@ fm_asset_fileformat_define_section(struct fm_asset_fileformat *fmt, fm_asset_pos
 }
 
 static void
-fm_asset_fileformat_init(struct fm_asset_fileformat *fmt)
+fm_asset_fileformat_init(fm_asset_fileformat_t *fmt)
 {
 	unsigned int section_size;
 	unsigned int i;
@@ -100,6 +100,19 @@ fm_asset_fileformat_init(struct fm_asset_fileformat *fmt)
 
 	fm_asset_fileformat_define_section(fmt, &fmt->ipv4_route, sizeof(fm_route_asset_ondisk_t));
 	fm_asset_fileformat_define_section(fmt, &fmt->ipv6_route, sizeof(fm_route_asset_ondisk_t));
+}
+
+static const fm_asset_fileformat_t *
+fm_asset_fileformat_default(void)
+{
+	static fm_asset_fileformat_t *default_format = NULL;
+
+	if (default_format == NULL) {
+		default_format = calloc(1, sizeof(*default_format));
+		fm_asset_fileformat_init(default_format);
+	}
+
+	return default_format;
 }
 
 /*
@@ -129,7 +142,7 @@ fm_asset_path_init(struct fm_asset_path *path, const char *project_dir, int fami
 		path->dir_size = path->addr_size - 1;
 
 	asprintf(&path->asset_dir, "%s/%s", project_dir, fm_addrfamily_name(family));
-	fm_asset_fileformat_init(&path->format);
+	path->format = fm_asset_fileformat_default();
 	return true;
 }
 
@@ -253,8 +266,9 @@ fm_asset_path_inspect_file(struct fm_asset_path *path, const char *name, unsigne
  * Helper code for mapping the file into memory
  */
 static fm_assetio_mapped_t *
-fm_assetio_map(struct fm_asset_path *path, struct fm_asset_fileformat *fmt, bool for_writing)
+fm_assetio_map(struct fm_asset_path *path, bool for_writing)
 {
+	const fm_asset_fileformat_t *fmt = path->format;
 	fm_assetio_mapped_t *mapped = NULL;
 	const char *file_path;
 	caddr_t	addr = NULL;
@@ -429,7 +443,7 @@ fm_assetio_map_range(fm_assetio_mapped_t *mapping, const fm_asset_pos_t *pos, un
 } while (0)
 
 static bool
-fm_assetio_setup_mapping(fm_host_asset_t *host, const struct fm_asset_fileformat *fmt)
+fm_assetio_setup_mapping(fm_host_asset_t *host, const fm_asset_fileformat_t *fmt)
 {
 	unsigned int i;
 
@@ -463,9 +477,9 @@ fm_assetio_map_host(fm_host_asset_t *host)
 	if (!fm_asset_path_init_address(&path, fm_assetio_base_dir, &host->address))
 		goto out;
 
-	host->mapping = fm_assetio_map(&path, &path.format, fm_assetio_read_write);
+	host->mapping = fm_assetio_map(&path, fm_assetio_read_write);
 
-	fm_assetio_setup_mapping(host, &path.format);
+	fm_assetio_setup_mapping(host, path.format);
 
 out:
 	fm_asset_path_destroy(&path);
