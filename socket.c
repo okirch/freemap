@@ -362,13 +362,23 @@ fm_socket_get_pending_error(fm_socket_t *sock, int *ret)
 }
 
 static fm_pkt_t *
-fm_socket_build_error_packet(const fm_address_t *addr, int err)
+fm_socket_build_dummy_packet(const fm_socket_t *sock)
+{
+	fm_pkt_t *pkt;
+
+	pkt = fm_pkt_alloc(sock->family, 0);
+	pkt->peer_addr = sock->peer_address;
+	pkt->local_addr = sock->local_address;
+	return pkt;
+}
+
+static fm_pkt_t *
+fm_socket_build_error_packet(const fm_socket_t *sock, int err)
 {
 	fm_pkt_t *pkt;
 	struct sock_extended_err *ee;
 
-	pkt = fm_pkt_alloc(addr->ss_family, 0);
-	pkt->peer_addr = *addr;
+	pkt = fm_socket_build_dummy_packet(sock);
 
 	ee = (struct sock_extended_err *) pkt->info.eebuf;
 	ee->ee_errno = err;
@@ -1044,7 +1054,7 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 			fm_log_error("socket %d: POLLERR set but recvmsg failed: %m", sock->fd);
 		} else if (fm_socket_get_pending_error(sock, &err)) {
 			fm_log_notice("errqueue returned again, but sock error=%s", strerror(err));
-			pkt = fm_socket_build_error_packet(&sock->peer_address, errno);
+			pkt = fm_socket_build_error_packet(sock, errno);
 			fm_socket_process_error(sock, proto, pkt);
 			fm_pkt_free(pkt);
 		}
@@ -1058,7 +1068,7 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		if (pkt == NULL && errno == ECONNREFUSED
 		 && fm_socket_is_connected(sock)
 		 && proto->process_error != NULL) {
-			pkt = fm_socket_build_error_packet(&sock->peer_address, errno);
+			pkt = fm_socket_build_error_packet(sock, errno);
 			fm_socket_process_error(sock, proto, pkt);
 			fm_pkt_free(pkt);
 		} else
@@ -1078,7 +1088,7 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		 * succeeded. So go and reap the status */
 		if (connect(sock->fd, (struct sockaddr *) &sock->peer_address, sock->addrlen) < 0) {
 			/* fm_log_debug("  connect error sock %d: %m", sock->fd); */
-			pkt = fm_socket_build_error_packet(&sock->peer_address, errno);
+			pkt = fm_socket_build_error_packet(sock, errno);
 			fm_socket_process_error(sock, proto, pkt);
 			fm_pkt_free(pkt);
 		} else {
