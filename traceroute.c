@@ -553,7 +553,6 @@ fm_topo_state_select_ttl(fm_topo_state_t *topo, double *delay_ret, fm_topo_hop_s
 	}
 
 	if (*next_hop_ret == NULL) {
-		fm_log_debug("have_pending=%d done=%d", have_pending, done);
 		if (have_pending)
 			return FM_TRY_AGAIN;
 		if (done)
@@ -608,15 +607,9 @@ fm_topo_state_send_probe(fm_topo_state_t *topo, fm_topo_hop_state_t *hop, double
 	error = fm_target_add_new_probe(topo->target, probe);
 
 	if (error == 0) {
-		double delay;
-
 		fm_ratelimit_consume(hop->ratelimit, 1);
 		hop->state = FM_ASSET_STATE_PROBE_SENT;
 		hop->pending = &probe->job;
-
-		delay = fm_timestamp_expires_when(&probe->job.expires, NULL);
-		if (delay < *delay_ret)
-			*delay_ret = delay;
 	} else {
 		hop->state = FM_ASSET_STATE_CLOSED;
 	}
