@@ -391,7 +391,7 @@ fm_tcp_build_raw_packet(fm_tcp_request_t *tcp)
 }
 
 static fm_error_t
-fm_tcp_request_schedule(fm_tcp_request_t *tcp, struct timeval *expires)
+fm_tcp_request_schedule(fm_tcp_request_t *tcp, fm_time_t *expires)
 {
 	if (tcp->params.retries == 0)
 		return FM_TIMED_OUT;
@@ -399,9 +399,9 @@ fm_tcp_request_schedule(fm_tcp_request_t *tcp, struct timeval *expires)
 	/* After sending the last probe, we wait until the full timeout has expired.
 	 * For any earlier probe, we wait for the specified packet spacing */
 	if (tcp->params.retries == 1)
-		fm_timestamp_set_timeout(expires, fm_global.tcp.timeout);
+		*expires = fm_time_now() + 1e-3 * fm_global.tcp.timeout;
 	else
-		fm_timestamp_set_timeout(expires, fm_global.tcp.packet_spacing);
+		*expires = fm_time_now() + 1e-3 * fm_global.tcp.packet_spacing;
 	return 0;
 }
 

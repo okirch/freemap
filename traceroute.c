@@ -346,7 +346,7 @@ fm_topo_state_max_ttl(fm_topo_state_t *topo)
 static bool
 fm_topo_state_check_pending(fm_topo_state_t *topo, double *delay_ret)
 {
-	const struct timeval *now = fm_timestamp_now();
+	const fm_time_t now = fm_time_now();
 	unsigned int ttl, max_ttl;
 	bool have_pending = false;
 
@@ -359,7 +359,7 @@ fm_topo_state_check_pending(fm_topo_state_t *topo, double *delay_ret)
 		if ((pending = hop->pending) == NULL)
 			continue;
 
-		delay = fm_timestamp_expires_when(&pending->expires, now);
+		delay = pending->expires - now;
 		if (delay < 0) {
 			fm_log_warning("traceroute: hop %u has a pending probe w/o expiry", ttl);
 		} else if (delay < *delay_ret) {

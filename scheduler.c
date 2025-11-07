@@ -112,9 +112,9 @@ fm_job_set_expiry(fm_job_t *job, double seconds)
 		fm_log_error("%s: asking to set a negative expiry value %f", job->fullname, seconds);
 
 	if (seconds <= 0) {
-		fm_timestamp_init(&job->expires);
+		job->expires = 0;
 	} else {
-		fm_timestamp_set_timeout(&job->expires, 1000 * seconds);
+		job->expires = fm_time_now() + seconds;
 	}
 }
 
@@ -163,7 +163,7 @@ fm_job_continue(fm_job_t *job)
 	fm_job_move_to_group(job, &job_group->ready_probes);
 
 	/* stop waiting, re-visit ASAP */
-	fm_timestamp_clear(&job->expires);
+	job->expires = 0;
 
 	if (fm_debug_level >= 2)
 		fm_log_debug("%s: moved to ready", job->fullname);
@@ -351,7 +351,7 @@ fm_job_group_add_new(fm_job_group_t *job_group, fm_job_t *job)
 void
 fm_job_group_process_timeouts(fm_job_group_t *job_group)
 {
-	const struct timeval *now = fm_timestamp_now();
+	fm_time_t now = fm_time_now();
 	hlist_insertion_iterator_t ready_tail_iter;
 	hlist_iterator_t wait_iter;
 	fm_job_t *probe;
@@ -361,7 +361,7 @@ fm_job_group_process_timeouts(fm_job_group_t *job_group)
 	hlist_insertion_iterator_init_tail(&ready_tail_iter, &job_group->ready_probes);
 
 	while ((probe = hlist_iterator_next(&wait_iter)) != NULL) {
-		if (fm_timestamp_older(&probe->expires, now)) {
+		if (probe->expires <= now) {
 			hlist_remove(&probe->link);
 			hlist_insertion_iterator_insert_and_advance(&ready_tail_iter, &probe->link);
 		}
@@ -413,14 +413,14 @@ fm_job_group_process_runnable(fm_job_group_t *job_group, fm_sched_stats_t *stats
 	while (stats->num_sent < stats->job_quota && (job = hlist_iterator_next(&runnable_iter)) != NULL) {
 		fm_error_t error;
 
-		fm_timestamp_clear(&job->expires);
+		job->expires = 0;
 
 		error = job->ops->run(job, stats);
 		if (error == FM_TRY_AGAIN) {
 			/* the job asked to be postponed. */
-			if (!fm_timestamp_is_set(&job->expires)) {
+			if (job->expires == 0) {
 				fm_log_warning("BUG: job %s returned status=%d but did not set expiry", job->fullname, -error);
-				fm_timestamp_set_timeout(&job->expires, 10000);
+				job->expires = fm_time_now() + 10;
 			}
 		} else if (error == 0) {
 			if (job->group->rate_limit)
@@ -439,7 +439,7 @@ fm_job_group_process_runnable(fm_job_group_t *job_group, fm_sched_stats_t *stats
 			continue;
 		}
 
-		if (fm_timestamp_is_set(&job->expires))
+		if (job->expires > 0)
 			fm_job_move_to_group(job, &job_group->pending_probes);
 		else
 			fm_job_move_to_group(job, &job_group->ready_probes);
@@ -476,7 +476,7 @@ fm_job_group_check_for_hung_state(fm_job_group_t *job_group, const fm_sched_stat
 			while ((probe = hlist_iterator_next(&wait_iter)) != NULL) {
 				double probe_wait;
 
-				probe_wait = fm_timestamp_expires_when(&probe->expires, NULL);
+				probe_wait = probe->expires - fm_time_now();
 				fm_log_debug("   %4u ms %s", (unsigned int) (1000 * probe_wait), probe->fullname);
 			}
 			update_ts = true;
@@ -496,23 +496,23 @@ fm_job_group_get_next_schedule_time(fm_job_group_t *job_group, fm_sched_stats_t 
 	fm_job_t *probe;
 
 	if (job_group->ready_probes.first != NULL) {
-		fm_sched_stats_update_timeout_min(stats, fm_timestamp_now(), "runnable jobs");
+		fm_sched_stats_update_timeout_min(stats, fm_time_now(), "runnable jobs");
 		return;
 	}
 
 	hlist_iterator_init(&wait_iter, &job_group->pending_probes);
 	while ((probe = hlist_iterator_next(&wait_iter)) != NULL) {
-		fm_sched_stats_update_timeout_min(stats, &probe->expires, probe->fullname);
+		fm_sched_stats_update_timeout_min(stats, probe->expires, probe->fullname);
 	}
 
 	if (job_group->rate_limit && !fm_ratelimit_available(job_group->rate_limit)) {
-		struct timeval target_come_back;
 		double delay;
 
 		delay = fm_ratelimit_wait_until(job_group->rate_limit, 1);
 
-		fm_timestamp_set_timeout(&target_come_back, delay);
-		fm_sched_stats_update_timeout_max(stats, &target_come_back, job_group->name);
+		fm_sched_stats_update_timeout_max(stats,
+				fm_time_now() + delay,
+				job_group->name);
 	}
 }
 
@@ -703,14 +703,16 @@ fm_linear_scheduler_create(fm_scanner_t *scanner)
  * Helper functions
  */
 bool
-fm_sched_stats_update_timeout_min(fm_sched_stats_t *stats, const struct timeval *expiry, const char *who)
+fm_sched_stats_update_timeout_min(fm_sched_stats_t *stats, fm_time_t expiry, const char *who)
 {
-	if (!fm_timestamp_is_set(&stats->timeout)
-	 || (fm_timestamp_is_set(expiry) && fm_timestamp_older(expiry, &stats->timeout))) {
-		stats->timeout = *expiry;
+	if (expiry <= 0)
+		return false;
 
-		if (fm_debug_level && fm_timestamp_is_set(&stats->timeout)) {
-			double delay = fm_timestamp_expires_when(&stats->timeout, NULL);
+	if (stats->timeout == 0 || expiry < stats->timeout) {
+		stats->timeout = expiry;
+
+		if (fm_debug_level > 1) {
+			double delay = stats->timeout - fm_time_now();
 			fm_log_debug("%s: new timeout is %f", who, delay);
 			assert(delay >= 0);
 		}
@@ -720,13 +722,12 @@ fm_sched_stats_update_timeout_min(fm_sched_stats_t *stats, const struct timeval 
 }
 
 bool
-fm_sched_stats_update_timeout_max(fm_sched_stats_t *stats, const struct timeval *expiry, const char *who)
+fm_sched_stats_update_timeout_max(fm_sched_stats_t *stats, fm_time_t expiry, const char *who)
 {
-	if (fm_timestamp_is_set(&stats->timeout)
-	 && fm_timestamp_is_set(expiry) && fm_timestamp_older(&stats->timeout, expiry)) {
-		stats->timeout = *expiry;
+	if (stats->timeout > 0 && stats->timeout < expiry) {
+		stats->timeout = expiry;
 
-		fm_log_debug("%s: new timeout is %f", who, fm_timestamp_expires_when(&stats->timeout, NULL));
+		fm_log_debug("%s: new timeout is %f", who, stats->timeout - fm_time_now());
 		return true;
 	}
 	return false;
@@ -735,7 +736,7 @@ fm_sched_stats_update_timeout_max(fm_sched_stats_t *stats, const struct timeval 
 void
 fm_sched_stats_update_from_nested(fm_sched_stats_t *stats, const fm_sched_stats_t *nested)
 {
-	fm_sched_stats_update_timeout_min(stats, &nested->timeout, __func__);
+	fm_sched_stats_update_timeout_min(stats, nested->timeout, __func__);
 	stats->num_sent += nested->num_sent;
 	stats->num_processed += nested->num_processed;
 }

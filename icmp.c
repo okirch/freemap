@@ -469,7 +469,7 @@ fm_icmp_request_set_socket(fm_icmp_request_t *icmp, fm_socket_t *sock)
  * Do the scheduling
  */
 static fm_error_t
-fm_icmp_request_schedule(fm_icmp_request_t *icmp, struct timeval *expires)
+fm_icmp_request_schedule(fm_icmp_request_t *icmp, fm_time_t *expires)
 {
 	if (icmp->params.retries == 0)
 		return FM_TIMED_OUT;
@@ -477,9 +477,9 @@ fm_icmp_request_schedule(fm_icmp_request_t *icmp, struct timeval *expires)
 	/* After sending the last probe, we wait until the full timeout has expired.
 	 * For any earlier probe, we wait for the specified packet spacing */
 	if (icmp->params.retries == 1)
-		fm_timestamp_set_timeout(expires, fm_global.icmp.timeout);
+		*expires = fm_time_now() + 1e-3 * fm_global.icmp.timeout;
 	else
-		fm_timestamp_set_timeout(expires, fm_global.icmp.packet_spacing);
+		*expires = fm_time_now() + 1e-3 * fm_global.icmp.packet_spacing;
 	return 0;
 }
 

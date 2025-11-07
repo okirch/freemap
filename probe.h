@@ -153,8 +153,8 @@ extern fm_probe_t *	fm_probe_from_job(fm_job_t *job);
 extern void		fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt);
 extern void		fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt);
 
-extern bool		fm_sched_stats_update_timeout_min(fm_sched_stats_t *, const struct timeval *, const char *);
-extern bool		fm_sched_stats_update_timeout_max(fm_sched_stats_t *, const struct timeval *, const char *);
+extern bool		fm_sched_stats_update_timeout_min(fm_sched_stats_t *, fm_time_t, const char *);
+extern bool		fm_sched_stats_update_timeout_max(fm_sched_stats_t *, fm_time_t, const char *);
 extern void		fm_sched_stats_update_from_nested(fm_sched_stats_t *, const fm_sched_stats_t *);
 
 static inline bool

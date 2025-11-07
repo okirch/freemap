@@ -320,7 +320,7 @@ fm_scanner_process_completed(fm_scanner_t *scanner)
 }
 
 bool
-fm_scanner_transmit(fm_scanner_t *scanner, struct timeval *timeout)
+fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 {
 	fm_sched_stats_t scan_stats;
 

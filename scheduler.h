@@ -22,7 +22,7 @@
 #include "lists.h"
 
 struct fm_sched_stats {
-	struct timeval		timeout;
+	fm_time_t		timeout;
 
 	unsigned int		job_quota;
 	unsigned int		num_sent;
@@ -87,7 +87,7 @@ struct fm_job {
 	fm_error_t		error;
 
 	/* When the job should be scheduled next. */
-	struct timeval		expires;
+	fm_time_t		expires;
 
 	/* Used when waiting for some event to occur (such as other
 	 * probes finishing, or a neighbor lookup completing).

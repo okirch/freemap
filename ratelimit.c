@@ -27,6 +27,22 @@
 
 #include "freemap.h"
 
+/*
+ * Timing related functions
+ */
+fm_time_t
+fm_time_now(void)
+{
+	struct timespec now;
+
+	if (clock_gettime(CLOCK_MONOTONIC, &now) < 0) {
+		fprintf(stderr, "Fatal error: cannot get monotonic clock: %m\n");
+		exit(1);
+	}
+
+	return now.tv_sec + 1e-9 * now.tv_nsec;
+}
+
 double
 __fm_timestamp_do(struct timeval *ts, bool update)
 {

@@ -175,7 +175,7 @@ fm_ipproto_request_set_socket(fm_ipproto_request_t *req, fm_socket_t *sock)
  * Do the scheduling
  */
 static fm_error_t
-fm_ipproto_request_schedule(fm_ipproto_request_t *req, struct timeval *expires)
+fm_ipproto_request_schedule(fm_ipproto_request_t *req, fm_time_t *expires)
 {
 	if (req->params.retries == 0)
 		return FM_TIMED_OUT;
@@ -183,9 +183,9 @@ fm_ipproto_request_schedule(fm_ipproto_request_t *req, struct timeval *expires)
 	/* After sending the last probe, we wait until the full timeout has expired.
 	 * For any earlier probe, we wait for the specified packet spacing */
 	if (req->params.retries == 1)
-		fm_timestamp_set_timeout(expires, 1000);
+		*expires = fm_time_now() + 1000;
 	else
-		fm_timestamp_set_timeout(expires, 250);
+		*expires = fm_time_now() + 250;
 	return 0;
 }
 

@@ -367,7 +367,7 @@ fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port, const fm_buffer_t 
 }
 
 static fm_error_t
-fm_udp_request_schedule(fm_udp_request_t *udp, struct timeval *expires)
+fm_udp_request_schedule(fm_udp_request_t *udp, fm_time_t *expires)
 {
 	if (udp->total_retries == 0)
 		return FM_TIMED_OUT;
@@ -375,9 +375,9 @@ fm_udp_request_schedule(fm_udp_request_t *udp, struct timeval *expires)
 	/* After sending the last probe, we wait until the full timeout has expired.
 	 * For any earlier probe, we wait for the specified packet spacing */
 	if (udp->total_retries == 1)
-		fm_timestamp_set_timeout(expires, fm_global.udp.timeout);
+		*expires = fm_time_now() + 1e-3 * fm_global.udp.timeout;
 	else
-		fm_timestamp_set_timeout(expires, fm_global.udp.packet_spacing);
+		*expires = fm_time_now() + 1e-3 * fm_global.udp.packet_spacing;
 	return 0;
 }
 

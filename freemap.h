@@ -80,6 +80,8 @@ extern void		fm_timestamp_set_timeout(struct timeval *ts, long milliseconds);
 extern bool		fm_timestamp_older(const struct timeval *expiry, const struct timeval *now);
 extern const struct timeval *fm_timestamp_now(void);
 
+extern fm_time_t	fm_time_now(void);
+
 extern void		fm_ratelimit_init(fm_ratelimit_t *rl, unsigned int rate, unsigned int max_burst);
 extern void		fm_ratelimit_update(fm_ratelimit_t *rl);
 extern bool		fm_ratelimit_okay(fm_ratelimit_t *rl);
@@ -110,7 +112,7 @@ extern fm_scan_action_t *fm_scanner_add_topo_probe(fm_scanner_t *, const char *p
 extern fm_scan_action_t *fm_scanner_add_host_probe(fm_scanner_t *, const char *proto, int flags, const fm_string_array_t *args);
 extern fm_scan_action_t *fm_scanner_add_port_probe(fm_scanner_t *, const char *proto, int flags, const fm_string_array_t *args);
 extern fm_scan_action_t *fm_scanner_add_reachability_check(fm_scanner_t *);
-extern bool		fm_scanner_transmit(fm_scanner_t *, struct timeval *);
+extern bool		fm_scanner_transmit(fm_scanner_t *, fm_time_t *);
 extern bool		fm_scanner_next_stage(fm_scanner_t *);
 extern double		fm_scanner_elapsed(fm_scanner_t *);
 extern void		fm_scanner_dump_program(fm_scanner_t *);
@@ -196,7 +198,7 @@ extern bool		fm_socket_send_buffer(fm_socket_t *sock, const fm_address_t *dstadd
 extern bool		fm_socket_send_pkt(fm_socket_t *sock, fm_pkt_t *pkt);
 extern bool		fm_socket_send_pkt_and_burn(fm_socket_t *sock, fm_pkt_t *pkt);
 extern void		fm_socket_close(fm_socket_t *);
-extern bool		fm_socket_poll_all(const struct timeval *);
+extern bool		fm_socket_poll_all(fm_time_t);
 extern void		fm_socket_timestamp_update(fm_socket_timestamp_t *);
 extern double		fm_pkt_rtt(const fm_pkt_t *pkt, const fm_socket_timestamp_t *send_ts);
 extern bool		fm_pkt_is_ttl_exceeded(const fm_pkt_t *);

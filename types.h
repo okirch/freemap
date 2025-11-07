@@ -22,6 +22,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+typedef double fm_time_t;
+
 typedef struct fm_config  fm_config_t;
 typedef struct fm_project fm_project_t;
 typedef struct fm_config_library fm_config_library_t;
