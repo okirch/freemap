@@ -115,13 +115,40 @@ FM_PROTOCOL_REGISTER(fm_tcp_rawsock_ops);
 static fm_socket_t *
 fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af)
 {
-	return fm_socket_create(af, SOCK_STREAM, 0, proto);
+	fm_socket_t *sock;
+
+	sock = fm_socket_create(af, SOCK_STREAM, 0, proto);
+	if (sock != NULL) {
+		fm_socket_install_header_parser(sock, FM_SOCKET_DATA_PARSER, FM_PROTO_TCP);
+
+		fm_socket_install_header_parser(sock, FM_SOCKET_ERROR_PARSER, FM_PROTO_ICMP);
+		fm_socket_install_header_parser(sock, FM_SOCKET_ERROR_PARSER, FM_PROTO_IP);
+		fm_socket_install_header_parser(sock, FM_SOCKET_ERROR_PARSER, FM_PROTO_TCP);
+
+	}
+	return sock;
 }
 
 static fm_socket_t *
 fm_tcp_create_raw_socket(fm_protocol_t *proto, int af)
 {
-	return fm_socket_create(af, SOCK_RAW, IPPROTO_TCP, proto);
+	fm_socket_t *sock;
+
+	sock = fm_socket_create(af, SOCK_RAW, IPPROTO_TCP, proto);
+	if (sock != NULL) {
+		fm_socket_enable_recverr(sock);
+
+		/* Raw sockets always include the IP header, else it's the same as above. */
+		fm_socket_install_header_parser(sock, FM_SOCKET_DATA_PARSER, FM_PROTO_IP);
+		fm_socket_install_header_parser(sock, FM_SOCKET_DATA_PARSER, FM_PROTO_TCP);
+
+		fm_socket_install_header_parser(sock, FM_SOCKET_ERROR_PARSER, FM_PROTO_IP);
+		fm_socket_install_header_parser(sock, FM_SOCKET_ERROR_PARSER, FM_PROTO_ICMP);
+		fm_socket_install_header_parser(sock, FM_SOCKET_ERROR_PARSER, FM_PROTO_IP);
+		fm_socket_install_header_parser(sock, FM_SOCKET_ERROR_PARSER, FM_PROTO_TCP);
+
+	}
+	return sock;
 }
 
 /*
@@ -205,6 +232,8 @@ fm_tcp_extant_info_build(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_inf
 static fm_extant_t *
 fm_tcp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt,  fm_asset_state_t state)
 {
+	fm_parsed_pkt_t *cooked = pkt->parsed;
+	fm_parsed_hdr_t *hdr;
 	fm_target_t *target;
 	unsigned short src_port;
 	unsigned short dst_port;
@@ -218,17 +247,11 @@ fm_tcp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt,  fm_asset_state_t state
 	src_port = fm_address_get_port(&pkt->local_addr);
 	dst_port = fm_address_get_port(&pkt->peer_addr);
 
-	if (dst_port == 0) {
-		fm_buffer_t *bp = pkt->payload;
-		fm_tcp_header_info_t tcp_info;
-
-		if (bp == NULL || !fm_raw_packet_pull_tcp_header(bp, &tcp_info))
-			return false;
-
-		src_port = tcp_info.src_port;
-		dst_port = tcp_info.dst_port;
+	if (cooked != NULL
+	 && (hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_TCP)) != NULL) {
+		src_port = hdr->tcp.src_port;
+		dst_port = hdr->tcp.dst_port;
 	}
-
 
 	/* update the asset */
 	fm_target_update_port_state(target, FM_PROTO_TCP, dst_port, state);
@@ -252,46 +275,39 @@ fm_tcp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt,  fm_asset_state_t state
 static bool
 fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
+	fm_parsed_pkt_t *cooked = pkt->parsed;
+	fm_parsed_hdr_t *hdr;
 	fm_asset_state_t state = FM_ASSET_STATE_UNDEF;
+	fm_tcp_header_info_t *tcp_info;
 	fm_extant_t *extant;
-	fm_tcp_header_info_t tcp_info;
 
-	/* iff we ever use HDRINCL */
-	if (false) {
-		fm_ip_header_info_t ip;
-
-		if (!fm_raw_packet_pull_ip_hdr(pkt, &ip))
-			return false;
-
+	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_IP)) != NULL
+	 || (hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_IPV6)) != NULL) {
 		fm_log_debug("%s: packet %s -> %s; proto %d",
 				proto->name,
-				fm_address_format(&ip.src_addr),
-				fm_address_format(&ip.dst_addr),
-				ip.ipproto);
-
-		if (ip.ipproto != IPPROTO_TCP) {
-			/* do we get icmp packets here? */
-			fm_log_warning("%s: weird, unexpected ipproto %d", __func__, ip.ipproto);
-			return false;
-		}
+				fm_address_format(&hdr->ip.src_addr),
+				fm_address_format(&hdr->ip.dst_addr),
+				hdr->ip.ipproto);
 	}
 
-	if (!fm_raw_packet_pull_tcp_header(pkt->payload, &tcp_info)) {
+	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_TCP)) == NULL) {
 		fm_log_debug("%s: short or truncated TCP packet", proto->name);
 		return false;
 	}
 
-	fm_log_debug("   tcp hdr %d -> %d: flags=0x%x seq 0x%x ack 0x%x",
-			tcp_info.src_port,
-			tcp_info.dst_port,
-			tcp_info.flags,
-			tcp_info.seq,
-			tcp_info.ack_seq);
+	tcp_info = &hdr->tcp;
 
-	if (tcp_info.flags & TH_RST)
+	fm_log_debug("   tcp hdr %d -> %d: flags=0x%x seq 0x%x ack 0x%x",
+			tcp_info->src_port,
+			tcp_info->dst_port,
+			tcp_info->flags,
+			tcp_info->seq,
+			tcp_info->ack_seq);
+
+	if (tcp_info->flags & TH_RST)
 		state = FM_ASSET_STATE_CLOSED;
 	else
-	if (tcp_info.flags & TH_ACK)
+	if (tcp_info->flags & TH_ACK)
 		state = FM_ASSET_STATE_OPEN;
 	/* else weird */
 
@@ -420,9 +436,6 @@ fm_tcp_request_send(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
 					fm_address_format(&tcp->host_address));
 			return FM_SEND_ERROR;
 		}
-
-		if (tcp->sock->type == SOCK_RAW)
-			fm_socket_enable_recverr(tcp->sock);
 
 		if (!fm_socket_connect(tcp->sock, &tcp->host_address)) {
 			fm_log_error("Unable to connect TCP socket for %s: %m",
