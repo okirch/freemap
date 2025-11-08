@@ -19,6 +19,7 @@ OBJS	= projects.o \
 	  addresses.o \
 	  network.o \
 	  socket.o \
+	  packet.o \
 	  local.o \
 	  routing.o \
 	  netlink.o \

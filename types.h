@@ -194,12 +194,15 @@ typedef struct fm_pkt_info {
 	unsigned char		eebuf[256];
 } fm_pkt_info_t;
 
+typedef struct fm_parsed_pkt	fm_parsed_pkt_t;
+
 typedef struct fm_pkt {
 	int			family;
 	struct sockaddr_storage local_addr;
 	struct sockaddr_storage peer_addr;
 
 	fm_pkt_info_t		info;
+	fm_parsed_pkt_t *	parsed;
 	fm_buffer_t *		payload;
 } fm_pkt_t;
 

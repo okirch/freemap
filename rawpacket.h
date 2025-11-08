@@ -22,6 +22,7 @@
 
 #include <stdint.h>
 #include "freemap.h"
+#include "packet.h"
 
 /*
  * IP header information
@@ -93,6 +94,8 @@ struct fm_csum_hdr {
 	unsigned int		space;
 	unsigned char		data[];
 };
+
+extern fm_parsed_hdr_t *fm_parsed_packet_find_next(fm_parsed_pkt_t *, unsigned int proto_id);
 
 extern bool		fm_raw_packet_add_link_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr);
 extern bool		fm_raw_packet_add_ipv4_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,

@@ -24,7 +24,14 @@
 #include <sys/socket.h>
 
 #include "freemap.h"
+#include "packet.h"
 #include "lists.h"
+
+typedef enum {
+	FM_SOCKET_DATA_PARSER,
+	FM_SOCKET_ERROR_PARSER,
+	__FM_SOCKET_MAX_PARSER
+} fm_socket_packet_type_t;
 
 struct fm_socket {
 	struct hlist		link;
@@ -42,6 +49,10 @@ struct fm_socket {
 
 	/* must be set before we can poll */
 	fm_protocol_t *		proto;
+
+	/* Packet analysis code */
+	fm_packet_parser_t *	data_parser;
+	fm_packet_parser_t *	error_parser;
 };
 
 enum {
@@ -60,6 +71,8 @@ extern const char *	fm_socket_render_error(const fm_pkt_info_t *info);
 extern int		fm_socket_error_class(const fm_pkt_info_t *info);
 extern bool		fm_socket_error_dest_unreachable(const fm_pkt_info_t *);
 extern void		fm_socket_attach_protocol(fm_socket_t *, fm_protocol_t *);
+
+extern bool		fm_socket_install_header_parser(fm_socket_t *, fm_socket_packet_type_t, int proto_id);
 
 static inline bool
 fm_socket_is_connected(const fm_socket_t *sock)

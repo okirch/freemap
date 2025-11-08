@@ -34,6 +34,7 @@
 #include "socket.h"
 #include "protocols.h"
 #include "utils.h"
+#include "rawpacket.h"
 #include "buffer.h"
 
 static struct fm_socket_list	socket_list;
@@ -733,9 +734,15 @@ static fm_pkt_t *
 fm_socket_recv_packet(fm_socket_t *sock, int flags)
 {
 	const unsigned int MAX_PAYLOAD = 512;
+	fm_packet_parser_t *parser;
 	fm_pkt_t *pkt;
 	fm_buffer_t *bp;
 	int n;
+
+	if (flags & MSG_ERRQUEUE)
+		parser = sock->error_parser;
+	else
+		parser = sock->data_parser;
 
 	pkt = fm_pkt_alloc(sock->family, MAX_PAYLOAD);
 	bp = pkt->payload;
@@ -750,7 +757,35 @@ fm_socket_recv_packet(fm_socket_t *sock, int flags)
 
 	bp->wpos = n;
 
+	if (parser && !fm_packet_parser_inspect(parser, pkt)) {
+		fm_log_debug("unable to parse incoming %s packet from %s",
+				fm_addrfamily_name(sock->family),
+				fm_address_format(&pkt->peer_addr));
+	}
+
 	return pkt;
+}
+
+/*
+ * Process received packets
+ */
+bool
+fm_socket_install_header_parser(fm_socket_t *sock, fm_socket_packet_type_t type, int proto_id)
+{
+	fm_packet_parser_t *parser;
+
+	if (type == FM_SOCKET_DATA_PARSER) {
+		if ((parser = sock->data_parser) == NULL)
+			parser = sock->data_parser = fm_packet_parser_alloc();
+	} else
+	if (type == FM_SOCKET_ERROR_PARSER) {
+		if ((parser = sock->error_parser) == NULL)
+			parser = sock->error_parser = fm_packet_parser_alloc();
+	} else {
+		return false;
+	}
+
+	return fm_packet_parser_add_layer(parser, proto_id);
 }
 
 /*
