@@ -26,6 +26,8 @@
 #include "addresses.h"
 #include "neighbor.h"
 #include "routing.h"
+#include "socket.h"
+#include "protocols.h"
 #include "lists.h"
 
 static struct hlist_head	fm_interface_list = { .first = NULL, };
@@ -69,6 +71,13 @@ fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *driver, int sotype)
 
 
 	sock = fm_socket_create(PF_PACKET, sotype, lladdr->sll_protocol, driver);
+
+	/* Install a packet parser for the requested protocol by default.
+	 * NB this does not take care of any other protocols layered on top of it.
+	 *
+	 * FIXME: Is this the right thing to do?
+	 */
+	fm_socket_install_header_parser(sock, FM_SOCKET_DATA_PARSER, driver->id);
 
 	if (!fm_socket_bind(sock, (const fm_address_t *) lladdr)) {
 		fm_log_error("Cannot bind raw socket to address %s: %m",
