@@ -27,12 +27,6 @@
 #include "packet.h"
 #include "lists.h"
 
-typedef enum {
-	FM_SOCKET_DATA_PARSER,
-	FM_SOCKET_ERROR_PARSER,
-	__FM_SOCKET_MAX_PARSER
-} fm_socket_packet_type_t;
-
 struct fm_socket {
 	struct hlist		link;
 
@@ -72,7 +66,6 @@ extern int		fm_socket_error_class(const fm_pkt_info_t *info);
 extern bool		fm_socket_error_dest_unreachable(const fm_pkt_info_t *);
 extern void		fm_socket_attach_protocol(fm_socket_t *, fm_protocol_t *);
 
-extern bool		fm_socket_install_header_parser(fm_socket_t *, fm_socket_packet_type_t, int proto_id);
 
 static inline bool
 fm_socket_is_connected(const fm_socket_t *sock)

@@ -180,6 +180,8 @@ extern unsigned int	fm_addrfamily_sockaddr_size(int family);
 extern const char *	fm_addrfamily_name(int family);
 
 extern fm_socket_t *	fm_socket_create(int family, int type, int proto, fm_protocol_t *driver);
+extern bool		fm_socket_install_data_parser(fm_socket_t *, int proto_id);
+extern bool		fm_socket_install_error_parser(fm_socket_t *, int proto_id);
 extern void		fm_socket_free(fm_socket_t *);
 extern bool		fm_socket_connect(fm_socket_t *, const fm_address_t *);
 extern bool		fm_socket_bind(fm_socket_t *, const fm_address_t *);

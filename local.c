@@ -77,7 +77,7 @@ fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *driver, int sotype)
 	 *
 	 * FIXME: Is this the right thing to do?
 	 */
-	fm_socket_install_header_parser(sock, FM_SOCKET_DATA_PARSER, driver->id);
+	fm_socket_install_data_parser(sock, driver->id);
 
 	if (!fm_socket_bind(sock, (const fm_address_t *) lladdr)) {
 		fm_log_error("Cannot bind raw socket to address %s: %m",

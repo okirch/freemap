@@ -770,22 +770,19 @@ fm_socket_recv_packet(fm_socket_t *sock, int flags)
  * Process received packets
  */
 bool
-fm_socket_install_header_parser(fm_socket_t *sock, fm_socket_packet_type_t type, int proto_id)
+fm_socket_install_data_parser(fm_socket_t *sock, int proto_id)
 {
-	fm_packet_parser_t *parser;
+	if (sock->data_parser == NULL)
+		sock->data_parser = fm_packet_parser_alloc();
+	return fm_packet_parser_add_layer(sock->data_parser, proto_id);
+}
 
-	if (type == FM_SOCKET_DATA_PARSER) {
-		if ((parser = sock->data_parser) == NULL)
-			parser = sock->data_parser = fm_packet_parser_alloc();
-	} else
-	if (type == FM_SOCKET_ERROR_PARSER) {
-		if ((parser = sock->error_parser) == NULL)
-			parser = sock->error_parser = fm_packet_parser_alloc();
-	} else {
-		return false;
-	}
-
-	return fm_packet_parser_add_layer(parser, proto_id);
+bool
+fm_socket_install_error_parser(fm_socket_t *sock, int proto_id)
+{
+	if (sock->error_parser == NULL)
+		sock->error_parser = fm_packet_parser_alloc();
+	return fm_packet_parser_add_layer(sock->error_parser, proto_id);
 }
 
 /*

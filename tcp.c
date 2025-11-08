@@ -119,11 +119,11 @@ fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af)
 
 	sock = fm_socket_create(af, SOCK_STREAM, 0, proto);
 	if (sock != NULL) {
-		fm_socket_install_header_parser(sock, FM_SOCKET_DATA_PARSER, FM_PROTO_TCP);
+		fm_socket_install_data_parser(sock, FM_PROTO_TCP);
 
-		fm_socket_install_header_parser(sock, FM_SOCKET_ERROR_PARSER, FM_PROTO_ICMP);
-		fm_socket_install_header_parser(sock, FM_SOCKET_ERROR_PARSER, FM_PROTO_IP);
-		fm_socket_install_header_parser(sock, FM_SOCKET_ERROR_PARSER, FM_PROTO_TCP);
+		fm_socket_install_error_parser(sock, FM_PROTO_ICMP);
+		fm_socket_install_error_parser(sock, FM_PROTO_IP);
+		fm_socket_install_error_parser(sock, FM_PROTO_TCP);
 
 	}
 	return sock;
@@ -139,13 +139,13 @@ fm_tcp_create_raw_socket(fm_protocol_t *proto, int af)
 		fm_socket_enable_recverr(sock);
 
 		/* Raw sockets always include the IP header, else it's the same as above. */
-		fm_socket_install_header_parser(sock, FM_SOCKET_DATA_PARSER, FM_PROTO_IP);
-		fm_socket_install_header_parser(sock, FM_SOCKET_DATA_PARSER, FM_PROTO_TCP);
+		fm_socket_install_data_parser(sock, FM_PROTO_IP);
+		fm_socket_install_data_parser(sock, FM_PROTO_TCP);
 
-		fm_socket_install_header_parser(sock, FM_SOCKET_ERROR_PARSER, FM_PROTO_IP);
-		fm_socket_install_header_parser(sock, FM_SOCKET_ERROR_PARSER, FM_PROTO_ICMP);
-		fm_socket_install_header_parser(sock, FM_SOCKET_ERROR_PARSER, FM_PROTO_IP);
-		fm_socket_install_header_parser(sock, FM_SOCKET_ERROR_PARSER, FM_PROTO_TCP);
+		fm_socket_install_error_parser(sock, FM_PROTO_IP);
+		fm_socket_install_error_parser(sock, FM_PROTO_ICMP);
+		fm_socket_install_error_parser(sock, FM_PROTO_IP);
+		fm_socket_install_error_parser(sock, FM_PROTO_TCP);
 
 	}
 	return sock;
