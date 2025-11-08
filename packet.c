@@ -186,13 +186,17 @@ trash:
 fm_parsed_hdr_t *
 fm_parsed_packet_find_next(fm_parsed_pkt_t *cooked, unsigned int proto_id)
 {
-	unsigned int k = cooked->next_header;
+	unsigned int k;
+
+	if (cooked == NULL)
+		return NULL;
 
 	/* The IP header parsing code handles both v4 and v6 transparently,
 	 * so we map both to the same proto id. */
 	if (proto_id == FM_PROTO_IPV6)
 		proto_id = FM_PROTO_IP;
 
+	k = cooked->next_header;
 	while (k < cooked->num_headers) {
 		fm_parsed_hdr_t *hdr = cooked->headers[k++];
 
