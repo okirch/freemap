@@ -24,6 +24,7 @@
 #include "protocols.h"
 #include "target.h" /* for fm_probe_t */
 #include "scanner.h"
+#include "rawpacket.h"
 #include "utils.h"
 
 typedef struct fm_arp_params {
@@ -77,6 +78,7 @@ FM_PROTOCOL_REGISTER(fm_arp_ops);
 static fm_socket_t *
 fm_arp_create_socket(fm_protocol_t *proto, int dummy)
 {
+	/* We probably never get here */
 	return fm_socket_create(PF_PACKET, SOCK_DGRAM, ntohs(ETH_P_ARP), proto);
 }
 
@@ -122,31 +124,18 @@ fm_arp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_p
 static bool
 fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
+	fm_parsed_pkt_t *cooked = pkt->parsed;
+	fm_parsed_hdr_t *hdr;
 	fm_extant_t *extant = NULL;
-	const struct arphdr *arp;
-	unsigned char src_hwaddr[ETH_ALEN];
-	uint32_t src_ipaddr;
 	struct sockaddr_ll src_lladdr = { 0 };
 
-	/* fm_print_hexdump(pkt->data, pkt->len); */
-
-	if (pkt->family != AF_PACKET)
+	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_ARP)) == NULL)
 		return false;
 
-	if (!(arp = fm_pkt_pull(pkt, sizeof(*arp) + 2 * ETH_ALEN + 2 * 4))) {
-		fm_log_debug("%s: bad ARP header", proto->name);
-		return false;
-	}
-
-	if (arp->ar_op != htons(ARPOP_REPLY)
-	 || arp->ar_hln != ETH_ALEN
-	 || arp->ar_pln != 4)
+	if (hdr->arp.op != ARPOP_REPLY)
 		return false;
 
-	memcpy(src_hwaddr, (unsigned char *) (arp + 1), ETH_ALEN);
-	memcpy(&src_ipaddr, ((unsigned char *) (arp + 1) + ETH_ALEN), 4);
-
-	extant = fm_arp_locate_probe(src_ipaddr, src_hwaddr, &src_lladdr);
+	extant = fm_arp_locate_probe(hdr->arp.src_ipaddr.s_addr, hdr->arp.src_hwaddr, &src_lladdr);
 	if (extant != NULL) {
 		/* Mark the probe as successful, and update the RTT estimate */
 		fm_extant_received_reply(extant, pkt);
@@ -156,7 +145,7 @@ fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 
 			if (ifindex > 0) {
 				src_lladdr.sll_ifindex = ifindex;
-				fm_local_cache_arp_entry(src_ipaddr, (fm_address_t *) &src_lladdr);
+				fm_local_cache_arp_entry(hdr->arp.src_ipaddr.s_addr, (fm_address_t *) &src_lladdr);
 			}
 		}
 
