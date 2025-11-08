@@ -81,4 +81,7 @@ extern void		fm_print_hexdump(const unsigned char *p, unsigned int len);
 
 extern bool		fm_makedirs(char *path);
 
+#define offsetof(type, member) \
+	((unsigned long) &(((type *) 0)->member))
+
 #endif /* FREEMAP_UTILS_H */

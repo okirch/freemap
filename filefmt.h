@@ -74,8 +74,6 @@ struct fm_config_proc {
 	fm_config_attr_t	attributes[MAX_ATTRIBUTES];
 };
 
-#define offsetof(type, member) \
-	((unsigned long) &(((type *) 0)->member))
 #define ATTRIB_INT(container, member) \
 		{ #member,	offsetof(container, member),	FM_CONFIG_ATTR_TYPE_INT }
 #define ATTRIB_BOOL(container, member) \
