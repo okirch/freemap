@@ -127,6 +127,7 @@ fm_parsed_pkt_alloc(fm_packet_parser_t *parser)
 		hdr->proto_id = h->proto_id;
 
 		pkt->headers[k] = hdr;
+		allocated += h->recv_alloc;
 	}
 
 	pkt->num_headers = k;
