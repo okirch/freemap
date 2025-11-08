@@ -25,6 +25,8 @@
 #include <netinet/ip6.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
+#include <netinet/ip_icmp.h>
+#include <netinet/icmp6.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -482,7 +484,147 @@ fm_raw_packet_pull_udp_header(fm_buffer_t *bp, fm_udp_header_info_t *udp_info)
 bool
 fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info)
 {
-	return false;
+	struct icmp *ih;
+	unsigned int hdrlen = 4;
+	bool extract_id_seq = false;
+
+	if (!(ih = fm_buffer_peek(bp, hdrlen)))
+		return false;
+
+	icmp_info->type = ih->icmp_type;
+	icmp_info->code = ih->icmp_code;
+
+	icmp_info->v4_type = ih->icmp_type;
+	icmp_info->v4_code = ih->icmp_code;
+
+	switch (ih->icmp_type) {
+	case ICMP_DEST_UNREACH:
+		if (ih->icmp_code == ICMP_UNREACH_NEEDFRAG) {
+			hdrlen += 4;
+			break;
+		}
+		/* fallthru */
+
+	case ICMP_TIME_EXCEEDED:
+		icmp_info->include_error_pkt = true;
+		break;
+
+	case ICMP_PARAMETERPROB:
+		hdrlen += 1;
+		icmp_info->include_error_pkt = true;
+		break;
+
+	case ICMP_REDIRECT:
+		hdrlen += 4;	/* IP addr of gateway */
+		break;
+
+	case ICMP_ECHO:
+	case ICMP_ECHOREPLY:
+	case ICMP_TIMESTAMP:
+	case ICMP_TIMESTAMPREPLY:
+	case ICMP_ADDRESS:
+	case ICMP_ADDRESSREPLY:
+	case ICMP_INFO_REQUEST:
+	case ICMP_INFO_REPLY:
+		extract_id_seq = true;
+		hdrlen += 4;	/* seq and id */
+		break;
+	}
+
+	if (!fm_buffer_pull(bp, hdrlen))
+		return false;
+
+	if (extract_id_seq) {
+		icmp_info->seq = ntohs(ih->icmp_seq);
+		icmp_info->id = ntohs(ih->icmp_id);
+	}
+
+	return true;
+}
+
+/*
+ * I don't want to distinguish between v4 and v6 in upper layer code,
+ * so what we'll do here is translate ICMPv6 code/type combinations
+ * to what resembles them most closely in v4.
+ */
+static inline void
+fm_raw_packet_map_icmpv6_codes(fm_icmp_header_info_t *icmp_info, unsigned int type, unsigned int code)
+{
+	static int codemap[][5] = {
+		{ ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_NOROUTE, ICMP_DEST_UNREACH, ICMP_NET_UNREACH },
+		{ ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_ADDR, ICMP_DEST_UNREACH, ICMP_HOST_UNREACH },
+		{ ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_NOPORT, ICMP_DEST_UNREACH, ICMP_PORT_UNREACH },
+		{ ICMP6_PACKET_TOO_BIG, -1, ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED },
+		{ ICMP6_TIME_EXCEEDED, ICMP6_TIME_EXCEED_TRANSIT, ICMP_TIME_EXCEEDED, ICMP_EXC_TTL },
+		{ ICMP6_TIME_EXCEEDED, ICMP6_TIME_EXCEED_REASSEMBLY, ICMP_TIME_EXCEEDED, ICMP_EXC_FRAGTIME },
+		{ ICMP6_PARAM_PROB, -1, ICMP_PARAMETERPROB, 0 },
+		{ ICMP6_ECHO_REQUEST, -1, ICMP_ECHO, 0 },
+		{ ICMP6_ECHO_REPLY, -1, ICMP_ECHOREPLY, 0 },
+		{ -1 }
+	};
+	unsigned int i;
+
+	for (i = 0; codemap[i][0] >= 0; ++i) {
+		if (codemap[i][0] != type)
+			continue;
+		if (codemap[i][1] >= 0 && codemap[i][1] != code)
+			continue;
+		icmp_info->v4_type = codemap[i][2];
+		icmp_info->v4_code = codemap[i][3];
+		return;
+	}
+
+	icmp_info->v4_type = 0xFF;
+	icmp_info->v4_code = 0xFF;
+}
+
+bool
+fm_raw_packet_pull_icmpv6_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info)
+{
+	struct icmp6_hdr *ih;
+	unsigned int hdrlen = 4;
+
+	if (!(ih = fm_buffer_peek(bp, hdrlen)))
+		return false;
+
+	icmp_info->type = ih->icmp6_type;
+	icmp_info->code = ih->icmp6_code;
+
+	fm_raw_packet_map_icmpv6_codes(icmp_info, ih->icmp6_type, ih->icmp6_code);
+
+	switch (ih->icmp6_type) {
+	case ICMP6_DST_UNREACH:
+		break;
+
+	case ICMP6_PACKET_TOO_BIG:
+		hdrlen += 4;
+		break;
+
+	case ICMP6_TIME_EXCEEDED:
+		break;
+
+	case ICMP6_PARAM_PROB:
+		hdrlen += 4;
+		break;
+
+	case ICMP6_ECHO_REQUEST:
+	case ICMP6_ECHO_REPLY:
+		hdrlen += 4;	/* seq and id */
+		break;
+	}
+
+
+	if (!fm_buffer_pull(bp, hdrlen))
+		return false;
+
+	if (!(ih->icmp6_type & ICMP6_INFOMSG_MASK)) {
+		icmp_info->include_error_pkt = true;
+	} else {
+		icmp_info->seq = ntohs(ih->icmp6_seq);
+		icmp_info->id = ntohs(ih->icmp6_id);
+	}
+
+	return true;
 }
 
 bool

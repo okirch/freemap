@@ -36,6 +36,7 @@ typedef struct fm_icmp_request {
 
 	fm_socket_t *		sock;
 	bool			sock_is_shared;
+	bool			kernel_trashes_id;
 
 	int			family;
 	fm_address_t		host_address;
@@ -46,22 +47,22 @@ typedef struct fm_icmp_request {
 	struct fm_csum_hdr *	csum_header;
 
 	struct icmp_params {
-		int		ipproto;
-		uint32_t	ident;
-		uint32_t	seq;
+		uint16_t	ipproto;
+		uint16_t	ident;
+		uint16_t	seq;
 	} icmp;
 } fm_icmp_request_t;
 
 typedef struct fm_icmp_extant_info {
-	struct {
-		unsigned int	len;
-		union {
-			struct icmp		icmp4;
-			struct icmp6_hdr	icmp6;
-			unsigned char		raw[64];
-		};
-	} sent_hdr, expect_hdr;
-} fm_icmp_extant_info_t;
+	struct fm_icmp_match {
+		unsigned char	v4_request_type;
+		unsigned char	v4_response_type;
 
+		/* a value of id < 0 means ignore the id.
+		 * Needed because the icmp dgram sockets overwrite the
+		 * id chosen by user space on transmit. */
+		int		seq, id;
+	} match;
+} fm_icmp_extant_info_t;
 
 #endif /* FREEMAP_ICMP_H */

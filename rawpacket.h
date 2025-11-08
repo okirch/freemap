@@ -46,10 +46,17 @@ typedef struct fm_arp_header_info {
 	struct in_addr		dst_ipaddr;
 } fm_arp_header_info_t;
 
+/*
+ * The ICMP header info covers both ICMPv4 and ICMPv6.
+ * v6 types and codes are mapped to their v4 counterparts where posssible.
+ */
 typedef struct fm_icmp_header_info {
 	unsigned char		type, code;
+	unsigned char		v4_type, v4_code;
 	uint16_t		seq;
 	uint16_t		id;
+
+	bool			include_error_pkt;
 } fm_icmp_header_info_t;
 
 typedef struct fm_udp_header_info {
@@ -124,6 +131,7 @@ extern bool		fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *s
 extern bool		fm_raw_packet_pull_tcp_header(fm_buffer_t *bp, fm_tcp_header_info_t *tcp);
 extern bool		fm_raw_packet_pull_udp_header(fm_buffer_t *bp, fm_udp_header_info_t *udp);
 extern bool		fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp);
+extern bool		fm_raw_packet_pull_icmpv6_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp);
 extern bool		fm_raw_packet_pull_arp_header(fm_buffer_t *bp, fm_arp_header_info_t *arp);
 
 extern fm_csum_hdr_t *	fm_ipv6_checksum_header(const fm_address_t *src_addr, const fm_address_t *dst_addr, int next_header);

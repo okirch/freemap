@@ -213,10 +213,37 @@ fm_parsed_packet_find_next(fm_parsed_pkt_t *cooked, unsigned int proto_id)
 bool
 fm_proto_ip_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_proto)
 {
+	/* This will also update pkt->family, depending on the ETH_P_* type */
 	if (!fm_raw_packet_pull_ip_hdr(pkt, &hdr->ip))
 		return false;
 
-	*next_proto = hdr->ip.ipproto;
+	/* When using PF_PACKET sockets, we do receive raw IP packets.
+	 * Massage the packet by stripping off the IP header and adjusting
+	 * the packet.
+	 */
+	if (pkt->peer_addr.ss_family == AF_PACKET) {
+		int ifindex = ((struct sockaddr_ll *) &pkt->peer_addr)->sll_ifindex;
+
+		if (pkt->family == AF_INET6)
+			fm_address_ipv6_update_scope_id(&hdr->ip.src_addr, ifindex);
+
+		fm_local_neighbor_cache_update(&hdr->ip.src_addr, &pkt->peer_addr);
+
+		pkt->peer_addr = hdr->ip.src_addr;
+		pkt->local_addr = hdr->ip.dst_addr;
+	}
+
+	switch (hdr->ip.ipproto) {
+	case IPPROTO_ICMP:
+		*next_proto = FM_PROTO_ICMP; break;
+	case IPPROTO_TCP:
+		*next_proto = FM_PROTO_TCP; break;
+	case IPPROTO_UDP:
+		*next_proto = FM_PROTO_UDP; break;
+	default:
+		*next_proto = FM_PROTO_NONE; break;
+	}
+
 	return true;
 }
 
@@ -253,11 +280,22 @@ fm_proto_udp_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_pro
 bool
 fm_proto_icmp_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_proto)
 {
-	if (!fm_raw_packet_pull_icmp_header(pkt->payload, &hdr->icmp))
+	if (pkt->family == AF_INET) {
+		if (!fm_raw_packet_pull_icmp_header(pkt->payload, &hdr->icmp))
+			return false;
+	} else
+	if (pkt->family == AF_INET6) {
+		if (!fm_raw_packet_pull_icmpv6_header(pkt->payload, &hdr->icmp))
+			return false;
+	} else
 		return false;
 
-	/* If it's an error code, this will be followed by an IP packet */
+	/* If it's an error code, this will be followed by an IP packet, else nothing
+	 */
+	if (hdr->icmp.include_error_pkt)
+		*next_proto = FM_PROTO_IP;
+	else
+		*next_proto = FM_PROTO_NONE;
 
-	*next_proto = FM_PROTO_NONE;
 	return true;
 }
