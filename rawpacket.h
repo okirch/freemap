@@ -31,6 +31,20 @@ typedef struct fm_ip_header_info {
 	int			ipproto;
 } fm_ip_header_info_t;
 
+typedef struct fm_arp_header_info {
+} fm_arp_header_info_t;
+
+typedef struct fm_icmp_header_info {
+	unsigned char		type, code;
+	uint16_t		seq;
+	uint16_t		id;
+} fm_icmp_header_info_t;
+
+typedef struct fm_udp_header_info {
+	uint16_t		src_port;
+	uint16_t		dst_port;
+} fm_udp_header_info_t;
+
 typedef struct fm_tcp_header_info {
 	unsigned char		flags;
 	uint32_t		seq;
@@ -48,6 +62,25 @@ typedef struct fm_tcp_header_info {
 	uint16_t		src_port;
 	uint16_t		dst_port;
 } fm_tcp_header_info_t;
+
+typedef struct fm_parsed_hdr {
+	unsigned int		proto_id;
+	union {
+		unsigned char	data[1];
+		fm_ip_header_info_t ip;
+		fm_arp_header_info_t arp;
+		fm_icmp_header_info_t icmp;
+		fm_udp_header_info_t udp;
+		fm_tcp_header_info_t tcp;
+	};
+} fm_parsed_hdr_t;
+
+typedef struct fm_parsed_pkt {
+	unsigned int		next_header;	/* used when we step through the packet */
+
+	unsigned int		num_headers;
+	fm_parsed_hdr_t *	headers[FM_PARSED_PACKET_MAX_PROTOS];
+} fm_parsed_pkt_t;
 
 typedef struct fm_csum_hdr fm_csum_hdr_t;
 struct fm_csum_hdr {
@@ -75,6 +108,9 @@ extern bool		fm_raw_packet_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_header_info_t *info)
 extern bool		fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
 					fm_tcp_header_info_t *, unsigned int payload_len);
 extern bool		fm_raw_packet_pull_tcp_header(fm_buffer_t *bp, fm_tcp_header_info_t *tcp);
+extern bool		fm_raw_packet_pull_udp_header(fm_buffer_t *bp, fm_udp_header_info_t *udp);
+extern bool		fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp);
+extern bool		fm_raw_packet_pull_arp_header(fm_buffer_t *bp, fm_arp_header_info_t *arp);
 
 extern fm_csum_hdr_t *	fm_ipv6_checksum_header(const fm_address_t *src_addr, const fm_address_t *dst_addr, int next_header);
 extern bool		fm_raw_packet_csum(fm_csum_hdr_t *pseudo_hdr, void *user_data, unsigned int user_len);

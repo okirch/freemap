@@ -24,6 +24,7 @@
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
 #include <netinet/tcp.h>
+#include <netinet/udp.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -163,6 +164,9 @@ fm_raw_packet_pull_ipv4_hdr(fm_buffer_t *bp, fm_ip_header_info_t *info)
 {
 	const struct iphdr *ip = (const struct iphdr *) fm_buffer_peek(bp, sizeof(struct iphdr));
 	unsigned int hlen;
+
+	if (ip == NULL)
+		return false;
 
 	hlen = ip->ihl << 2;
 	if (hlen < 20 || !fm_buffer_pull(bp, hlen))
@@ -456,4 +460,33 @@ fm_raw_packet_pull_tcp_header(fm_buffer_t *bp, fm_tcp_header_info_t *tcp_info)
 	tcp_info->window = htons(th->th_win);
 
 	return true;
+}
+
+bool
+fm_raw_packet_pull_udp_header(fm_buffer_t *bp, fm_udp_header_info_t *udp_info)
+{
+	struct udphdr *uh;
+	unsigned int len;
+
+	if (!(uh = fm_buffer_pull(bp, sizeof(*uh))))
+		return false;
+
+	udp_info->src_port = ntohs(uh->uh_sport);
+	udp_info->dst_port = ntohs(uh->uh_dport);
+
+	len = ntohs(uh->uh_ulen);
+	fm_buffer_truncate(bp, len);
+	return true;
+}
+
+bool
+fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp)
+{
+	return false;
+}
+
+bool
+fm_raw_packet_pull_arp_header(fm_buffer_t *bp, fm_arp_header_info_t *arp)
+{
+	return false;
 }
