@@ -112,6 +112,19 @@ fm_buffer_len(fm_buffer_t *pkt, const void *base)
 	return pkt->wpos - offset;
 }
 
+static inline bool
+fm_buffer_truncate(fm_buffer_t *pkt, unsigned int len)
+{
+	unsigned int new_wpos = pkt->rpos + len;
+
+	if (new_wpos < pkt->rpos)
+		return false; /* int overflow */
+	if (new_wpos > pkt->wpos)
+		return false;
+
+	pkt->wpos = new_wpos;
+	return true;
+}
 
 #endif /* FREEMAP_BUFFER_H */
 
