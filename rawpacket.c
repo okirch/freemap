@@ -480,13 +480,43 @@ fm_raw_packet_pull_udp_header(fm_buffer_t *bp, fm_udp_header_info_t *udp_info)
 }
 
 bool
-fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp)
+fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info)
 {
 	return false;
 }
 
 bool
-fm_raw_packet_pull_arp_header(fm_buffer_t *bp, fm_arp_header_info_t *arp)
+fm_raw_packet_pull_arp_header(fm_buffer_t *bp, fm_arp_header_info_t *arp_info)
 {
-	return false;
+	struct arphdr *ah;
+	unsigned char *addr;
+
+	if (!(ah = fm_buffer_pull(bp, sizeof(*ah))))
+		return false;
+
+	arp_info->op = ntohs(ah->ar_op);
+	arp_info->hwtype = ntohs(ah->ar_hrd);
+	arp_info->nwtype = ntohs(ah->ar_pro);
+
+	if (!(addr = fm_buffer_pull(bp, ah->ar_hln)))
+		return false;
+	if (ah->ar_hln == ETH_ALEN)
+		memcpy(arp_info->src_hwaddr, addr, ETH_ALEN);
+
+	if (!(addr = fm_buffer_pull(bp, ah->ar_pln)))
+		return false;
+	if (ah->ar_pln == 4)
+		memcpy(&arp_info->src_ipaddr, addr, 4);
+
+	if (!(addr = fm_buffer_pull(bp, ah->ar_hln)))
+		return false;
+	if (ah->ar_hln == ETH_ALEN)
+		memcpy(arp_info->dst_hwaddr, addr, ETH_ALEN);
+
+	if (!(addr = fm_buffer_pull(bp, ah->ar_pln)))
+		return false;
+	if (ah->ar_pln == 4)
+		memcpy(&arp_info->dst_ipaddr, addr, 4);
+
+	return true;
 }

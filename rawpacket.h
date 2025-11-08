@@ -32,7 +32,18 @@ typedef struct fm_ip_header_info {
 	int			ipproto;
 } fm_ip_header_info_t;
 
+/*
+ * We could use fm_address_t's for all hw and network addresses, but this
+ * would seriously bloat this structure
+ */
 typedef struct fm_arp_header_info {
+	uint16_t		op;
+	uint16_t		hwtype;
+	uint16_t		nwtype;
+	unsigned char		src_hwaddr[6];
+	unsigned char		dst_hwaddr[6];
+	struct in_addr		src_ipaddr;
+	struct in_addr		dst_ipaddr;
 } fm_arp_header_info_t;
 
 typedef struct fm_icmp_header_info {
