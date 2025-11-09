@@ -9,6 +9,8 @@
    not running into gateway ICMP rate limit problems with unreachable
    hosts.
  * use nanosecond timestamps for measuring RTTs
+ * Do not try to send packets to interfaces where it makes no sense
+   (such as ARP over loopback, tunnels etc)
 
 Other probes to implement
  - A host probe that uses invalid protocol numbers to elicit a response
