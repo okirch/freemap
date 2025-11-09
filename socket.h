@@ -47,6 +47,9 @@ struct fm_socket {
 	/* Packet analysis code */
 	fm_packet_parser_t *	data_parser;
 	fm_packet_parser_t *	error_parser;
+
+	/* For quick extant matching */
+	fm_extant_map_t *	extant_map;
 };
 
 enum {
@@ -66,6 +69,8 @@ extern int		fm_socket_error_class(const fm_pkt_info_t *info);
 extern bool		fm_socket_error_dest_unreachable(const fm_pkt_info_t *);
 extern void		fm_socket_attach_protocol(fm_socket_t *, fm_protocol_t *);
 
+extern void		fm_socket_attach_extant_map(fm_socket_t *, fm_extant_map_t *);
+extern fm_extant_t *	fm_socket_add_extant(fm_socket_t *, fm_host_asset_t *host, int family, int ipproto, const void *data, size_t len);
 
 static inline bool
 fm_socket_is_connected(const fm_socket_t *sock)

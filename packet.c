@@ -217,9 +217,9 @@ fm_proto_ip_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_prot
 	if (!fm_raw_packet_pull_ip_hdr(pkt, &hdr->ip))
 		return false;
 
-	/* When using PF_PACKET sockets, we do receive raw IP packets.
-	 * Massage the packet by stripping off the IP header and adjusting
-	 * the packet.
+	/* When using PF_PACKET sockets, the addresses on the packet will be an AF_PACKET
+	 * address.
+	 * Replace these with the IP addrs.
 	 */
 	if (pkt->peer_addr.ss_family == AF_PACKET) {
 		int ifindex = ((struct sockaddr_ll *) &pkt->peer_addr)->sll_ifindex;
@@ -227,6 +227,7 @@ fm_proto_ip_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_prot
 		if (pkt->family == AF_INET6)
 			fm_address_ipv6_update_scope_id(&hdr->ip.src_addr, ifindex);
 
+		/* Is it efficient to do this all the time? */
 		fm_local_neighbor_cache_update(&hdr->ip.src_addr, &pkt->peer_addr);
 
 		pkt->peer_addr = hdr->ip.src_addr;

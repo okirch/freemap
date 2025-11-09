@@ -25,6 +25,7 @@
 
 #include "freemap.h"
 #include "protocols.h"
+#include "lists.h"
 
 struct fm_protocol {
 	size_t		obj_size;
@@ -45,6 +46,9 @@ struct fm_protocol {
 	bool		(*process_packet)(fm_protocol_t *, fm_pkt_t *);
 	bool		(*process_error)(fm_protocol_t *, fm_pkt_t *);
 	bool		(*connection_established)(fm_protocol_t *, fm_pkt_t *);
+
+	fm_extant_t *	(*locate_error)(fm_protocol_t *, fm_pkt_t *, hlist_iterator_t *);
+	fm_extant_t *	(*locate_response)(fm_protocol_t *, fm_pkt_t *, hlist_iterator_t *);
 };
 
 #define FM_PARAM_TYPE_RETRIES_MASK	(1 << FM_PARAM_TYPE_RETRIES)
@@ -76,6 +80,9 @@ extern fm_protocol_t *	fm_protocol_by_id(unsigned int);
 
 extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);
 extern fm_socket_t *	fm_protocol_create_host_shared_socket(fm_protocol_t *proto, fm_target_t *target);
+
+extern fm_extant_t *	fm_protocol_locate_error(fm_protocol_t *, fm_pkt_t *, hlist_iterator_t *);
+extern fm_extant_t *	fm_protocol_locate_response(fm_protocol_t *, fm_pkt_t *, hlist_iterator_t *);
 
 #define FM_PROTOCOL_REGISTER(ops) \
 __attribute__((constructor)) \

@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include "extant.h"
 #include "probe.h"
+#include "protocols.h"
 
 /*
  * Tracking of extant requests
@@ -33,6 +34,9 @@ fm_extant_alloc_list(fm_probe_t *probe, int af, int ipproto, const void *payload
 	extant->family = af;
 	extant->ipproto = ipproto;
 	extant->probe = probe;
+
+	/* by default, an extant will be destroyed as soon as we have a reply. */
+	extant->single_shot = true;
 
 	fm_socket_timestamp_update(&extant->timestamp);
 
@@ -61,6 +65,7 @@ void
 fm_extant_free(fm_extant_t *extant)
 {
 	fm_extant_unlink(extant);
+	extant->probe = NULL;
 	free(extant);
 }
 
@@ -98,3 +103,96 @@ fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt)
 	fm_probe_mark_complete(probe);
 }
 
+/*
+ * Extant maps are usually attached to a socket and act as a quick and generic way
+ * of matching response/error packets with outstanding probe packets.
+ */
+fm_extant_map_t *
+fm_extant_map_alloc(void)
+{
+	fm_extant_map_t *map;
+
+	map = calloc(1, sizeof(*map));
+	return map;
+}
+
+/*
+ * Add an extant to the map
+ */
+fm_extant_t *
+fm_extant_map_add(fm_extant_map_t *map, fm_host_asset_t *host, int family, int ipproto, const void *data, size_t len)
+{
+	fm_extant_t *extant;
+
+	extant = fm_extant_alloc_list(NULL, family, ipproto, data, len, &map->pending);
+	extant->host = host;
+	return extant;
+}
+
+void
+fm_extant_map_forget_probe(fm_extant_map_t *map, const fm_probe_t *probe)
+{
+	fm_extant_list_forget_probe(&map->pending, probe);
+}
+
+bool
+fm_extant_map_process_data(fm_extant_map_t *map, fm_protocol_t *proto, fm_pkt_t *pkt)
+{
+	hlist_iterator_t iter;
+	fm_extant_t *extant;
+
+	fm_log_debug("%s(%s)", __func__, fm_address_format(&pkt->peer_addr));
+
+	fm_extant_iterator_init(&iter, &map->pending);
+	if ((extant = fm_protocol_locate_response(proto, pkt, &iter)) == NULL)
+		return false;
+
+	if (extant->probe)
+		fm_log_debug("%s: received response", fm_probe_name(extant->probe));
+	else
+		fm_log_debug("%: found anonymous extant %p", __func__, extant);
+
+	/* Mark the probe as successful, and update the RTT estimate */
+	fm_extant_received_reply(extant, pkt);
+
+	/* For regular host probes, we can now free the extant.
+	 * However, for discovery probes, there will be any number of
+	 * responses, and we want to catch them all.
+	 * So we just leave the extant untouched.
+	 */
+	if (extant->single_shot)
+		fm_extant_free(extant);
+
+	return true;
+}
+
+bool
+fm_extant_map_process_error(fm_extant_map_t *map, fm_protocol_t *proto, fm_pkt_t *pkt)
+{
+	hlist_iterator_t iter;
+	fm_extant_t *extant;
+
+	fm_log_debug("%s(%s)", __func__, fm_address_format(&pkt->peer_addr));
+
+	fm_extant_iterator_init(&iter, &map->pending);
+	if ((extant = fm_protocol_locate_error(proto, pkt, &iter)) == NULL)
+		return false;
+
+	if (extant->probe)
+		fm_log_debug("%s: received error", fm_probe_name(extant->probe));
+	else
+		fm_log_debug("%: found anonymous extant %p", __func__, extant);
+
+	/* Mark the probe as failed, and update the RTT estimate */
+	fm_extant_received_error(extant, pkt);
+
+	/* For regular host probes, we can now free the extant.
+	 * However, for discovery probes, there will be any number of
+	 * responses, and we want to catch them all.
+	 * So we just leave the extant untouched.
+	 */
+	if (extant->single_shot)
+		fm_extant_free(extant);
+
+	return true;
+}

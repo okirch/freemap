@@ -386,3 +386,22 @@ fm_protocol_create_host_shared_socket(fm_protocol_t *proto, fm_target_t *target)
 
 	return proto->create_host_shared_socket(proto, target);
 }
+
+/*
+ * locate extants
+ */
+fm_extant_t *
+fm_protocol_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
+{
+	if (proto->locate_error == NULL)
+		return NULL;
+	return proto->locate_error(proto, pkt, iter);
+}
+
+fm_extant_t *
+fm_protocol_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
+{
+	if (proto->locate_response == NULL)
+		return NULL;
+	return proto->locate_response(proto, pkt, iter);
+}

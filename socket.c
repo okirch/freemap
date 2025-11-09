@@ -35,6 +35,7 @@
 #include "protocols.h"
 #include "utils.h"
 #include "rawpacket.h"
+#include "extant.h"
 #include "buffer.h"
 
 static struct fm_socket_list	socket_list;
@@ -202,6 +203,28 @@ fm_socket_attach_protocol(fm_socket_t *sock, fm_protocol_t *proto)
 	 */
 	if (sock->type == SOCK_DGRAM)
 		sock->rpoll = POLLIN;
+}
+
+/*
+ * Extant maps provide a generic way to locate the original request
+ */
+void
+fm_socket_attach_extant_map(fm_socket_t *sock, fm_extant_map_t *map)
+{
+	assert(sock->extant_map == NULL);
+	assert(sock->proto != NULL);
+	assert(sock->proto->locate_error != NULL);
+	assert(sock->proto->locate_response != NULL);
+	sock->extant_map = map;
+}
+
+fm_extant_t *
+fm_socket_add_extant(fm_socket_t *sock, fm_host_asset_t *host, int family, int ipproto, const void *data, size_t len)
+{
+	if (sock->extant_map == NULL)
+		return NULL;
+
+	return fm_extant_map_add(sock->extant_map, host, family, ipproto, data, len);
 }
 
 /*
@@ -763,6 +786,23 @@ fm_socket_recv_packet(fm_socket_t *sock, int flags)
 				fm_address_format(&pkt->peer_addr));
 	}
 
+	/* If there's an extent map attached to the socket,
+	 * see if we can score a quick win and locate the
+	 * original request directly. */
+	if (sock->extant_map) {
+		bool processed;
+
+		if (flags & MSG_ERRQUEUE)
+			processed = fm_extant_map_process_error(sock->extant_map, sock->proto, pkt);
+		else
+			processed = fm_extant_map_process_data(sock->extant_map, sock->proto, pkt);
+		if (processed) {
+			fm_pkt_free(pkt);
+			errno = EAGAIN;
+			return NULL;
+		}
+	}
+
 	return pkt;
 }
 
@@ -1085,7 +1125,7 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		} else if (errno != EAGAIN) {
 			fm_log_error("socket %d: POLLERR set but recvmsg failed: %m", sock->fd);
 		} else if (fm_socket_get_pending_error(sock, &err)) {
-			fm_log_notice("errqueue returned again, but sock error=%s", strerror(err));
+			fm_log_notice("errqueue returned EAGAIN, but sock error=%s", strerror(err));
 			pkt = fm_socket_build_error_packet(sock, errno);
 			fm_socket_process_error(sock, proto, pkt);
 			fm_pkt_free(pkt);

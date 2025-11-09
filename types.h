@@ -32,6 +32,8 @@ typedef struct fm_config_service_array fm_config_service_array_t;
 typedef struct fm_service_catalog fm_service_catalog_t;
 typedef struct fm_service_probe	fm_service_probe_t;
 typedef struct fm_config_probe fm_config_probe_t;
+typedef struct fm_extant_map fm_extant_map_t;
+typedef struct fm_extant fm_extant_t;
 
 typedef struct fm_address_prefix_array fm_address_prefix_array_t;
 typedef struct fm_address_array fm_address_array_t;

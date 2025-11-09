@@ -28,19 +28,33 @@
 /*
  * Hold the state of an extant request
  */
-typedef struct fm_extant {
+struct fm_extant {
 	struct hlist		link;
 
 	int			family;
 	int			ipproto;
+	bool			single_shot;
 
+	fm_host_asset_t *	host;
 	fm_socket_timestamp_t	timestamp;
 	fm_probe_t *		probe;
-} fm_extant_t;
+};
 
 typedef struct fm_extant_list {
 	struct hlist_head	hlist;
 } fm_extant_list_t;
+
+struct fm_extant_map {
+	fm_extant_list_t	pending;
+};
+
+#define FM_EXTANT_MAP_INIT { { { NULL } } }
+
+extern fm_extant_map_t *fm_extant_map_alloc(void);
+extern bool		fm_extant_map_process_data(fm_extant_map_t *map, fm_protocol_t *proto, fm_pkt_t *pkt);
+extern bool		fm_extant_map_process_error(fm_extant_map_t *map, fm_protocol_t *proto, fm_pkt_t *pkt);
+extern fm_extant_t *	fm_extant_map_add(fm_extant_map_t *map, fm_host_asset_t *host, int family, int ipproto, const void *data, size_t len);
+extern void		fm_extant_map_forget_probe(fm_extant_map_t *map, const fm_probe_t *);
 
 extern fm_extant_t *	fm_extant_alloc(fm_probe_t *, int af, int ipproto,
 				const void *payload, size_t payload_size);
