@@ -436,9 +436,12 @@ fm_socket_connect(fm_socket_t *sock, const fm_address_t *address)
 	 && errno != EINPROGRESS)
 		return false;
 
+	/* Note to self: do not assert POLLIN on stream sockets unless you really want to handle
+	 * incoming data, or the remote end closing the connection, etc etc etc.
+	 */
 	if (sock->type == SOCK_STREAM) {
 		fm_log_debug("Initiated connection to %s on sock %d\n", fm_address_format(address), sock->fd);
-		sock->rpoll = POLLIN|POLLOUT|POLLERR;
+		sock->rpoll = POLLOUT|POLLERR;
 	} else {
 		sock->rpoll = POLLIN;
 	}
