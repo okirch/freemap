@@ -148,6 +148,7 @@ extern void		fm_rtt_stats_init(fm_rtt_stats_t *, unsigned long initial_rtt, unsi
 extern void		fm_rtt_stats_update(fm_rtt_stats_t *, double rtt);
 
 extern fm_host_asset_t *fm_host_asset_get(const fm_address_t *addr, bool create);
+extern fm_host_asset_t *fm_host_asset_get_active(const fm_address_t *addr);
 extern void		fm_host_asset_attach(fm_host_asset_t *);
 extern void		fm_host_asset_detach(fm_host_asset_t *);
 extern fm_asset_state_t	fm_host_asset_get_state(fm_host_asset_t *host);

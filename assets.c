@@ -205,6 +205,22 @@ fm_host_asset_get(const fm_address_t *addr, bool create)
 	return host;
 }
 
+/*
+ * Check if we have a mapped asset for the given destination address; if we do,
+ * return it, else return NULL
+ */
+fm_host_asset_t *
+fm_host_asset_get_active(const fm_address_t *addr)
+{
+	fm_host_asset_t *host;
+
+	if ((host = fm_host_asset_get(addr, false)) == NULL
+	 || !fm_host_asset_is_mapped(host))
+		return NULL;
+
+	return host;
+}
+
 static inline int
 fm_host_asset_iterator_update(fm_host_asset_iterator_t *iter, int depth, unsigned int value)
 {
