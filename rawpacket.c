@@ -547,7 +547,7 @@ fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info
  * so what we'll do here is translate ICMPv6 code/type combinations
  * to what resembles them most closely in v4.
  */
-static inline void
+void
 fm_raw_packet_map_icmpv6_codes(fm_icmp_header_info_t *icmp_info, unsigned int type, unsigned int code)
 {
 	static int codemap[][5] = {
@@ -623,6 +623,19 @@ fm_raw_packet_pull_icmpv6_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_in
 		icmp_info->seq = ntohs(ih->icmp6_seq);
 		icmp_info->id = ntohs(ih->icmp6_id);
 	}
+
+	return true;
+}
+
+/*
+ * Check whether an ICMP error marks the resource as unreachable.
+ */
+bool
+fm_icmp_header_is_host_unreachable(const fm_icmp_header_info_t *icmp_info)
+{
+	if (icmp_info->v4_type != ICMP_DEST_UNREACH
+	 || icmp_info->v4_code == ICMP_FRAG_NEEDED)
+		return false;
 
 	return true;
 }

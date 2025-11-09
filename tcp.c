@@ -67,9 +67,14 @@ static fm_socket_t *	fm_tcp_create_raw_socket(fm_protocol_t *proto, int af);
 static bool		fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *);
+static fm_extant_t *	fm_tcp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
+static fm_extant_t *	fm_tcp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 
 static fm_tcp_request_t *fm_tcp_probe_get_request(const fm_probe_t *probe);
 static void		fm_tcp_probe_set_request(fm_probe_t *probe, fm_tcp_request_t *tcp);
+
+/* Global extant map for all TCP related stuff */
+static fm_extant_map_t	fm_tcp_extant_map = FM_EXTANT_MAP_INIT;
 
 static struct fm_protocol	fm_tcp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -87,6 +92,8 @@ static struct fm_protocol	fm_tcp_bsdsock_ops = {
 	.process_packet = fm_tcp_process_packet,
 	.process_error	= fm_tcp_process_error,
 	.connection_established = fm_tcp_connecton_established,
+	.locate_error	= fm_tcp_locate_error,
+	.locate_response= fm_tcp_locate_response,
 };
 
 FM_PROTOCOL_REGISTER(fm_tcp_bsdsock_ops);
@@ -108,6 +115,8 @@ static struct fm_protocol	fm_tcp_rawsock_ops = {
 	.process_error	= fm_tcp_process_error,
 	.create_socket	= fm_tcp_create_raw_socket,
 	.connection_established = fm_tcp_connecton_established,
+	.locate_error	= fm_tcp_locate_error,
+	.locate_response= fm_tcp_locate_response,
 };
 
 FM_PROTOCOL_REGISTER(fm_tcp_rawsock_ops);
@@ -125,6 +134,7 @@ fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af)
 		fm_socket_install_error_parser(sock, FM_PROTO_IP);
 		fm_socket_install_error_parser(sock, FM_PROTO_TCP);
 
+		fm_socket_attach_extant_map(sock, &fm_tcp_extant_map);
 	}
 	return sock;
 }
@@ -147,6 +157,7 @@ fm_tcp_create_raw_socket(fm_protocol_t *proto, int af)
 		fm_socket_install_error_parser(sock, FM_PROTO_IP);
 		fm_socket_install_error_parser(sock, FM_PROTO_TCP);
 
+		fm_socket_attach_extant_map(sock, &fm_tcp_extant_map);
 	}
 	return sock;
 }
@@ -227,6 +238,80 @@ fm_tcp_extant_info_build(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_inf
 {
 	extant_info->src_port = tcp->src_port;
 	extant_info->dst_port = tcp->params.port;
+}
+
+static fm_extant_t *
+fm_tcp_locate_common(fm_pkt_t *pkt, unsigned short src_port, unsigned short dst_port, hlist_iterator_t *iter)
+{
+	fm_host_asset_t *host;
+	fm_extant_t *extant;
+
+	host = fm_host_asset_get_active(&pkt->peer_addr);
+	if (host == NULL)
+		return NULL;
+
+	while ((extant = fm_extant_iterator_match(iter, pkt->family, IPPROTO_TCP)) != NULL) {
+		const struct tcp_extant_info *info = (struct tcp_extant_info *) (extant + 1);
+
+		if (extant->host == host
+		 && info->dst_port == dst_port
+		 && (src_port == 0 || info->src_port == src_port))
+			return extant;
+	}
+
+	return NULL;
+}
+
+static fm_extant_t *
+fm_tcp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
+{
+	fm_parsed_pkt_t *cooked;
+	fm_parsed_hdr_t *hdr;
+	fm_extant_t *extant;
+	bool unreachable;
+
+	if ((cooked = pkt->parsed) == NULL)
+		return NULL;
+
+	/* First, check the ICMP error header - does it tell us the port is unreachable? */
+	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_ICMP)) == NULL)
+		return NULL;
+	unreachable = fm_icmp_header_is_host_unreachable(&hdr->icmp);
+
+	/* Then, look at the enclosed TCP header */
+	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_TCP)) == NULL)
+		return NULL;
+
+	extant = fm_tcp_locate_common(pkt, hdr->tcp.src_port, hdr->tcp.dst_port, iter);
+
+	/* If ICMP says the net/host/port is unreachable, mark the port resource as closed. */
+	if (extant != NULL && extant->host && unreachable)
+		fm_host_asset_update_port_state(extant->host, FM_PROTO_TCP, hdr->tcp.dst_port, FM_ASSET_STATE_CLOSED);
+
+	return extant;
+}
+
+static fm_extant_t *
+fm_tcp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
+{
+	fm_parsed_pkt_t *cooked;
+	fm_parsed_hdr_t *hdr;
+	fm_extant_t *extant;
+
+	if ((cooked = pkt->parsed) == NULL
+	 || (hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_TCP)) == NULL)
+		return NULL;
+
+	extant = fm_tcp_locate_common(pkt, hdr->tcp.dst_port, hdr->tcp.src_port, iter);
+
+	if (extant != NULL && extant->host) {
+		if (hdr->tcp.flags & TH_RST)
+			fm_host_asset_update_port_state(extant->host, FM_PROTO_TCP, hdr->tcp.src_port, FM_ASSET_STATE_CLOSED);
+		else if (hdr->tcp.flags & TH_ACK)
+			fm_host_asset_update_port_state(extant->host, FM_PROTO_TCP, hdr->tcp.src_port, FM_ASSET_STATE_OPEN);
+	}
+
+	return extant;
 }
 
 static fm_extant_t *
@@ -328,10 +413,18 @@ fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
 static bool
 fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
+	unsigned int src_port, dst_port;
+	hlist_iterator_t iter;
 	fm_extant_t *extant;
 
-	extant = fm_tcp_locate_probe(proto, pkt, FM_ASSET_STATE_OPEN);
+	src_port = fm_address_get_port(&pkt->peer_addr);
+	dst_port = fm_address_get_port(&pkt->local_addr);
+
+	fm_extant_iterator_init(&iter, &fm_tcp_extant_map.pending);
+
+	extant = fm_tcp_locate_common(pkt, dst_port, src_port, &iter);
 	if (extant != NULL) {
+		fm_host_asset_update_port_state(extant->host, FM_PROTO_TCP, src_port, FM_ASSET_STATE_OPEN);
 		fm_extant_received_reply(extant, NULL);
 		fm_extant_free(extant);
 	}
@@ -422,8 +515,10 @@ fm_tcp_request_schedule(fm_tcp_request_t *tcp, fm_time_t *expires)
 }
 
 static fm_error_t
-fm_tcp_request_send(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
+fm_tcp_request_send(fm_tcp_request_t *tcp, fm_extant_t **extant_ret)
 {
+	fm_tcp_extant_info_t extant_info;
+
 	if (tcp->sock != NULL && tcp->sock->type == SOCK_STREAM) {
 		fm_socket_free(tcp->sock);
 		tcp->sock = NULL;
@@ -468,7 +563,9 @@ fm_tcp_request_send(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
 			return FM_SEND_ERROR;
 	}
 
-	fm_tcp_extant_info_build(tcp, extant_info);
+	fm_tcp_extant_info_build(tcp, &extant_info);
+	*extant_ret = fm_socket_add_extant(tcp->sock, tcp->target->host_asset,
+				tcp->family, IPPROTO_TCP, &extant_info, sizeof(extant_info));
 
 	/* update the asset state */
 	fm_target_update_port_state(tcp->target, FM_PROTO_TCP, tcp->params.port, FM_ASSET_STATE_PROBE_SENT);
@@ -495,6 +592,8 @@ fm_tcp_port_probe_destroy(fm_probe_t *probe)
 		fm_tcp_request_free(tcp);
 		fm_tcp_probe_set_request(probe, NULL);
 	}
+
+	fm_extant_map_forget_probe(&fm_tcp_extant_map, probe);
 }
 
 /*
@@ -515,12 +614,12 @@ static fm_error_t
 fm_tcp_port_probe_send(fm_probe_t *probe)
 {
 	fm_tcp_request_t *tcp = fm_tcp_probe_get_request(probe);
-	fm_tcp_extant_info_t extant_info;
+	fm_extant_t *extant = NULL;
 	fm_error_t error;
 
-	error = fm_tcp_request_send(tcp, &extant_info);
-	if (error == 0)
-		fm_extant_alloc(probe, tcp->family, IPPROTO_TCP, &extant_info, sizeof(extant_info));
+	error = fm_tcp_request_send(tcp, &extant);
+	if (extant != NULL)
+		extant->probe = probe;
 
 	return error;
 }

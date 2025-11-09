@@ -37,6 +37,7 @@ typedef struct fm_icmp_request {
 	fm_socket_t *		sock;
 	bool			sock_is_shared;
 	bool			kernel_trashes_id;
+	bool			extants_are_multi_shot;
 
 	int			family;
 	fm_address_t		host_address;

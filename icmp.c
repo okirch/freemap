@@ -48,12 +48,17 @@ static fm_socket_t *	fm_icmp_create_connected_socket(fm_protocol_t *proto, const
 static int		fm_icmp_protocol_for_family(int af);
 static void		fm_icmp_request_build_extant_info(fm_icmp_extant_info_t *info, int v4_request_type, int v4_response_type, int id, int seq);
 static fm_extant_t *	fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response);
+static fm_extant_t *	fm_icmp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
+static fm_extant_t *	fm_icmp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 
 static fm_icmp_request_t *fm_icmp_probe_get_request(const fm_probe_t *probe);
 static void		fm_icmp_probe_set_request(fm_probe_t *probe, fm_icmp_request_t *icmp);
 
 /* This is for ICMP discovery probes */
 static fm_extant_list_t	global_extant_list;
+
+/* Global extant map for all ICMP related stuff */
+static fm_extant_map_t	fm_icmp_extant_map = FM_EXTANT_MAP_INIT;
 
 static struct fm_protocol	fm_icmp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -70,6 +75,8 @@ static struct fm_protocol	fm_icmp_bsdsock_ops = {
 	.create_socket	= fm_icmp_create_bsd_socket,
 	.process_packet	= fm_icmp_process_packet,
 	.process_error	= fm_icmp_process_error,
+	.locate_error	= fm_icmp_locate_error,
+	.locate_response= fm_icmp_locate_response,
 };
 
 static struct fm_protocol	fm_icmp_rawsock_ops = {
@@ -89,6 +96,8 @@ static struct fm_protocol	fm_icmp_rawsock_ops = {
 	.create_host_shared_socket = fm_icmp_create_shared_raw_socket,
 	.process_packet	= fm_icmp_process_packet,
 	.process_error	= fm_icmp_process_error,
+	.locate_error	= fm_icmp_locate_error,
+	.locate_response= fm_icmp_locate_response,
 };
 
 
@@ -112,6 +121,8 @@ fm_icmp_create_bsd_socket(fm_protocol_t *proto, int af)
 		fm_socket_enable_tos(sock);
 
 		fm_socket_install_data_parser(sock, FM_PROTO_ICMP);
+
+		fm_socket_attach_extant_map(sock, &fm_icmp_extant_map);
 	}
 	return sock;
 }
@@ -139,6 +150,91 @@ fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr)
 	return sock;
 }
 
+static fm_extant_t *
+fm_icmp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
+{
+	fm_parsed_pkt_t *cooked;
+	fm_parsed_hdr_t *hdr;
+	fm_host_asset_t *host;
+	fm_extant_t *extant;
+
+	if ((cooked = pkt->parsed) == NULL
+	 || (hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_ICMP)) == NULL)
+		return NULL;
+
+	/* Note, host can also be NULL. This happens with discovery probes, for instance. */
+	host = fm_host_asset_get_active(&pkt->peer_addr);
+
+	/* this should go to packet.c */
+	if (fm_debug_level) {
+		if (pkt->family == AF_INET)
+			fm_log_debug("ICMPv4: message with type=%d, code=%d from %s", 
+					hdr->icmp.v4_type, hdr->icmp.v4_code,
+					fm_address_format(&pkt->peer_addr));
+		else
+			fm_log_debug("ICMPv6: message with v4-equivalent type=%d, code=%d from %s", 
+					hdr->icmp.v4_type, hdr->icmp.v4_code,
+					fm_address_format(&pkt->peer_addr));
+	}
+
+        while ((extant = fm_extant_iterator_match(iter, pkt->family, IPPROTO_ICMP)) != NULL) {
+		fm_icmp_extant_info_t *ei = (fm_icmp_extant_info_t *) (extant + 1);
+
+		if (extant->host != host)
+			continue;
+
+		if (ei->match.v4_request_type == hdr->icmp.v4_type
+		 && (ei->match.id < 0 || ei->match.id == hdr->icmp.id)
+		 && ei->match.seq == hdr->icmp.seq)
+			return extant;
+        }
+
+	return NULL;
+}
+
+static fm_extant_t *
+fm_icmp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
+{
+	fm_parsed_pkt_t *cooked;
+	fm_parsed_hdr_t *hdr;
+	fm_host_asset_t *host;
+	fm_extant_t *extant;
+
+	if ((cooked = pkt->parsed) == NULL
+	 || (hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_ICMP)) == NULL)
+		return NULL;
+
+	/* Note, host can also be NULL. This happens with discovery probes, for instance. */
+	host = fm_host_asset_get_active(&pkt->peer_addr);
+
+	/* this should go to packet.c */
+	if (fm_debug_level) {
+		if (pkt->family == AF_INET)
+			fm_log_debug("ICMPv4: message with type=%d, code=%d, seq=0x%x, id=0x%x from %s", 
+					hdr->icmp.v4_type, hdr->icmp.v4_code,
+					hdr->icmp.seq, hdr->icmp.id,
+					fm_address_format(&pkt->peer_addr));
+		else
+			fm_log_debug("ICMPv6: message with v4-equivalent type=%d, code=%d, seq=0x%x, id=0x%x from %s", 
+					hdr->icmp.v4_type, hdr->icmp.v4_code,
+					hdr->icmp.seq, hdr->icmp.id,
+					fm_address_format(&pkt->peer_addr));
+	}
+
+        while ((extant = fm_extant_iterator_match(iter, pkt->family, IPPROTO_ICMP)) != NULL) {
+		fm_icmp_extant_info_t *ei = (fm_icmp_extant_info_t *) (extant + 1);
+
+		if (extant->host != host)
+			continue;
+
+		if (ei->match.v4_response_type == hdr->icmp.v4_type
+		 && (ei->match.id < 0 || ei->match.id == hdr->icmp.id)
+		 && ei->match.seq == hdr->icmp.seq)
+			return extant;
+        }
+
+	return NULL;
+}
 
 static bool
 fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
@@ -225,6 +321,8 @@ fm_icmp_create_raw_socket(fm_protocol_t *proto, int af)
 		if (af == AF_INET)
 			fm_socket_install_data_parser(sock, FM_PROTO_IP);
 		fm_socket_install_data_parser(sock, FM_PROTO_ICMP);
+
+		fm_socket_attach_extant_map(sock, &fm_icmp_extant_map);
 	}
 	return sock;
 }
@@ -386,6 +484,10 @@ fm_icmp_broadcast_request_alloc(fm_protocol_t *proto, int af, const fm_interface
 	icmp->csum_header = fm_ipv6_checksum_header(net_src_addr, &network_broadcast, IPPROTO_ICMPV6);
 	icmp->csum_header->checksum.offset = 2;
 	icmp->csum_header->checksum.width = 2;
+
+	/* Normally, extants are destroyed after the first response; we want them to
+	 * stay around so that we see *all* responses */
+	icmp->extants_are_multi_shot = true;
 
 	return icmp;
 }
@@ -631,8 +733,9 @@ fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, 
  * The probe argument is only here because we need to notify it when done.
  */
 static fm_error_t
-fm_icmp_request_send(fm_icmp_request_t *icmp, fm_icmp_extant_info_t *extant_info)
+fm_icmp_request_send(fm_icmp_request_t *icmp, fm_extant_t **extant_ret)
 {
+	fm_icmp_extant_info_t extant_info;
 	fm_socket_t *sock;
 	fm_pkt_t *pkt;
 
@@ -654,12 +757,28 @@ fm_icmp_request_send(fm_icmp_request_t *icmp, fm_icmp_extant_info_t *extant_info
 		sock = icmp->sock;
 	}
 
-	pkt = fm_icmp_request_build_packet(icmp, extant_info);
+	pkt = fm_icmp_request_build_packet(icmp, &extant_info);
+
+	fm_log_debug("ICMP: create extant with response type=%d, seq=0x%x, id=0x%x from %s", 
+			extant_info.match.v4_response_type,
+			extant_info.match.seq, extant_info.match.id,
+			fm_address_format(&pkt->peer_addr));
 
 	if (!fm_socket_send_pkt_and_burn(sock, pkt)) {
 		fm_log_error("Unable to send ICMP packet: %m");
 		return FM_SEND_ERROR;
 	}
+
+	if (icmp->target != NULL) {
+		fm_host_asset_t *host = icmp->target->host_asset;
+
+		*extant_ret = fm_socket_add_extant(sock, host, icmp->family, IPPROTO_ICMP, &extant_info, sizeof(extant_info));
+	} else {
+		*extant_ret = fm_socket_add_extant(sock, NULL, icmp->family, IPPROTO_ICMP, &extant_info, sizeof(extant_info));
+	}
+
+	if (*extant_ret && icmp->extants_are_multi_shot)
+		(*extant_ret)->single_shot = false;
 
 	icmp->params.retries -= 1;
 
@@ -703,18 +822,12 @@ static fm_error_t
 fm_icmp_host_probe_send(fm_probe_t *probe)
 {
 	fm_icmp_request_t *icmp = fm_icmp_probe_get_request(probe);
-	fm_icmp_extant_info_t extant_info;
+	fm_extant_t *extant = NULL;
 	fm_error_t error;
 
-	error = fm_icmp_request_send(icmp, &extant_info);
-	if (error != 0) {
-		/* no send, nothing to wait for */
-	} else
-	if (icmp->target != NULL) {
-		fm_extant_alloc(probe, icmp->family, IPPROTO_ICMP, &extant_info, sizeof(extant_info));
-	} else {
-		fm_extant_alloc_list(probe, icmp->family, IPPROTO_ICMP, &extant_info, sizeof(extant_info), &global_extant_list);
-	}
+	error = fm_icmp_request_send(icmp, &extant);
+	if (extant != NULL)
+		extant->probe = probe;
 
 	return error;
 }
@@ -791,6 +904,7 @@ static void
 fm_icmp_host_probe_destroy(fm_probe_t *probe)
 {
 	fm_icmp_probe_set_request(probe, NULL);
+	fm_extant_map_forget_probe(&fm_icmp_extant_map, probe);
 }
 
 static struct fm_probe_ops fm_icmp_host_probe_ops = {

@@ -780,6 +780,16 @@ fm_socket_recv_packet(fm_socket_t *sock, int flags)
 
 	bp->wpos = n;
 
+	/* For some reason, I don't always see the proper remote port with
+	 * connected TCP raw sockets. */
+	if (sock->type == SOCK_RAW && sock->proto->id == FM_PROTO_TCP
+	 && sock->peer_address.ss_family != AF_UNSPEC) {
+		uint16_t port = fm_address_get_port(&pkt->peer_addr);
+
+		if (port == 0)
+			pkt->peer_addr = sock->peer_address;
+	}
+
 	if (parser && !fm_packet_parser_inspect(parser, pkt)) {
 		fm_log_debug("unable to parse incoming %s packet from %s",
 				fm_addrfamily_name(sock->family),

@@ -28,6 +28,7 @@
 #include "target.h" /* for fm_probe_t */
 #include "socket.h"
 #include "services.h"
+#include "rawpacket.h"
 #include "buffer.h"
 
 typedef struct fm_udp_request {
@@ -68,9 +69,14 @@ static fm_socket_t *	fm_udp_create_bsd_socket(fm_protocol_t *proto, int af);
 static fm_socket_t *	fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 static bool		fm_udp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
+static fm_extant_t *	fm_udp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
+static fm_extant_t *	fm_udp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 
 static fm_udp_request_t *fm_udp_probe_get_request(const fm_probe_t *probe);
 static void		fm_udp_probe_set_request(fm_probe_t *probe, fm_udp_request_t *udp);
+
+/* Global extant map for all UDP related stuff */
+static fm_extant_map_t fm_udp_extant_map = FM_EXTANT_MAP_INIT;
 
 static struct fm_protocol	fm_udp_bsdsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -89,10 +95,16 @@ static struct fm_protocol	fm_udp_bsdsock_ops = {
 	.create_host_shared_socket = fm_udp_create_shared_socket,
 	.process_packet = fm_udp_process_packet,
 	.process_error	= fm_udp_process_error,
+	.locate_error	= fm_udp_locate_error,
+	.locate_response= fm_udp_locate_response,
 };
 
 FM_PROTOCOL_REGISTER(fm_udp_bsdsock_ops);
 
+/*
+ * Regular UDP sock dgram sockets.
+ * In the error case, the packet the kernel will give us does *not* include any headers
+ */
 static fm_socket_t *
 fm_udp_create_bsd_socket(fm_protocol_t *proto, int af)
 {
@@ -102,6 +114,8 @@ fm_udp_create_bsd_socket(fm_protocol_t *proto, int af)
 	if (sock) {
 		fm_socket_enable_ttl(sock);
 		fm_socket_enable_tos(sock);
+
+		fm_socket_attach_extant_map(sock, &fm_udp_extant_map);
 	}
 	return sock;
 }
@@ -165,6 +179,54 @@ fm_udp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr)
 	}
 
 	return sock;
+}
+
+/*
+ * Regular dgram sockets do not provide headers; synthesize them
+ */
+static fm_packet_parser_t *
+fm_udp_create_dummy_data_parser(void)
+{
+	static fm_packet_parser_t *fake = NULL;
+
+	if (fake == NULL) {
+		fake = fm_packet_parser_alloc();
+
+		fm_packet_parser_add_layer(fake, FM_PROTO_IP);
+		fm_packet_parser_add_layer(fake, FM_PROTO_UDP);
+	}
+
+	return fake;
+}
+
+static fm_packet_parser_t *
+fm_udp_create_dummy_error_parser(void)
+{
+	static fm_packet_parser_t *fake = NULL;
+
+	if (fake == NULL) {
+		fake = fm_packet_parser_alloc();
+
+		fm_packet_parser_add_layer(fake, FM_PROTO_IP);
+		fm_packet_parser_add_layer(fake, FM_PROTO_ICMP);
+		fm_packet_parser_add_layer(fake, FM_PROTO_IP);
+		fm_packet_parser_add_layer(fake, FM_PROTO_UDP);
+	}
+
+	return fake;
+}
+
+static fm_parsed_pkt_t *
+fm_udp_synthesize_headers(fm_pkt_t *pkt)
+{
+	fm_packet_parser_t *parser;
+
+	if (pkt->info.ee == NULL)
+		parser = fm_udp_create_dummy_data_parser();
+	else
+		parser = fm_udp_create_dummy_error_parser();
+
+	return fm_packet_synthetic_parse(parser, pkt);
 }
 
 /*
@@ -249,6 +311,80 @@ fm_udp_extant_info_build(const fm_udp_request_t *udp, fm_udp_extant_info_t *exta
 {
 	extant_info->src_port = udp->src_port;
 	extant_info->dst_port = udp->params.port;
+}
+
+static fm_extant_t *
+fm_udp_locate_common(fm_pkt_t *pkt, unsigned short src_port, unsigned short dst_port, hlist_iterator_t *iter)
+{
+	fm_host_asset_t *host;
+	fm_extant_t *extant;
+
+	host = fm_host_asset_get_active(&pkt->peer_addr);
+	if (host == NULL)
+		return NULL;
+
+	while ((extant = fm_extant_iterator_match(iter, pkt->family, IPPROTO_UDP)) != NULL) {
+		const fm_udp_extant_info_t *info = (fm_udp_extant_info_t *) (extant + 1);
+
+		if (extant->host == host
+		 && info->dst_port == dst_port
+		 && (src_port == 0 || info->src_port == src_port))
+			return extant;
+	}
+
+	return NULL;
+}
+
+static fm_extant_t *
+fm_udp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
+{
+	fm_parsed_pkt_t *cooked;
+	fm_parsed_hdr_t *hdr;
+	fm_extant_t *extant;
+	bool unreachable;
+
+	if ((cooked = pkt->parsed) == NULL
+	 && (cooked = fm_udp_synthesize_headers(pkt)) == NULL)
+		return NULL;
+
+	/* First, check the ICMP error header - does it tell us the port is unreachable? */
+	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_ICMP)) == NULL)
+		return NULL;
+	unreachable = fm_icmp_header_is_host_unreachable(&hdr->icmp);
+
+	/* Then, look at the enclosed UDP header */
+	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_UDP)) == NULL)
+		return NULL;
+
+	extant = fm_udp_locate_common(pkt, hdr->udp.src_port, hdr->udp.dst_port, iter);
+
+	/* If ICMP says the net/host/port is unreachable, mark the port resource as closed. */
+	if (extant != NULL && extant->host && unreachable)
+		fm_host_asset_update_port_state(extant->host, FM_PROTO_UDP, hdr->udp.dst_port, FM_ASSET_STATE_CLOSED);
+
+	return extant;
+}
+
+static fm_extant_t *
+fm_udp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
+{
+	fm_parsed_pkt_t *cooked;
+	fm_parsed_hdr_t *hdr;
+	fm_extant_t *extant;
+
+	if ((cooked = pkt->parsed) == NULL
+	 && (cooked = fm_udp_synthesize_headers(pkt)) == NULL)
+		return NULL;
+
+	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_UDP)) == NULL)
+		return NULL;
+
+	extant = fm_udp_locate_common(pkt, hdr->udp.dst_port, hdr->udp.src_port, iter);
+
+	if (extant != NULL && extant->host)
+		fm_host_asset_update_port_state(extant->host, FM_PROTO_UDP, hdr->udp.src_port, FM_ASSET_STATE_OPEN);
+
+	return extant;
 }
 
 static fm_extant_t *
@@ -386,8 +522,9 @@ fm_udp_request_schedule(fm_udp_request_t *udp, fm_time_t *expires)
  * The probe argument is only here because we need to notify it when done.
  */
 static fm_error_t
-fm_udp_request_send(fm_udp_request_t *udp, fm_udp_extant_info_t *extant_info)
+fm_udp_request_send(fm_udp_request_t *udp, fm_extant_t **extant_ret)
 {
+	fm_udp_extant_info_t extant_info;
 	fm_socket_t *sock;
 	fm_pkt_t *pkt;
 	const fm_buffer_t *payload;
@@ -427,7 +564,12 @@ fm_udp_request_send(fm_udp_request_t *udp, fm_udp_extant_info_t *extant_info)
 		return FM_SEND_ERROR;
 	}
 
-	fm_udp_extant_info_build(udp, extant_info);
+	fm_udp_extant_info_build(udp, &extant_info);
+	*extant_ret = fm_socket_add_extant(sock, udp->target->host_asset,
+			udp->family, IPPROTO_UDP, &extant_info, sizeof(extant_info));
+
+	assert(*extant_ret);
+
 	udp->total_retries -= 1;
 
 	/* update the asset state */
@@ -448,6 +590,8 @@ fm_udp_port_probe_destroy(fm_probe_t *probe)
 		fm_udp_request_free(udp);
 		fm_udp_probe_set_request(probe, NULL);
 	}
+
+	fm_extant_map_forget_probe(&fm_udp_extant_map, probe);
 }
 
 /*
@@ -468,12 +612,12 @@ static fm_error_t
 fm_udp_port_probe_send(fm_probe_t *probe)
 {
 	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
-	fm_udp_extant_info_t extant_info;
+	fm_extant_t *extant = NULL;
 	fm_error_t error;
 
-	error = fm_udp_request_send(udp, &extant_info);
-	if (error == 0)
-		fm_extant_alloc(probe, udp->family, IPPROTO_UDP, &extant_info, sizeof(extant_info));
+	error = fm_udp_request_send(udp, &extant);
+	if (extant != NULL)
+		extant->probe = probe;
 
 	return error;
 }

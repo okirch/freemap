@@ -25,6 +25,7 @@
 #include "target.h" /* for fm_probe_t */
 #include "scanner.h"
 #include "rawpacket.h"
+#include "socket.h"
 #include "utils.h"
 
 typedef struct fm_arp_params {
@@ -47,7 +48,7 @@ typedef struct fm_arp_request {
 } fm_arp_request_t;
 
 typedef struct fm_arp_extant_info {
-	bool dummy;
+	struct in_addr		dst_addr;
 } fm_arp_extant_info_t;
 
 static bool		get_eth_address(const struct sockaddr_ll *, unsigned char *, unsigned int);
@@ -55,11 +56,17 @@ static fm_extant_t *	fm_arp_locate_probe(uint32_t ipaddr, const unsigned char *e
 
 static fm_socket_t *	fm_arp_create_socket(fm_protocol_t *proto, int ipproto);
 static bool		fm_arp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
+static fm_extant_t *	fm_arp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
+static fm_extant_t *	fm_arp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 
 static int		fm_arp_probe_original_ifindex(const fm_probe_t *);
+static void		fm_arp_update_cache(const fm_arp_header_info_t *arp_info, fm_extant_t *extant);
 
 static fm_arp_request_t *fm_arp_probe_get_request(const fm_probe_t *probe);
 static void		fm_arp_probe_set_request(fm_probe_t *probe, fm_arp_request_t *arp);
+
+/* Global extant map for all ARP related stuff */
+static fm_extant_map_t fm_arp_extant_map = FM_EXTANT_MAP_INIT;
 
 static struct fm_protocol	fm_arp_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
@@ -71,6 +78,8 @@ static struct fm_protocol	fm_arp_ops = {
 
 	.create_socket	= fm_arp_create_socket,
 	.process_packet	= fm_arp_process_packet,
+	.locate_error	= fm_arp_locate_error,
+	.locate_response= fm_arp_locate_response,
 };
 
 FM_PROTOCOL_REGISTER(fm_arp_ops);
@@ -80,6 +89,15 @@ fm_arp_create_socket(fm_protocol_t *proto, int dummy)
 {
 	/* We probably never get here */
 	return fm_socket_create(PF_PACKET, SOCK_DGRAM, ntohs(ETH_P_ARP), proto);
+}
+
+/*
+ * ARP request object
+ */
+static void
+fm_arp_request_free(fm_arp_request_t *arp)
+{
+	free(arp);
 }
 
 static fm_arp_request_t *
@@ -213,7 +231,79 @@ fm_arp_build_request(const fm_arp_params_t *params, unsigned char *buf, size_t b
 static void
 fm_arp_extant_info_build(fm_arp_request_t *arp, fm_arp_extant_info_t *extant_info)
 {
-	extant_info->dummy = false;
+	extant_info->dst_addr.s_addr = arp->arp_params.dst_ipaddr;
+}
+
+static fm_extant_t *
+fm_arp_locate_common(fm_pkt_t *pkt, const struct in_addr *dst_ipaddr, hlist_iterator_t *iter)
+{
+	fm_extant_t *extant;
+
+	while ((extant = fm_extant_iterator_match(iter, pkt->family, IPPROTO_UDP)) != NULL) {
+		const fm_arp_extant_info_t *info = (fm_arp_extant_info_t *) (extant + 1);
+
+		if (info->dst_addr.s_addr == dst_ipaddr->s_addr)
+			return extant;
+	}
+
+	return NULL;
+}
+
+static fm_extant_t *
+fm_arp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
+{
+	return NULL;
+}
+
+static fm_extant_t *
+fm_arp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
+{
+	fm_parsed_pkt_t *cooked;
+	fm_parsed_hdr_t *hdr;
+	fm_extant_t *extant;
+
+	if ((cooked = pkt->parsed) == NULL)
+		return NULL;
+
+	/* Then, look at the enclosed ARP header */
+	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_ARP)) == NULL)
+		return NULL;
+
+	if (hdr->arp.op != ARPOP_REPLY)
+		return NULL;
+
+	extant = fm_arp_locate_common(pkt, &hdr->arp.src_ipaddr, iter);
+
+	/* See if we can update our local neighbor cache */
+	if (extant != NULL) {
+		fm_arp_update_cache(&hdr->arp, extant);
+	}
+
+	return extant;
+}
+
+static void
+fm_arp_update_cache(const fm_arp_header_info_t *arp_info, fm_extant_t *extant)
+{
+	int ifindex;
+	struct sockaddr_ll lladdr;
+
+	if (extant->probe == NULL)
+		return;
+
+	ifindex = fm_arp_probe_original_ifindex(extant->probe);
+	if (ifindex <= 0)
+		return;
+
+	memset(&lladdr, 0, sizeof(lladdr));
+	lladdr.sll_family = AF_PACKET;
+	lladdr.sll_hatype = ARPHRD_ETHER;
+	lladdr.sll_halen = ETH_ALEN;
+	lladdr.sll_protocol = htons(ETH_P_IP);
+	lladdr.sll_ifindex = ifindex;
+	memcpy(lladdr.sll_addr, arp_info->src_hwaddr, ETH_ALEN);
+
+	fm_local_cache_arp_entry(arp_info->src_ipaddr.s_addr, (fm_address_t *) &lladdr);
 }
 
 static fm_extant_t *
@@ -258,8 +348,9 @@ fm_arp_locate_probe(uint32_t ipaddr, const unsigned char *eth_addr, struct socka
 }
 
 static fm_error_t
-fm_arp_request_send(fm_arp_request_t *arp, fm_arp_extant_info_t *extant_info)
+fm_arp_request_send(fm_arp_request_t *arp, fm_extant_t **extant_ret)
 {
+	fm_arp_extant_info_t extant_info;
 	fm_target_t *target = arp->target;
 	struct sockaddr_ll eth_bcast;
 	fm_socket_t *sock;
@@ -277,13 +368,16 @@ fm_arp_request_send(fm_arp_request_t *arp, fm_arp_extant_info_t *extant_info)
 		return FM_SEND_ERROR;
 	}
 
+	if (sock->extant_map == NULL)
+		fm_socket_attach_extant_map(sock, &fm_arp_extant_map);
+
 	pktlen = fm_arp_build_request(&arp->arp_params, pktbuf, sizeof(pktbuf));
 	if (pktlen == 0) {
 		fm_log_error("Don't know how to build ARP packet");
 		return FM_SEND_ERROR;
 	}
 
-	fm_arp_extant_info_build(arp, extant_info);
+	fm_arp_extant_info_build(arp, &extant_info);
 
 	eth_bcast = arp->arp_params.src_lladdr;
 	eth_bcast.sll_pkttype = PACKET_BROADCAST;
@@ -293,6 +387,9 @@ fm_arp_request_send(fm_arp_request_t *arp, fm_arp_extant_info_t *extant_info)
 		fm_log_error("Unable to send ARP packet: %m");
 		return FM_SEND_ERROR;
 	}
+
+	*extant_ret = fm_socket_add_extant(sock, NULL, AF_PACKET, ETH_P_IP,
+			&extant_info, sizeof(extant_info));
 
 	/* Update the asset state */
 	fm_target_update_host_state(target, FM_PROTO_ARP, FM_ASSET_STATE_PROBE_SENT);
@@ -312,16 +409,32 @@ struct fm_arp_host_probe {
 	fm_arp_request_t *	arp;
 };
 
+/*
+ * Probe destructor
+ */
+static void
+fm_arp_host_probe_destroy(fm_probe_t *probe)
+{
+	fm_arp_request_t *arp = fm_arp_probe_get_request(probe);
+
+	if (arp != NULL) {
+		fm_arp_request_free(arp);
+		fm_arp_probe_set_request(probe, NULL);
+	}
+
+	fm_extant_map_forget_probe(&fm_arp_extant_map, probe);
+}
+
 static fm_error_t
 fm_arp_host_probe_send(fm_probe_t *probe)
 {
 	fm_arp_request_t *arp = fm_arp_probe_get_request(probe);
-	fm_arp_extant_info_t extant_info;
+	fm_extant_t *extant;
 	fm_error_t error;
 
-	error = fm_arp_request_send(arp, &extant_info);
-	if (error == 0)
-		fm_extant_alloc(probe, AF_PACKET, ETH_P_IP, &extant_info, sizeof(extant_info));
+	error = fm_arp_request_send(arp, &extant);
+	if (extant != NULL)
+		extant->probe = probe;
 
 	return error;
 }
@@ -349,6 +462,7 @@ static struct fm_probe_ops fm_arp_host_probe_ops = {
 
 	.default_timeout= 1000,	/* FM_ARP_RESPONSE_TIMEOUT */
 
+	.destroy	= fm_arp_host_probe_destroy,
 	.send		= fm_arp_host_probe_send,
 	.schedule	= fm_arp_host_probe_schedule,
 };
@@ -394,6 +508,7 @@ static struct fm_probe_class fm_arp_host_probe_class = {
 	.proto_id	= FM_PROTO_ARP,
 	.action_flags	= FM_SCAN_ACTION_FLAG_LOCAL_ONLY,
 	.modes		= FM_PROBE_MODE_HOST,
+
 	.create_probe	= fm_arp_create_host_probe,
 };
 

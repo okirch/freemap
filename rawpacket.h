@@ -134,6 +134,9 @@ extern bool		fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info
 extern bool		fm_raw_packet_pull_icmpv6_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp);
 extern bool		fm_raw_packet_pull_arp_header(fm_buffer_t *bp, fm_arp_header_info_t *arp);
 
+extern bool		fm_icmp_header_is_host_unreachable(const fm_icmp_header_info_t *icmp_info);
+extern void		fm_raw_packet_map_icmpv6_codes(fm_icmp_header_info_t *icmp_info, unsigned int type, unsigned int code);
+
 extern fm_csum_hdr_t *	fm_ipv6_checksum_header(const fm_address_t *src_addr, const fm_address_t *dst_addr, int next_header);
 extern bool		fm_raw_packet_csum(fm_csum_hdr_t *pseudo_hdr, void *user_data, unsigned int user_len);
 
@@ -160,6 +163,5 @@ in_csum(const void *data, size_t noctets)
 
         return res;
 }
-
 
 #endif /* FREEMAP_RAWPACKET_H */
