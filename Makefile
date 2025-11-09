@@ -4,6 +4,7 @@ OBJS	= projects.o \
 	  scanner.o \
 	  scheduler.o \
 	  events.o \
+	  extant.o \
 	  probe.o \
 	  addrgen.o \
 	  target.o \

@@ -315,7 +315,7 @@ fm_probe_install_status_callback(fm_probe_t *probe, fm_probe_status_callback_t *
 	probe->status_callback.user_data = user_data;
 }
 
-static inline bool
+bool
 fm_probe_invoke_status_callback(const fm_probe_t *probe, const fm_pkt_t *pkt, double rtt)
 {
 	if (!probe->status_callback.cb)
@@ -336,7 +336,7 @@ fm_probe_set_rtt_estimator(fm_probe_t *probe, fm_rtt_stats_t *rtt)
 	probe->rtt = rtt;
 }
 
-static inline void
+void
 fm_probe_update_rtt_estimate(fm_probe_t *probe, double *rtt)
 {
 	if (probe->rtt) {
@@ -386,29 +386,8 @@ fm_probe_finish_waiting(fm_probe_t *probe)
 }
 
 /*
- * Tracking of extant requests
+ * Tracking of extant requests per probe - will go away at some point
  */
-fm_extant_t *
-fm_extant_alloc_list(fm_probe_t *probe, int af, int ipproto, const void *payload, size_t payload_size, fm_extant_list_t *exlist)
-{
-	fm_extant_t *extant;
-
-	extant = calloc(1, sizeof(*extant) + payload_size);
-
-	extant->family = af;
-	extant->ipproto = ipproto;
-	extant->probe = probe;
-
-	fm_socket_timestamp_update(&extant->timestamp);
-
-	if (payload != NULL)
-		memcpy(extant + 1, payload, payload_size);
-
-	fm_extant_append(exlist, extant);
-
-	return extant;
-}
-
 fm_extant_t *
 fm_extant_alloc(fm_probe_t *probe, int af, int ipproto, const void *payload, size_t payload_size)
 {
@@ -422,60 +401,4 @@ fm_extant_alloc(fm_probe_t *probe, int af, int ipproto, const void *payload, siz
 	}
 
 	return fm_extant_alloc_list(probe, af, ipproto, payload, payload_size, &target->expecting);
-}
-
-void
-fm_extant_list_forget_probe(fm_extant_list_t *list, const fm_probe_t *probe)
-{
-	hlist_iterator_t iter;
-	fm_extant_t *extant;
-
-	fm_extant_iterator_init(&iter, list);
-	while ((extant = fm_extant_iterator_next(&iter)) != NULL) {
-		if (extant->probe == probe)
-			fm_extant_free(extant);
-	}
-}
-
-
-
-void
-fm_extant_free(fm_extant_t *extant)
-{
-	fm_extant_unlink(extant);
-	free(extant);
-}
-
-/*
- * Process the verdict on an extant packet.
- * If the kernel did not give us a timestamp via SO_TIMESTAMP, the packet's timetstamp will be
- * unset. In this case, fm_timestamp_delta() will just use the current wall time
- * instead.
- */
-void
-fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt)
-{
-	double rtt = fm_pkt_rtt(pkt, &extant->timestamp);
-	fm_probe_t *probe = extant->probe;
-
-	fm_probe_update_rtt_estimate(probe, &rtt);
-
-	if (fm_probe_invoke_status_callback(probe, pkt, rtt))
-		return; /* whoever is watching this probe wants us to keep going */
-
-	fm_probe_mark_complete(probe);
-}
-
-void
-fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt)
-{
-	double rtt = fm_pkt_rtt(pkt, &extant->timestamp);
-	fm_probe_t *probe = extant->probe;
-
-	fm_probe_update_rtt_estimate(probe, &rtt);
-
-	if (fm_probe_invoke_status_callback(probe, pkt, rtt))
-		return; /* whoever is watching this probe wants us to keep going */
-
-	fm_probe_mark_complete(probe);
 }

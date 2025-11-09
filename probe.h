@@ -26,6 +26,7 @@
 #include "lists.h"
 #include "addresses.h"
 #include "scheduler.h"
+#include "extant.h"
 
 typedef bool			fm_probe_status_callback_t(const fm_probe_t *probe,
 						const fm_pkt_t *, double rtt,
@@ -99,23 +100,6 @@ struct fm_probe {
 	struct timeval		sent;
 };
 
-/*
- * Hold the state of an extant request
- */
-typedef struct fm_extant {
-	struct hlist		link;
-
-	int			family;
-	int			ipproto;
-
-	fm_socket_timestamp_t	timestamp;
-	fm_probe_t *		probe;
-} fm_extant_t;
-
-typedef struct fm_extant_list {
-	struct hlist_head	hlist;
-} fm_extant_list_t;
-
 extern void		fm_probe_class_register(struct fm_probe_class *);
 extern fm_probe_class_t *fm_probe_class_find(const char *name, int mode);
 extern fm_probe_class_t *fm_probe_class_by_proto_id(unsigned int proto_id, int mode);
@@ -127,13 +111,6 @@ extern fm_probe_t *	fm_probe_alloc(const char *id,
 				const struct fm_probe_ops *ops,
 				fm_target_t *target);
 extern const char *	fm_probe_mode_to_string(int mode);
-
-extern fm_extant_t *	fm_extant_alloc(fm_probe_t *, int af, int ipproto,
-				const void *payload, size_t payload_size);
-extern fm_extant_t *	fm_extant_alloc_list(fm_probe_t *probe, int af, int ipproto,
-				const void *payload, size_t payload_size,
-				fm_extant_list_t *exlist);
-extern void		fm_extant_free(fm_extant_t *extant);
 
 extern void		fm_probe_set_rtt_estimator(fm_probe_t *, fm_rtt_stats_t *);
 extern void		fm_probe_received_reply(fm_probe_t *, double *rtt);
@@ -150,58 +127,18 @@ extern fm_error_t	fm_probe_set_service(fm_probe_t *probe, fm_service_probe_t *);
 
 extern fm_probe_t *	fm_probe_from_job(fm_job_t *job);
 
-extern void		fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt);
-extern void		fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt);
-
 extern bool		fm_sched_stats_update_timeout_min(fm_sched_stats_t *, fm_time_t, const char *);
 extern bool		fm_sched_stats_update_timeout_max(fm_sched_stats_t *, fm_time_t, const char *);
 extern void		fm_sched_stats_update_from_nested(fm_sched_stats_t *, const fm_sched_stats_t *);
+
+/* kludge */
+extern void		fm_probe_update_rtt_estimate(fm_probe_t *probe, double *rtt);
+extern bool		fm_probe_invoke_status_callback(const fm_probe_t *probe, const fm_pkt_t *pkt, double rtt);
 
 static inline bool
 fm_probe_class_supports(const fm_probe_class_t *pclass, fm_param_type_t type)
 {
 	return !!(pclass->features & (1 << type));
-}
-
-static inline void
-fm_extant_append(struct fm_extant_list *list, fm_extant_t *extant)
-{
-	hlist_append(&list->hlist, &extant->link);
-}
-
-static inline void
-fm_extant_unlink(fm_extant_t *extant)
-{
-	hlist_remove(&extant->link);
-}
-
-static inline void
-fm_extant_iterator_init(hlist_iterator_t *iter, struct fm_extant_list *list)
-{
-	hlist_iterator_init(iter, &list->hlist);
-}
-
-static inline fm_extant_t *
-fm_extant_iterator_first(hlist_iterator_t *iter, struct fm_extant_list *list)
-{
-	return (fm_extant_t *) hlist_iterator_first(iter, &list->hlist);
-}
-
-static inline fm_extant_t *
-fm_extant_iterator_next(hlist_iterator_t *iter)
-{
-	return (fm_extant_t *) hlist_iterator_next(iter);
-}
-
-static inline fm_extant_t *
-fm_extant_iterator_match(hlist_iterator_t *iter, int af, int ipproto)
-{
-	fm_extant_t *extant;
-
-	while ((extant = fm_extant_iterator_next(iter)) != NULL
-	    && extant->family != af && extant->ipproto != ipproto)
-		;
-	return extant;
 }
 
 static inline const char *
