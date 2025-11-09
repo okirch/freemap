@@ -1094,6 +1094,20 @@ fm_socket_process_error(fm_socket_t *sock, fm_protocol_t *proto, fm_pkt_t *pkt)
 }
 
 static void
+fm_socket_process_os_error(fm_socket_t *sock, int _errno)
+{
+	fm_protocol_t *proto = sock->proto;
+	fm_pkt_t *pkt;
+
+	if (proto->handle_os_error == NULL)
+		return;
+
+	pkt = fm_socket_build_error_packet(sock, errno);
+	proto->handle_os_error(proto, pkt);
+	fm_pkt_free(pkt);
+}
+
+static void
 fm_socket_process_packet(fm_socket_t *sock, fm_protocol_t *proto, fm_pkt_t *pkt)
 {
 	if (sock->type == SOCK_RAW && proto->id == FM_PROTO_TCP
@@ -1135,10 +1149,7 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		} else if (errno != EAGAIN) {
 			fm_log_error("socket %d: POLLERR set but recvmsg failed: %m", sock->fd);
 		} else if (fm_socket_get_pending_error(sock, &err)) {
-			fm_log_notice("errqueue returned EAGAIN, but sock error=%s", strerror(err));
-			pkt = fm_socket_build_error_packet(sock, errno);
-			fm_socket_process_error(sock, proto, pkt);
-			fm_pkt_free(pkt);
+			fm_socket_process_os_error(sock, err);
 		}
 
 		bits &= ~POLLERR;
@@ -1147,18 +1158,11 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 	if ((bits & POLLIN) && proto->process_packet != NULL) {
 		pkt = fm_socket_recv_packet(sock, 0);
 
-		if (pkt == NULL && errno == ECONNREFUSED
-		 && fm_socket_is_connected(sock)
-		 && proto->process_error != NULL) {
-			pkt = fm_socket_build_error_packet(sock, errno);
-			fm_socket_process_error(sock, proto, pkt);
-			fm_pkt_free(pkt);
-		} else
 		if (pkt != NULL) {
 			fm_socket_process_packet(sock, proto, pkt);
 			fm_pkt_free(pkt);
 		} else if (errno != EAGAIN) {
-			fm_log_error("socket %d: POLLIN set but recvmsg failed: %m", sock->fd);
+			fm_socket_process_os_error(sock, errno);
 		}
 
 		bits &= ~POLLIN;
@@ -1169,10 +1173,7 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		 * it just means the kernel can tell us whether the connection attempt
 		 * succeeded. So go and reap the status */
 		if (connect(sock->fd, (struct sockaddr *) &sock->peer_address, sock->addrlen) < 0) {
-			/* fm_log_debug("  connect error sock %d: %m", sock->fd); */
-			pkt = fm_socket_build_error_packet(sock, errno);
-			fm_socket_process_error(sock, proto, pkt);
-			fm_pkt_free(pkt);
+			fm_socket_process_os_error(sock, err);
 		} else {
 			pkt = fm_socket_build_dummy_packet(sock);
 			proto->connection_established(proto, pkt);
