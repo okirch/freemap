@@ -62,7 +62,6 @@ typedef struct tcp_extant_info {
 } fm_tcp_extant_info_t;
 
 
-static fm_socket_t *	fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af);
 static fm_socket_t *	fm_tcp_create_raw_socket(fm_protocol_t *proto, int af);
 static bool		fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *);
 static fm_extant_t *	fm_tcp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
@@ -74,31 +73,10 @@ static void		fm_tcp_probe_set_request(fm_probe_t *probe, fm_tcp_request_t *tcp);
 /* Global extant map for all TCP related stuff */
 static fm_extant_map_t	fm_tcp_extant_map = FM_EXTANT_MAP_INIT;
 
-static struct fm_protocol	fm_tcp_bsdsock_ops = {
+static struct fm_protocol	fm_tcp_rawsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "tcp",
 	.id		= FM_PROTO_TCP,
-
-	.supported_parameters = 
-			  FM_PARAM_TYPE_PORT_MASK |
-			  FM_PARAM_TYPE_TOS_MASK |
-			  FM_PARAM_TYPE_TTL_MASK |
-			  FM_PARAM_TYPE_RETRIES_MASK |
-			  FM_FEATURE_STATUS_CALLBACK_MASK,
-
-	.create_socket	= fm_tcp_create_bsd_socket,
-	.locate_error	= fm_tcp_locate_error,
-	.locate_response= fm_tcp_locate_response,
-	.connection_established = fm_tcp_connecton_established,
-};
-
-FM_PROTOCOL_REGISTER(fm_tcp_bsdsock_ops);
-
-static struct fm_protocol	fm_tcp_rawsock_ops = {
-	.obj_size	= sizeof(fm_protocol_t),
-	.name		= "tcp-raw",
-	.id		= FM_PROTO_TCP,
-	.require_raw	= true,
 
 	.supported_parameters = 
 			  FM_PARAM_TYPE_PORT_MASK |
@@ -114,24 +92,6 @@ static struct fm_protocol	fm_tcp_rawsock_ops = {
 };
 
 FM_PROTOCOL_REGISTER(fm_tcp_rawsock_ops);
-
-static fm_socket_t *
-fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af)
-{
-	fm_socket_t *sock;
-
-	sock = fm_socket_create(af, SOCK_STREAM, 0, proto);
-	if (sock != NULL) {
-		fm_socket_install_data_parser(sock, FM_PROTO_TCP);
-
-		fm_socket_install_error_parser(sock, FM_PROTO_ICMP);
-		fm_socket_install_error_parser(sock, FM_PROTO_IP);
-		fm_socket_install_error_parser(sock, FM_PROTO_TCP);
-
-		fm_socket_attach_extant_map(sock, &fm_tcp_extant_map);
-	}
-	return sock;
-}
 
 static fm_socket_t *
 fm_tcp_create_raw_socket(fm_protocol_t *proto, int af)
@@ -401,11 +361,6 @@ fm_tcp_request_send(fm_tcp_request_t *tcp, fm_extant_t **extant_ret)
 {
 	fm_tcp_extant_info_t extant_info;
 
-	if (tcp->sock != NULL && tcp->sock->type == SOCK_STREAM) {
-		fm_socket_free(tcp->sock);
-		tcp->sock = NULL;
-	}
-
 	if (tcp->sock == NULL) {
 		tcp->sock = fm_protocol_create_socket(tcp->proto, tcp->host_address.ss_family);
 		if (tcp->sock == NULL) {
@@ -431,7 +386,7 @@ fm_tcp_request_send(fm_tcp_request_t *tcp, fm_extant_t **extant_ret)
 					fm_address_format(&tcp->host_address));
 	}
 
-	if (tcp->sock->type == SOCK_RAW) {
+	{
 		/* build the TCP packet and transmit */
 		fm_pkt_t *pkt;
 

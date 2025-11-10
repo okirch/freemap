@@ -33,9 +33,6 @@ struct fm_protocol {
 
 	int		id; /* FM_PROTO_* */
 
-	/* true if it uses features like PF_PACKET sockets that require CAP_NET_RAW */
-	bool		require_raw;
-
 	unsigned int	supported_parameters;
 
 	void		(*destroy)(fm_protocol_t *);

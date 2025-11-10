@@ -70,7 +70,6 @@ static struct fm_protocol	fm_arp_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "arp",
 	.id		= FM_PROTO_ARP,
-	.require_raw	= true,
 
 	.supported_parameters = FM_PARAM_TYPE_RETRIES_MASK,
 

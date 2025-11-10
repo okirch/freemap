@@ -64,7 +64,6 @@ static void		fm_ipproto_probe_set_request(fm_probe_t *probe, fm_ipproto_request_
 static struct fm_protocol	fm_ipproto_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "ipproto",
-	.require_raw	= true,
 	.id		= FM_PROTO_IP,
 
 	.create_socket	= fm_ipproto_create_socket,

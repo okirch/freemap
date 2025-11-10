@@ -55,51 +55,18 @@ fm_protocol_directory_display(void)
 }
 
 static const struct fm_protocol *
-fm_protocol_directory_select(unsigned int proto_id, bool have_raw)
+fm_protocol_directory_select(unsigned int proto_id)
 {
-	unsigned int i, best_rating = 0;
-	const struct fm_protocol *best = NULL;
+	unsigned int i;
 
 	for (i = 0; i < fm_protocol_directory_count; ++i) {
 		struct fm_protocol *ops = fm_protocol_directory[i];
-		unsigned int rating;
 
-		if (ops->id != proto_id)
-			continue;
-		if (ops->require_raw && !have_raw)
-			continue;
-
-		rating = 1;
-		if (ops->require_raw)
-			rating |= 2;
-
-		if (rating > best_rating)
-			best = ops;
+		if (ops->id == proto_id)
+			return ops;
 	}
 
-	return best;
-}
-
-/* This should probably go to socket.c */
-static bool
-fm_socket_have_raw(void)
-{
-	static int have_raw = -1;
-
-	if (have_raw < 0) {
-		fm_socket_t *sock;
-
-		sock = fm_socket_create(AF_INET, SOCK_RAW, IPPROTO_ICMP, NULL);
-
-		if (sock == NULL) {
-			have_raw = 0;
-		} else {
-			fm_socket_free(sock);
-			have_raw = 1;
-		}
-	}
-
-	return (bool) have_raw;
+	return NULL;
 }
 
 /*
@@ -109,9 +76,6 @@ static void
 fm_protocol_engine_create_standard(struct fm_protocol_engine *engine)
 {
 	unsigned int id;
-	bool have_raw;
-
-	have_raw = fm_socket_have_raw();
 
 	for (id = 0; id < __FM_PROTO_MAX; ++id) {
 		fm_protocol_t *proto;
@@ -119,7 +83,7 @@ fm_protocol_engine_create_standard(struct fm_protocol_engine *engine)
 
 		proto_name = fm_protocol_id_to_string(id);
 
-		proto = fm_protocol_directory_select(id, have_raw);
+		proto = fm_protocol_directory_select(id);
 		if (proto == NULL) {
 			fm_log_debug("%02u %-10s no driver", id, proto_name);
 			continue;
@@ -135,16 +99,11 @@ static void
 fm_protocol_engine_create_other(struct fm_protocol_engine *engine)
 {
 	unsigned int i;
-	bool have_raw;
-
-	have_raw = fm_socket_have_raw();
 
 	for (i = 0; i < fm_protocol_directory_count; ++i) {
 		fm_protocol_t *proto = fm_protocol_directory[i];
 
 		if (proto->id == FM_PROTO_NONE)
-			continue;
-		if (proto->require_raw && !have_raw)
 			continue;
 
 		if (engine->num_alt >= FM_PROTOCOL_ENGINE_MAX)

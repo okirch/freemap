@@ -38,7 +38,6 @@
 #include "rawpacket.h"
 #include "socket.h"
 
-static fm_socket_t *	fm_icmp_create_bsd_socket(fm_protocol_t *proto, int ipproto);
 static fm_socket_t *	fm_icmp_create_raw_socket(fm_protocol_t *proto, int ipproto);
 static fm_socket_t *	fm_icmp_create_shared_raw_socket(fm_protocol_t *proto, fm_target_t *target);
 
@@ -54,29 +53,10 @@ static void		fm_icmp_probe_set_request(fm_probe_t *probe, fm_icmp_request_t *icm
 /* Global extant map for all ICMP related stuff */
 static fm_extant_map_t	fm_icmp_extant_map = FM_EXTANT_MAP_INIT;
 
-static struct fm_protocol	fm_icmp_bsdsock_ops = {
+static struct fm_protocol	fm_icmp_rawsock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "icmp",
 	.id		= FM_PROTO_ICMP,
-
-	.supported_parameters =
-			  FM_PARAM_TYPE_PORT_MASK |	/* we use the port parameter to seq the icmp_id */
-			  FM_PARAM_TYPE_TTL_MASK |
-			  FM_PARAM_TYPE_TOS_MASK |
-			  FM_PARAM_TYPE_RETRIES_MASK |
-			  FM_FEATURE_STATUS_CALLBACK_MASK,
-
-	.create_socket	= fm_icmp_create_bsd_socket,
-
-	.locate_error	= fm_icmp_locate_error,
-	.locate_response= fm_icmp_locate_response,
-};
-
-static struct fm_protocol	fm_icmp_rawsock_ops = {
-	.obj_size	= sizeof(fm_protocol_t),
-	.name		= "icmp-raw",
-	.id		= FM_PROTO_ICMP,
-	.require_raw	= true,
 
 	.supported_parameters =
 			  FM_PARAM_TYPE_PORT_MASK |	/* we use the port parameter to seq the icmp_id */
@@ -93,31 +73,7 @@ static struct fm_protocol	fm_icmp_rawsock_ops = {
 };
 
 
-FM_PROTOCOL_REGISTER(fm_icmp_bsdsock_ops);
 FM_PROTOCOL_REGISTER(fm_icmp_rawsock_ops);
-
-static fm_socket_t *
-fm_icmp_create_bsd_socket(fm_protocol_t *proto, int af)
-{
-	fm_socket_t *sock;
-	int ipproto;
-
-	/* This should not fail; the caller should have taken care of this check already */
-	ipproto = fm_icmp_protocol_for_family(af);
-	if (ipproto < 0)
-		return NULL;
-
-	sock = fm_socket_create(af, SOCK_DGRAM, ipproto, proto);
-	if (sock != NULL) {
-		fm_socket_enable_ttl(sock);
-		fm_socket_enable_tos(sock);
-
-		fm_socket_install_data_parser(sock, FM_PROTO_ICMP);
-
-		fm_socket_attach_extant_map(sock, &fm_icmp_extant_map);
-	}
-	return sock;
-}
 
 /*
  * Create a DGRAM socket and connect it.
@@ -349,9 +305,6 @@ fm_icmp_request_alloc_common(fm_protocol_t *proto, int family, const fm_address_
 
 	icmp->family = family;
 	icmp->host_address = *dst_addr;
-
-	if (proto == &fm_icmp_bsdsock_ops)
-		icmp->kernel_trashes_id = true;
 
 	return icmp;
 }
