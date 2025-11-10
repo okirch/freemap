@@ -28,6 +28,13 @@
 #include "probe.h"
 
 struct fm_target {
+	/* For the time being, the scheduler needs a linked list of targets */
+	struct hlist		link;
+
+	/* for queue management */
+	unsigned int		pool_id;
+	unsigned int		refcount;
+
 	fm_address_t		address;
 	char *			id;
 
@@ -40,6 +47,7 @@ struct fm_target {
 	fm_socket_t *		raw_icmp4_sock;
 	fm_socket_t *		raw_icmp6_sock;
 	fm_socket_t *		udp_sock;
+	fm_socket_t *		tcp_sock;
 
 	/* for now, just a boolean state: in progress vs done.
 	 * Maybe later we need 3 states or more. */
@@ -65,10 +73,18 @@ struct fm_target {
 struct fm_target_pool {
 	unsigned int		size;
 	unsigned int		count;
+	unsigned int		first_pool_id;
+	unsigned int		next_pool_id;
 	fm_target_t **		slots;
-
-	unsigned int		cursor;
 };
+
+typedef struct fm_target_queue {
+	fm_target_pool_t *	pool;
+	hlist_iterator_t	iter;
+
+	/* The pool_id of the last target we returned. */
+	unsigned int		most_recent_id;
+} fm_target_queue_t;
 
 struct fm_target_manager {
 	fm_address_enumerator_array_t address_generators;
@@ -79,6 +95,18 @@ struct fm_target_manager {
 	unsigned int		host_packet_rate;
 
 	fm_address_enumerator_array_t active_generators;
+
+	/* The capacity of all each pool */
+	unsigned int		pool_size;
+
+	/* The pool id to assign to the next target */
+	unsigned int		next_free_pool_id;
+
+	/* for the time being, we maintain a list of targets here. */
+	struct hlist_head	targets;
+
+	unsigned int		num_queues;
+	fm_target_pool_t **	queues;
 };
 
 extern void		fm_target_forget_pending(fm_target_t *target, const fm_probe_t *probe);
@@ -86,11 +114,26 @@ extern void		fm_target_schedule(fm_target_t *, fm_sched_stats_t *);
 
 extern void		fm_target_pool_make_active(fm_target_pool_t *);
 extern fm_target_t *	fm_target_pool_find(const fm_address_t *);
+extern void		fm_target_pool_purge(fm_target_pool_t *, unsigned int oldest_pending);
+
+typedef struct fm_target_pool_iterator {
+	fm_target_pool_t *queue;
+	unsigned int	index;
+} fm_target_pool_iterator_t;
+
+extern void		fm_target_pool_begin(fm_target_pool_t *, fm_target_pool_iterator_t *);
+extern fm_target_t *	fm_target_pool_next(fm_target_pool_iterator_t *);
 
 extern void		fm_scheduler_create_new_probes(fm_scheduler_t *, fm_sched_stats_t *);
 extern fm_probe_t *	fm_scheduler_get_next_probe(fm_scheduler_t *, fm_target_t *);
 extern bool		fm_scheduler_attach_target(fm_scheduler_t *, fm_target_t *);
 extern void		fm_scheduler_detach_target(fm_scheduler_t *, fm_target_t *);
 extern fm_scheduler_t *	fm_linear_scheduler_create(fm_scanner_t *);
+
+extern fm_target_pool_t *fm_target_manager_create_queue(fm_target_manager_t *);
+extern void		fm_target_manager_resize_pool(fm_target_manager_t *mgr, unsigned int max_size);
+extern bool		fm_target_manager_replenish_pools(fm_target_manager_t *mgr);
+extern void		fm_target_manager_begin(fm_target_manager_t *, hlist_iterator_t *);
+extern fm_target_t *	fm_target_manager_next(fm_target_manager_t *, hlist_iterator_t *);
 
 #endif /* FREEMAP_TARGET_H */

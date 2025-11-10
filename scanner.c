@@ -28,6 +28,7 @@
 #include "utils.h"
 
 
+static bool			fm_scanner_start_stage(fm_scanner_t *scanner);
 static fm_scan_action_t *	fm_probe_scan_create(const fm_probe_class_t *, int, const fm_probe_params_t *, const fm_uint_array_t *);
 static fm_scan_action_t *	fm_scan_action_reachability_check(void);
 
@@ -112,7 +113,6 @@ fm_scanner_create(void)
 	scanner = calloc(1, sizeof(*scanner));
 
 	scanner->target_manager = fm_target_manager_create();
-	scanner->target_pool = fm_target_pool_create(FM_INITIAL_TARGET_POOL_SIZE);
 	scanner->report = fm_report_create();
 
 	/* Set the global packet send rate.
@@ -165,8 +165,7 @@ fm_scanner_ready(fm_scanner_t *scanner)
 	if (scanner->scheduler == NULL)
 		scanner->scheduler = fm_linear_scheduler_create(scanner);
 
-	fm_target_pool_make_active(scanner->target_pool);
-	fm_target_manager_restart(scanner->target_manager, scanner->current_stage);
+	fm_scanner_start_stage(scanner);
 
 	return true;
 }
@@ -175,12 +174,6 @@ fm_report_t *
 fm_scanner_get_report(fm_scanner_t *scanner)
 {
 	return scanner->report;
-}
-
-fm_target_pool_t *
-fm_scanner_get_target_pool(fm_scanner_t *scanner)
-{
-	return scanner->target_pool;
 }
 
 fm_scan_action_t *
@@ -195,12 +188,26 @@ static void
 fm_scanner_queue_action(fm_scanner_t *scanner, fm_scan_action_t *action)
 {
 	fm_scan_action_array_t *stage = fm_scanner_get_current_stage(scanner);
+	fm_multiprobe_t *multiprobe;
 
 	if (action->mode == FM_PROBE_MODE_TOPO)
 		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_TOPO);
 	else
 		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_GENERAL);
 	fm_scan_action_array_append(stage, action);
+
+	/* Not sure if it's really good to attach the multiprobe at this point already... */
+	multiprobe = fm_multiprobe_alloc_action(action);
+	if (fm_multiprobe_configure(multiprobe, action->probe_class, &action->probe_params, action->extra_params)) {
+		action->multiprobe = multiprobe;
+
+		/* Create a separate target queue through which we'll feed new
+		 * scan targets to the probe. */
+		action->target_queue = fm_target_manager_create_queue(scanner->target_manager);
+	} else {
+		fm_log_error("%s: failed to configure probe", action->id);
+		fm_multiprobe_free(multiprobe);
+	}
 }
 
 double
@@ -238,16 +245,11 @@ fm_scanner_insert_barrier(fm_scanner_t *scanner, int probe_mode)
 void
 fm_scanner_add_global_job(fm_scanner_t *scanner, fm_job_t *job)
 {
-	if (scanner->global_job_group == NULL) {
-		fm_job_group_t *job_group;
+	fm_job_group_t *job_group = fm_scheduler_create_global_queue();
 
+	assert(job_group);
 
-		job_group = calloc(1, sizeof(*job_group));
-		fm_job_group_init(job_group, "GLOBAL", NULL);
-		scanner->global_job_group = job_group;
-	}
-
-	fm_job_group_add_new(scanner->global_job_group, job);
+	fm_job_group_add_new(job_group, job);
 }
 
 /*
@@ -271,52 +273,95 @@ void
 fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 {
 	fm_job_group_t *global_queue;
-	unsigned int num_visited = 0;
+	hlist_iterator_t iter;
+	fm_target_t *target;
 
 	if (global_stats->job_quota != 0
 	 && (global_queue = fm_scheduler_get_global_queue()) != NULL)
 		fm_scanner_schedule_job_group(scanner, global_queue, global_stats);
 
-	while (true) {
-		fm_target_t *target;
-
-		if (global_stats->job_quota == 0)
-			break; /* we exhausted our global send quota */
-
-		target = fm_target_pool_get_next(scanner->target_pool, &num_visited);
-		if (target == NULL)
+	fm_target_manager_begin(scanner->target_manager, &iter);
+	while (global_stats->job_quota) {
+		if ((target = fm_target_manager_next(scanner->target_manager, &iter)) == NULL)
 			break;
 
 		fm_scanner_schedule_job_group(scanner, &target->job_group, global_stats);
 	}
 }
 
+/*
+ * Create new probes
+ */
+static void
+fm_scanner_create_new_probes(fm_scanner_t *scanner, fm_sched_stats_t *sched_stats)
+{
+	bool have_new_targets = false;
+	unsigned int k;
+
+	if (scanner->current_stage.next_pool_id != scanner->target_manager->next_free_pool_id)
+		have_new_targets = true;
+
+	for (k = scanner->current_stage.num_done; k < scanner->current_stage.actions->count; ++k) {
+		fm_scan_action_t *action = scanner->current_stage.actions->entries[k];
+		fm_multiprobe_t *multiprobe;
+		fm_target_pool_iterator_t iter;
+		fm_target_t *target;
+
+		multiprobe = action->multiprobe;
+		if (have_new_targets && multiprobe) {
+			if (multiprobe->job.group == NULL)
+				fm_scanner_add_global_job(scanner, &multiprobe->job);
+
+			fm_target_pool_begin(action->target_queue, &iter);
+			while ((target = fm_target_pool_next(&iter)) != NULL) {
+				if (!fm_multiprobe_add_target(multiprobe, target)) {
+					fm_target_pool_remove(action->target_queue, target);
+					fm_log_debug("%s: could not add %s", action->id, target->id);
+				}
+			}
+			fm_job_continue(&multiprobe->job);
+		}
+
+		if (multiprobe == NULL) {
+			if (scanner->current_stage.num_done == k) {
+				scanner->current_stage.num_done = k +1;
+				fm_log_debug("num_done=%u", scanner->current_stage.num_done);
+			}
+			continue;
+		}
+
+		fm_multiprobe_transmit(action->multiprobe, sched_stats);
+
+		if (multiprobe != NULL) {
+			/* inform the pool about targets that we're done with */
+			while ((target = fm_multiprobe_get_completed(multiprobe)) != NULL) {
+				fm_log_debug("target %s done with scan %s", target->id, action->id);
+				fm_target_pool_remove(action->target_queue, target);
+			}
+		}
+
+		if (fm_multiprobe_is_idle(multiprobe) && scanner->target_manager->all_targets_exhausted) {
+			fm_log_debug("%s done with scanning all available targets", multiprobe->name);
+			fm_job_mark_complete(&multiprobe->job);
+			action->multiprobe = NULL;
+		}
+	}
+
+	scanner->current_stage.next_pool_id = scanner->target_manager->next_free_pool_id;
+}
+
+/*
+ * Reap all targets that have completed.
+ */
 void
 fm_scanner_process_completed(fm_scanner_t *scanner)
 {
-	unsigned int num_visited = 0;
+	hlist_iterator_t iter;
 
-	while (true) {
-		fm_target_t *target;
-
-		target = fm_target_pool_get_next(scanner->target_pool, &num_visited);
-		if (target == NULL)
-			break;
-
-		if (fm_target_is_done(target)) {
-			fm_log_debug("%s is done - reaping what we have sown\n", fm_address_format(&target->address));
-
-			fm_target_pool_remove(scanner->target_pool, target);
-
-			/* wrap up reporting for this target */
-			fm_report_write(scanner->report, target);
-
-			if (target->job_group.sched_state != NULL)
-				fm_scheduler_detach_target(scanner->scheduler, target);
-
-			fm_target_free(target);
-		}
-	}
+	/* We just iterate over all targets. This will remove completed ones */
+	fm_target_manager_begin(scanner->target_manager, &iter);
+	while (fm_target_manager_next(scanner->target_manager, &iter) != NULL)
+		;
 }
 
 bool
@@ -327,11 +372,11 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 	/* This should probably also be a job... */
 	if (fm_timestamp_older(&scanner->next_pool_resize, NULL)) {
 		fm_log_debug("Trying to resize target pool\n");
-		fm_target_pool_auto_resize(scanner->target_pool, FM_TARGET_POOL_MAX_SIZE);
+		fm_target_manager_resize_pool(scanner->target_manager, FM_TARGET_POOL_MAX_SIZE);
 		fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
 	}
 
-	if (!fm_target_manager_replenish_pool(scanner->target_manager, scanner->target_pool)) {
+	if (!fm_target_manager_replenish_pools(scanner->target_manager)) {
 		fm_log_debug("Looks like we're done\n");
 		fm_report_flush(scanner->report);
 		return false;
@@ -349,14 +394,24 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 	fm_event_process_all();
 
 	/* Schedule and transmit a few additional probes */
-	fm_scheduler_create_new_probes(scanner->scheduler, &scan_stats);
+	fm_scanner_create_new_probes(scanner, &scan_stats);
 
 	/* Reap any targets that we're done with, making room in the pool for
 	 * the next batch of targets. */
 	fm_scanner_process_completed(scanner);
 
 	/* This loops over the entire pool and reaps the status of completed probes */
-	fm_target_pool_reap_completed(scanner->target_pool);
+	{
+		hlist_iterator_t iter;
+		fm_target_t *target;
+
+		fm_target_manager_begin(scanner->target_manager, &iter);
+		while ((target = fm_target_manager_next(scanner->target_manager, &iter)) != NULL) {
+			if (fm_job_group_reap_complete(&target->job_group)
+			 && fm_target_is_done(target))
+				fm_log_debug("%s all outstanding probes collected\n", target->job_group.name);
+		}
+	}
 
 	if (timeout)
 		*timeout = scan_stats.timeout;
@@ -364,20 +419,35 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 	return true;
 }
 
+static bool
+fm_scanner_start_stage(fm_scanner_t *scanner)
+{
+	unsigned int index = scanner->current_stage.index;
+	fm_scan_action_array_t *array;
+
+	scanner->current_stage.actions = NULL;
+	scanner->current_stage.num_done = 0;
+
+	while (index <  __FM_SCAN_STAGE_MAX) {
+		array = &scanner->stage_requests[index];
+		if (array->count > 0) {
+			fm_target_manager_restart(scanner->target_manager, index);
+			scanner->current_stage.index = index;
+			scanner->current_stage.actions = array;
+			return true;
+		}
+		index++;
+	}
+
+	scanner->current_stage.index = index;
+	return false;
+}
+
 bool
 fm_scanner_next_stage(fm_scanner_t *scanner)
 {
-	while (++(scanner->current_stage) < __FM_SCAN_STAGE_MAX) {
-		fm_scan_action_array_t *stage;
-
-		stage = fm_scanner_get_current_stage(scanner);
-		if (stage->count > 0) {
-			fm_target_manager_restart(scanner->target_manager, scanner->current_stage);
-			return true;
-		}
-	}
-	scanner->current_stage = __FM_SCAN_STAGE_MAX;
-	return false;
+	scanner->current_stage.index += 1;
+	return fm_scanner_start_stage(scanner);
 }
 
 
@@ -727,6 +797,7 @@ fm_scanner_set_service_catalog(fm_scanner_t *scanner, const fm_service_catalog_t
 fm_scan_action_t *
 fm_scanner_add_reachability_check(fm_scanner_t *scanner)
 {
+#if 0
 	fm_scan_action_t *action;
 
 	if ((action = fm_scan_action_reachability_check()) != NULL) {
@@ -734,6 +805,9 @@ fm_scanner_add_reachability_check(fm_scanner_t *scanner)
 		action->barrier = true;
 	}
 	return action;
+#else
+	return NULL;
+#endif
 }
 
 /*

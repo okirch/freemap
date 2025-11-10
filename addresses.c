@@ -27,6 +27,7 @@
 #include <netdb.h>
 #include <net/if.h>
 #include <linux/if_packet.h>
+#include <linux/if_arp.h>
 
 #include "addresses.h"
 #include "network.h"
@@ -231,6 +232,28 @@ fm_address_ipv6_update_scope_id(fm_address_t *ss, int ifindex)
 	six = (struct sockaddr_in6 *) ss;
 	six->sin6_scope_id = ifindex;
 	return true;
+}
+
+bool
+fm_address_link_update_upper_protocol(fm_address_t *addr, int family)
+{
+	struct sockaddr_ll *sll;
+
+	if (!(sll = fm_address_to_link(addr)))
+		return false;
+
+	if (sll->sll_hatype == ARPHRD_ETHER) {
+		if (family == AF_INET) {
+			sll->sll_protocol = htons(ETH_P_IP);
+			return true;
+		}
+		if (family == AF_INET6) {
+			sll->sll_protocol = htons(ETH_P_IPV6);
+			return true;
+		}
+	}
+
+	return false;
 }
 
 unsigned int

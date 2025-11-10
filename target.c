@@ -22,6 +22,7 @@
 #include "utils.h"
 
 static void		fm_target_pool_check(fm_target_pool_t *pool);
+static void		fm_target_release(fm_target_t *target);
 
 static fm_target_pool_t *fm_active_target_pool = NULL;
 
@@ -36,18 +37,16 @@ fm_target_pool_create(unsigned int size)
 	pool = calloc(1, sizeof(*pool));
 	pool->size = size;
 	pool->slots = calloc(size, sizeof(pool->slots[0]));
+	pool->first_pool_id = 0;
+	pool->next_pool_id = 1;
+
 	return pool;
 }
 
 void
-fm_target_pool_auto_resize(fm_target_pool_t *pool, unsigned int max_size)
+fm_target_pool_resize(fm_target_pool_t *pool, unsigned int new_size)
 {
-	unsigned int i, new_size;
-
-	if (pool->size < max_size / 2)
-		new_size = pool->size * 2;
-	else
-		new_size = max_size;
+	unsigned int i;
 
 	if (pool->size < new_size) {
 		pool->slots = realloc(pool->slots, new_size * sizeof(pool->slots[0]));
@@ -55,6 +54,13 @@ fm_target_pool_auto_resize(fm_target_pool_t *pool, unsigned int max_size)
 			pool->slots[i] = NULL;
 		pool->size = new_size;
 	}
+}
+
+static inline unsigned int
+fm_target_pool_get_free_slots(const fm_target_pool_t *pool)
+{
+	assert(pool->count < pool->size);
+	return pool->size - pool->count;
 }
 
 static inline bool
@@ -66,72 +72,77 @@ fm_target_pool_has_free_slots(const fm_target_pool_t *pool)
 static void
 fm_target_pool_add(fm_target_pool_t *pool, fm_target_t *target)
 {
-	unsigned int pos;
-
 	assert(target != NULL);
-	for (pos = 0; pos < pool->size; ++pos) {
-		if (pool->slots[pos] == NULL) {
-			pool->slots[pos] = target;
-			pool->count += 1;
-			return;
-		}
-	}
-
-	fprintf(stderr, "fatal: counters of target pool out of whack\n");
-	abort();
-}
-
-fm_target_t *
-fm_target_pool_get_next(fm_target_pool_t *pool, unsigned int *num_visited)
-{
-	fm_target_t *target = NULL;
-	unsigned int i;
+	assert(target->pool_id != 0);
+	assert(pool->count + 1 < pool->size);
 
 	if (pool->count == 0)
-		return NULL;
+		pool->first_pool_id = target->pool_id;
 
-	for (i = 0; i < pool->size && target == NULL && *num_visited < pool->size; ++i) {
-		target = pool->slots[pool->cursor];
+	pool->slots[pool->count++] = target;
+	target->refcount++;
+}
 
-		pool->cursor = (pool->cursor + 1) % pool->size;
-		*num_visited += 1;
+static int
+fm_target_pool_bsearch(fm_target_pool_t *pool, unsigned int target_id)
+{
+	unsigned int i0, i1, mid;
+	unsigned int mid_id;
+
+	i0 = 0;
+	i1 = pool->count;
+
+	while (i1 - i0 >= 2) {
+		mid = (i0 + i1) / 2;
+		mid_id = pool->slots[mid]->pool_id;
+
+		if (mid_id == target_id)
+			return mid_id;
+
+		if (target_id < mid_id)
+			i1 = mid_id;
+		else
+			i0 = mid_id;
 	}
 
-	return target;
+	if (pool->slots[i0]->pool_id == target_id)
+		return i0;
+	if (pool->slots[i1]->pool_id == target_id)
+		return i1;
+	return -1;
 }
 
 bool
 fm_target_pool_remove(fm_target_pool_t *pool, fm_target_t *target)
 {
 	unsigned int i;
+	int index;
 
-	for (i = 0; i < pool->size; ++i) {
-		if (pool->slots[i] == target) {
-			pool->slots[i] = NULL;
-			pool->count -= 1;
-			return true;
-		}
-	}
+	index = fm_target_pool_bsearch(pool, target->pool_id);
+	assert(index >= 0);
 
-	return false;
+	assert(pool->slots[index] == target);
+
+	pool->count -= 1;
+	for (i = index; i < pool->count; ++i)
+		pool->slots[i] = pool->slots[i + 1];
+
+	fm_target_release(target);
+	return true;
 }
 
-static void
+static inline void
 fm_target_pool_check(fm_target_pool_t *pool)
 {
-	unsigned int i, true_count = 0;
-
-	for (i = 0; i < pool->size; ++i) {
-		if (pool->slots[i] != NULL)
-			true_count += 1;
-	}
-
-	assert(pool->count == true_count);
+	/* NOP for now */
 }
 
 bool
 fm_target_pool_reap_completed(fm_target_pool_t *pool)
 {
+#if 1
+	return false;
+#else
 	fm_target_t *target;
 	unsigned int i;
 	bool completed_some = false;
@@ -149,6 +160,7 @@ fm_target_pool_reap_completed(fm_target_pool_t *pool)
 	fm_target_pool_check(pool);
 
 	return completed_some;
+#endif
 }
 
 void
@@ -160,20 +172,49 @@ fm_target_pool_make_active(fm_target_pool_t *pool)
 fm_target_t *
 fm_target_pool_find(const fm_address_t *addr)
 {
-	fm_target_pool_t *pool;
-	unsigned int i;
-
-	assert(fm_active_target_pool);
-	pool = fm_active_target_pool;
-
-	for (i = 0; i < pool->size; ++i) {
-		fm_target_t *target = pool->slots[i];
-
-		if (target && fm_address_equal(&target->address, addr, false))
-			return target;
-	}
-
 	return NULL;
+}
+
+/*
+ * Iterate through a target pool
+ */
+fm_target_t *
+fm_target_pool_get_next(fm_target_pool_t *queue)
+{
+	int index;
+
+	index = fm_target_pool_bsearch(queue, queue->next_pool_id);
+	if (index < 0)
+		return NULL;
+
+	queue->next_pool_id += 1;
+	return queue->slots[index];
+}
+
+void
+fm_target_pool_begin(fm_target_pool_t *queue, fm_target_pool_iterator_t *iter)
+{
+	iter->queue = queue;
+	iter->index = fm_target_pool_bsearch(queue, queue->next_pool_id);
+}
+
+fm_target_t *
+fm_target_pool_next(fm_target_pool_iterator_t *iter)
+{
+	fm_target_pool_t *queue = iter->queue;
+	fm_target_t *target;
+
+	if (iter->index < 0)
+		return NULL;
+
+	if (iter->index >= queue->count)
+		return NULL;
+
+	target = queue->slots[iter->index++];
+	assert(target->pool_id == queue->next_pool_id);
+
+	queue->next_pool_id += 1;
+	return target;
 }
 
 /*
@@ -186,6 +227,8 @@ fm_target_manager_create(void)
 
 	mgr = calloc(1, sizeof(*mgr));
 
+	mgr->next_free_pool_id = 1;
+	mgr->pool_size = FM_INITIAL_TARGET_POOL_SIZE;
 	mgr->host_packet_rate = FM_DEFAULT_HOST_PACKET_RATE;
 
 	return mgr;
@@ -205,6 +248,80 @@ unsigned int
 fm_target_manager_get_generator_count(const fm_target_manager_t *mgr)
 {
 	return mgr->address_generators.count;
+}
+
+fm_target_pool_t *
+fm_target_manager_create_queue(fm_target_manager_t *mgr)
+{
+	fm_target_pool_t *queue;
+
+	maybe_realloc_array(mgr->queues, mgr->num_queues, 4);
+
+	queue = fm_target_pool_create(mgr->pool_size);
+	mgr->queues[mgr->num_queues++] = queue;
+	return queue;
+}
+
+void
+fm_target_manager_resize_pool(fm_target_manager_t *mgr, unsigned int max_size)
+{
+	unsigned int current_size, new_size;
+	unsigned int i;
+
+	current_size = mgr->pool_size;
+	if (current_size < max_size / 2)
+		new_size = current_size * 2;
+	else
+		new_size = max_size;
+
+	if (new_size > current_size) {
+		for (i = 0; i < mgr->num_queues; ++i)
+			fm_target_pool_resize(mgr->queues[i], new_size);
+	}
+}
+
+static unsigned int
+fm_target_manager_get_free_slots(const fm_target_manager_t *mgr)
+{
+	unsigned int k, min_free;
+
+	if (mgr->num_queues == 0)
+		return 0;
+
+	min_free = mgr->pool_size;
+	for (k = 0; k < mgr->num_queues; ++k) {
+		unsigned int count = fm_target_pool_get_free_slots(mgr->queues[k]);
+
+		if (count < min_free)
+			min_free = count;
+	}
+
+	return min_free;
+}
+
+/*
+ * Iterate over all active targets
+ */
+void
+fm_target_manager_begin(fm_target_manager_t *mgr, hlist_iterator_t *iter)
+{
+	hlist_iterator_init(iter, &mgr->targets);
+}
+
+fm_target_t *
+fm_target_manager_next(fm_target_manager_t *mgr, hlist_iterator_t *iter)
+{
+	fm_target_t *target;
+
+	while ((target = hlist_iterator_next(iter)) != NULL) {
+		if (target->refcount > 1)
+			return target;
+
+		/* This target is done. */
+		fm_target_release(target);
+	}
+
+	return NULL;
 }
 
 fm_target_t *
@@ -257,24 +374,42 @@ fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 	return target;
 }
 
+/*
+ * Returns true if there are active targets in at least one of the queues.
+ */
 bool
-fm_target_manager_replenish_pool(fm_target_manager_t *mgr, fm_target_pool_t *pool)
+fm_target_manager_replenish_pools(fm_target_manager_t *mgr)
 {
-	if (!mgr->all_targets_exhausted) {
-		while (fm_target_pool_has_free_slots(pool)) {
-			fm_target_t *target;
+	unsigned int k, budget;
 
-			if ((target = fm_target_manager_get_next_target(mgr)) == NULL)
-				break;
-
-			fm_log_debug("%s added to address pool\n", fm_target_get_id(target));
-			fm_target_pool_add(pool, target);
+	if (mgr->all_targets_exhausted) {
+		for (k = 0; k < mgr->num_queues; ++k) {
+			if (mgr->queues[k]->count)
+				return true;
 		}
-
-		fm_target_pool_check(pool);
+		return false;
 	}
 
-	return pool->count > 0 || !mgr->all_targets_exhausted;
+	budget = fm_target_manager_get_free_slots(mgr);
+	while (budget--) {
+		fm_target_t *target;
+
+		if ((target = fm_target_manager_get_next_target(mgr)) == NULL)
+			break;
+
+		/* Give this target a pool id */
+		target->pool_id = mgr->next_free_pool_id++;
+
+		for (k = 0; k < mgr->num_queues; ++k)
+			fm_target_pool_add(mgr->queues[k], target);
+
+		hlist_insert(&mgr->targets, &target->link);
+		target->refcount += 1;
+
+		fm_log_debug("%s added to address pool\n", fm_target_get_id(target));
+	}
+
+	return true;
 }
 
 void
@@ -328,6 +463,12 @@ fm_target_free(fm_target_t *target)
 
 	drop_string(&target->id);
 
+	if (target->tcp_sock) {
+		fm_log_debug("%s closing shared TCP socket", fm_address_format(&target->address));
+		fm_socket_free(target->tcp_sock);
+		target->tcp_sock = NULL;
+	}
+
 	if (target->udp_sock) {
 		fm_log_debug("%s closing shared UDP socket", fm_address_format(&target->address));
 		fm_socket_free(target->udp_sock);
@@ -353,6 +494,28 @@ fm_target_free(fm_target_t *target)
 		fm_host_asset_detach(target->host_asset);
 
 	free(target);
+}
+
+void
+fm_target_release(fm_target_t *target)
+{
+	assert(target->refcount);
+
+	target->refcount -= 1;
+	if (target->refcount != 0)
+		return;
+
+	fm_log_debug("%s is done - reaping what we have sown\n", target->id);
+
+	hlist_remove(&target->link);
+
+	assert(target->job_group.sched_state == NULL);
+#if 0
+	if (target->job_group.sched_state != NULL)
+		fm_scheduler_detach_target(scanner->scheduler, target);
+#endif
+
+	fm_target_free(target);
 }
 
 const char *

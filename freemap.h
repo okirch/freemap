@@ -97,7 +97,7 @@ extern void		fm_target_manager_add_address_generator(fm_target_manager_t *, fm_a
 extern bool		fm_target_manager_replenish_pool(fm_target_manager_t *mgr, fm_target_pool_t *pool);
 
 extern fm_target_pool_t *fm_target_pool_create(unsigned int size);
-extern fm_target_t *	fm_target_pool_get_next(fm_target_pool_t *pool, unsigned int *);
+extern fm_target_t *	fm_target_pool_get_next(fm_target_pool_t *pool);
 extern bool		fm_target_pool_remove(fm_target_pool_t *pool, fm_target_t *);
 extern bool		fm_target_pool_reap_completed(fm_target_pool_t *pool);
 extern void		fm_target_pool_auto_resize(fm_target_pool_t *pool, unsigned int max_size);
@@ -176,6 +176,7 @@ extern void		fm_address_set_ipv4_local_broadcast(struct sockaddr_storage *ss);
 extern void		fm_address_set_ipv6_all_hosts_multicast(struct sockaddr_storage *ss);
 extern bool		fm_address_is_ipv6_link_local(const fm_address_t *addr);
 extern bool		fm_address_ipv6_update_scope_id(fm_address_t *, int ifindex);
+extern bool		fm_address_link_update_upper_protocol(fm_address_t *, int family);
 extern unsigned short	fm_address_get_port(const struct sockaddr_storage *ss);
 extern unsigned int	fm_addrfamily_sockaddr_size(int family);
 extern const char *	fm_addrfamily_name(int family);
@@ -183,6 +184,7 @@ extern const char *	fm_addrfamily_name(int family);
 extern fm_socket_t *	fm_socket_create(int family, int type, int proto, fm_protocol_t *driver);
 extern bool		fm_socket_install_data_parser(fm_socket_t *, int proto_id);
 extern bool		fm_socket_install_error_parser(fm_socket_t *, int proto_id);
+extern void		fm_socket_install_data_tap(fm_socket_t *sock, void (*callback)(const fm_pkt_t *, void *), void *user_data);
 extern void		fm_socket_free(fm_socket_t *);
 extern bool		fm_socket_connect(fm_socket_t *, const fm_address_t *);
 extern bool		fm_socket_bind(fm_socket_t *, const fm_address_t *);
@@ -210,9 +212,9 @@ extern fm_socket_t *	fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *
 extern const char *	fm_arp_type_to_string(int hatype);
 extern bool		fm_arp_discover(fm_protocol_t *proto, fm_target_t *target, int retries);
 
-extern fm_probe_t *	fm_icmp_create_broadcast_probe(fm_protocol_t *, int, const fm_interface_t *,
+extern fm_multiprobe_t *fm_icmp_create_broadcast_probe(fm_protocol_t *, int, const fm_interface_t *,
 					const fm_address_t *,
-					void (*callback)(const fm_address_t *, void *user_data), void *user_data,
+					void (*callback)(const fm_pkt_t *, void *user_data), void *user_data,
 					const fm_probe_params_t *, const void *);
 
 extern const char *	fm_protocol_id_to_string(unsigned int id);

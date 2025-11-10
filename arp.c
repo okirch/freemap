@@ -16,6 +16,7 @@
  */
 
 #include <linux/if_arp.h>
+#include <arpa/inet.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -28,37 +29,30 @@
 #include "socket.h"
 #include "utils.h"
 
-typedef struct fm_arp_params {
-	uint32_t		src_ipaddr;
-	uint32_t		dst_ipaddr;
-	struct sockaddr_ll	src_lladdr;
-	struct sockaddr_ll	dst_lladdr;
-} fm_arp_params_t;
-
-typedef struct fm_arp_request {
+typedef struct fm_arp_control {
 	fm_protocol_t *		proto;
-	fm_target_t *		target;
 	fm_socket_t *		sock;
 
-	int			family;
-	fm_address_t		host_address;
 	fm_probe_params_t	params;
+} fm_arp_control_t;
 
-	fm_arp_params_t		arp_params;
+typedef struct fm_arp_request {
+	fm_arp_control_t *	control;
+
+	fm_target_control_t	target_control;
 } fm_arp_request_t;
 
 typedef struct fm_arp_extant_info {
 	struct in_addr		dst_addr;
 } fm_arp_extant_info_t;
 
-static bool		get_eth_address(const struct sockaddr_ll *, unsigned char *, unsigned int);
+static void		get_eth_address(const struct sockaddr_ll *, unsigned char *, unsigned int);
 
 static fm_socket_t *	fm_arp_create_socket(fm_protocol_t *proto, int ipproto);
 static fm_extant_t *	fm_arp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_arp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 
-static int		fm_arp_probe_original_ifindex(const fm_probe_t *);
-static void		fm_arp_update_cache(const fm_arp_header_info_t *arp_info, fm_extant_t *extant);
+static void		fm_arp_update_cache(const fm_arp_header_info_t *arp_info, fm_extant_t *extant, int ifindex);
 
 static fm_arp_request_t *fm_arp_probe_get_request(const fm_probe_t *probe);
 static void		fm_arp_probe_set_request(fm_probe_t *probe, fm_arp_request_t *arp);
@@ -92,15 +86,29 @@ fm_arp_create_socket(fm_protocol_t *proto, int dummy)
  * ARP request object
  */
 static void
-fm_arp_request_free(fm_arp_request_t *arp)
+fm_arp_control_free(fm_arp_control_t *arp)
 {
 	free(arp);
 }
 
-static fm_arp_request_t *
-fm_arp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
+static fm_arp_control_t *
+fm_arp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const void *extra_params)
 {
-	fm_arp_request_t *arp;
+	fm_arp_control_t *arp;
+
+	arp = calloc(1, sizeof(*arp));
+	arp->proto = proto;
+	arp->params = *params;
+
+	if (arp->params.retries == 0)
+		arp->params.retries = FM_ARP_PROBE_RETRIES;
+
+	return arp;
+}
+
+static bool
+fm_arp_control_init_target(fm_arp_control_t *arp, fm_target_control_t *target_control, fm_target_t *target)
+{
 	uint32_t src_ipaddr, dst_ipaddr;
 	struct sockaddr_ll src_lladdr;
 
@@ -109,58 +117,74 @@ fm_arp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_p
 	 || !fm_interface_get_lladdr(target->local_device, &src_lladdr)) {
 		fm_log_error("%s: cannot create ARP probe: incompatible address family",
 				fm_address_format(&target->address));
-		return NULL;
+		return false;
 	}
 
 	if (src_lladdr.sll_ifindex == 0) {
 		fm_log_error("Cannot create ARP probe on %s: NIC address lacks ifindex: %s",
 				fm_interface_get_name(target->local_device),
 				fm_address_format((fm_address_t *) &src_lladdr));
-		return NULL;
+		return false;
 	}
 
-	arp = calloc(1, sizeof(*arp));
-	arp->proto = proto;
-	arp->target = target;
-	arp->params = *params;
-	arp->family = AF_PACKET;
+	target_control->target = target;
+	target_control->family = AF_PACKET;
 
-	if (arp->params.retries == 0)
-		arp->params.retries = FM_ARP_PROBE_RETRIES;
+	target_control->arp.dst_ipaddr = dst_ipaddr;
+	target_control->arp.src_ipaddr = src_ipaddr;
+	target_control->arp.src_lladdr = src_lladdr;
+	return true;
+}
 
-	arp->arp_params.dst_ipaddr = dst_ipaddr;
-	arp->arp_params.src_ipaddr = src_ipaddr;
-	arp->arp_params.src_lladdr = src_lladdr;
+static fm_arp_request_t *
+fm_arp_request_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const void *extra_params)
+{
+	fm_arp_request_t *req;
 
-	fm_log_debug("Created ARP socket probe for %s\n", fm_address_format(&target->address));
-	return arp;
+	req = calloc(1, sizeof(*req));
+	req->control = fm_arp_control_alloc(proto, params, extra_params);
+	return req;
+}
+
+static bool
+fm_arp_request_set_target(fm_arp_request_t *req, fm_target_t *target)
+{
+	return fm_arp_request_init_target(req->control, &req->target_control, target);
+}
+
+static void
+fm_arp_request_free(fm_arp_request_t *req)
+{
+	fm_arp_control_free(req->control);
+	free(req);
 }
 
 /*
  * Helper functions.
  * We may want to promote them to fm_address_*() one day
  */
-bool
+void
 get_eth_address(const struct sockaddr_ll *lladdr, unsigned char *eth_addr, unsigned int size)
 {
 	if (lladdr->sll_family != AF_PACKET
 	 || lladdr->sll_hatype != ARPHRD_ETHER
-	 || lladdr->sll_halen != size)
-		return false;
-
-	memcpy(eth_addr, lladdr->sll_addr, size);
-	return true;
+	 || lladdr->sll_halen != size) {
+		memset(eth_addr, 0, size);
+	} else {
+		memcpy(eth_addr, lladdr->sll_addr, size);
+	}
 }
 
 /*
  * For now, we only do ethernet
  */
 static unsigned int
-fm_arp_build_request(const fm_arp_params_t *params, unsigned char *buf, size_t bufsz)
+fm_arp_build_request(const fm_target_control_t *target_control, unsigned char *buf, size_t bufsz)
 {
 	struct arphdr *arp;
 	unsigned char *ap;
 
+	memset(buf, 0, bufsz);
 	if (bufsz < sizeof(*arp) + 8 + 2 * ETH_ALEN)
 		return 0;
 
@@ -173,16 +197,16 @@ fm_arp_build_request(const fm_arp_params_t *params, unsigned char *buf, size_t b
 
 	ap = (unsigned char *) (arp + 1);
 
-	get_eth_address(&params->src_lladdr, ap, ETH_ALEN);
+	get_eth_address(&target_control->arp.src_lladdr, ap, ETH_ALEN);
 	ap += ETH_ALEN;
 
-	memcpy(ap, &params->src_ipaddr, 4);
+	memcpy(ap, &target_control->arp.src_ipaddr, 4);
 	ap += 4;
 
-	get_eth_address(&params->dst_lladdr, ap, ETH_ALEN);
+	get_eth_address(&target_control->arp.dst_lladdr, ap, ETH_ALEN);
 	ap += ETH_ALEN;
 
-	memcpy(ap, &params->dst_ipaddr, 4);
+	memcpy(ap, &target_control->arp.dst_ipaddr, 4);
 	ap += 4;
 
 	return ap - buf;
@@ -192,9 +216,9 @@ fm_arp_build_request(const fm_arp_params_t *params, unsigned char *buf, size_t b
  * ARP request/reply matching
  */
 static void
-fm_arp_extant_info_build(fm_arp_request_t *arp, fm_arp_extant_info_t *extant_info)
+fm_arp_extant_info_build(fm_target_control_t *target_control, fm_arp_extant_info_t *extant_info)
 {
-	extant_info->dst_addr.s_addr = arp->arp_params.dst_ipaddr;
+	extant_info->dst_addr.s_addr = target_control->arp.dst_ipaddr;
 }
 
 static fm_extant_t *
@@ -232,6 +256,7 @@ fm_arp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *it
 	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_ARP)) == NULL)
 		return NULL;
 
+	fm_log_debug("ARP packet op=%d from %s", hdr->arp.op, inet_ntoa(hdr->arp.src_ipaddr));
 	if (hdr->arp.op != ARPOP_REPLY)
 		return NULL;
 
@@ -239,24 +264,26 @@ fm_arp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *it
 
 	/* See if we can update our local neighbor cache */
 	if (extant != NULL) {
-		fm_arp_update_cache(&hdr->arp, extant);
+		const struct sockaddr_ll *sll = fm_address_to_link(&pkt->peer_addr);
+
+		fm_arp_update_cache(&hdr->arp, extant, sll->sll_ifindex);
 	}
 
 	return extant;
 }
 
 static void
-fm_arp_update_cache(const fm_arp_header_info_t *arp_info, fm_extant_t *extant)
+fm_arp_update_cache(const fm_arp_header_info_t *arp_info, fm_extant_t *extant, int ifindex)
 {
-	int ifindex;
 	struct sockaddr_ll lladdr;
 
 	if (extant->probe == NULL)
 		return;
 
-	ifindex = fm_arp_probe_original_ifindex(extant->probe);
-	if (ifindex <= 0)
+	if (ifindex <= 0) {
+		fm_log_warning("Can't update ARP cache; no idea what the ifindex is");
 		return;
+	}
 
 	memset(&lladdr, 0, sizeof(lladdr));
 	lladdr.sll_family = AF_PACKET;
@@ -270,20 +297,21 @@ fm_arp_update_cache(const fm_arp_header_info_t *arp_info, fm_extant_t *extant)
 }
 
 static fm_error_t
-fm_arp_request_send(fm_arp_request_t *arp, fm_extant_t **extant_ret)
+fm_arp_control_send(fm_arp_control_t *arp, fm_target_control_t *target_control, fm_extant_t **extant_ret)
 {
 	fm_arp_extant_info_t extant_info;
-	fm_target_t *target = arp->target;
-	struct sockaddr_ll eth_bcast;
+	fm_target_t *target = target_control->target;
+	struct sockaddr_ll src_lladdr, eth_bcast;
 	fm_socket_t *sock;
 	unsigned char pktbuf[128];
 	size_t pktlen;
 
 	/* The src_lladdr is used to locate the appropriate PF_PACKET socket;
 	 * so we need to tell it what protocol we want. */
-	arp->arp_params.src_lladdr.sll_protocol = htons(ETH_P_ARP);
+	src_lladdr = target_control->arp.src_lladdr;
+	((struct sockaddr_ll *) &src_lladdr)->sll_protocol = htons(ETH_P_ARP);
 
-	sock = fm_raw_socket_get((fm_address_t *) &arp->arp_params.src_lladdr, arp->proto, SOCK_DGRAM);
+	sock = fm_raw_socket_get((fm_address_t *) &src_lladdr, arp->proto, SOCK_DGRAM);
 	if (sock == NULL) {
 		fm_log_error("Unable to create ARP socket for %s",
 				fm_address_format(&target->address));
@@ -293,15 +321,15 @@ fm_arp_request_send(fm_arp_request_t *arp, fm_extant_t **extant_ret)
 	if (sock->extant_map == NULL)
 		fm_socket_attach_extant_map(sock, &fm_arp_extant_map);
 
-	pktlen = fm_arp_build_request(&arp->arp_params, pktbuf, sizeof(pktbuf));
+	pktlen = fm_arp_build_request(target_control, pktbuf, sizeof(pktbuf));
 	if (pktlen == 0) {
 		fm_log_error("Don't know how to build ARP packet");
 		return FM_SEND_ERROR;
 	}
 
-	fm_arp_extant_info_build(arp, &extant_info);
+	fm_arp_extant_info_build(target_control, &extant_info);
 
-	eth_bcast = arp->arp_params.src_lladdr;
+	eth_bcast = target_control->arp.src_lladdr;
 	eth_bcast.sll_pkttype = PACKET_BROADCAST;
 	memset(eth_bcast.sll_addr, 0xFF, ETH_ALEN);
 
@@ -354,7 +382,7 @@ fm_arp_host_probe_send(fm_probe_t *probe)
 	fm_extant_t *extant;
 	fm_error_t error;
 
-	error = fm_arp_request_send(arp, &extant);
+	error = fm_arp_request_send(arp->control, &arp->target_control, &extant);
 	if (extant != NULL)
 		extant->probe = probe;
 
@@ -364,7 +392,8 @@ fm_arp_host_probe_send(fm_probe_t *probe)
 static fm_error_t
 fm_arp_host_probe_schedule(fm_probe_t *probe)
 {
-	fm_arp_request_t *arp = fm_arp_probe_get_request(probe);
+	fm_arp_request_t *req = fm_arp_probe_get_request(probe);
+	fm_arp_control_t *arp = req->control;
 
 	if (arp->params.retries == 0)
 		return FM_TIMED_OUT;
@@ -408,20 +437,87 @@ static fm_probe_t *
 fm_arp_create_host_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
 	fm_protocol_t *proto = pclass->proto;
-	fm_arp_request_t *arp;
+	fm_arp_request_t *req;
 	fm_probe_t *probe;
 
 	assert(proto && proto->id == FM_PROTO_ARP);
 
-	arp = fm_arp_request_alloc(proto, target, params, extra_params);
-	if (arp == NULL)
+	req = fm_arp_request_alloc(proto, params, extra_params);
+	if (req == NULL)
 		return NULL;
 
+	if (!fm_arp_request_set_target(req, target)) {
+		fm_arp_request_free(req);
+		return NULL;
+	}
+
 	probe = fm_probe_alloc("arp", &fm_arp_host_probe_ops, target);
-	fm_arp_probe_set_request(probe, arp);
+	fm_arp_probe_set_request(probe, req);
 
 	fm_log_debug("Created ARP socket probe for %s\n", fm_address_format(&target->address));
 	return probe;
+}
+
+/*
+ * New multiprobe implementation
+ */
+static bool
+fm_arp_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task, fm_target_t *target)
+{
+	fm_arp_control_t *arp = multiprobe->control;
+
+	return fm_arp_control_init_target(arp, &host_task->control, target);
+}
+
+static fm_error_t
+fm_arp_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task,
+			int param_type, int param_value,
+			fm_extant_t **extant_ret, double *timeout_ret)
+{
+	fm_arp_control_t *arp = multiprobe->control;
+	fm_target_control_t *target_control = &host_task->control;
+
+	return fm_arp_control_send(arp, target_control, extant_ret);
+}
+
+static void
+fm_arp_multiprobe_destroy(fm_multiprobe_t *multiprobe)
+{
+	fm_arp_control_t *arp = multiprobe->control;
+
+	multiprobe->control = NULL;
+	fm_arp_control_free(arp);
+}
+
+static fm_multiprobe_ops_t	fm_arp_multiprobe_ops = {
+	.add_target		= fm_arp_multiprobe_add_target,
+	.transmit		= fm_arp_multiprobe_transmit,
+	.destroy		= fm_arp_multiprobe_destroy,
+};
+
+static bool
+fm_arp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const void *extra_params)
+{
+	fm_arp_control_t *arp;
+
+	if (multiprobe->control != NULL) {
+		fm_log_error("cannot reconfigure probe %s", multiprobe->name);
+		return false;
+	}
+
+	/* Set the default timings and retries */
+	multiprobe->timings.packet_spacing = fm_global.arp.packet_spacing * 1e-3;
+	multiprobe->timings.timeout = fm_global.arp.timeout * 1e-3;
+	if (multiprobe->params.retries == 0)
+		multiprobe->params.retries = fm_global.arp.retries;
+
+	arp = fm_arp_control_alloc(pclass->proto, &multiprobe->params, extra_params);
+	if (arp == NULL)
+		return false;
+
+	multiprobe->ops = &fm_arp_multiprobe_ops;
+	multiprobe->control = arp;
+	return true;
 }
 
 static struct fm_probe_class fm_arp_host_probe_class = {
@@ -431,7 +527,7 @@ static struct fm_probe_class fm_arp_host_probe_class = {
 	.action_flags	= FM_SCAN_ACTION_FLAG_LOCAL_ONLY,
 	.modes		= FM_PROBE_MODE_HOST,
 
-	.create_probe	= fm_arp_create_host_probe,
+	.configure	= fm_arp_configure_probe,
 };
 
 FM_PROBE_CLASS_REGISTER(fm_arp_host_probe_class)
@@ -440,28 +536,20 @@ bool
 fm_arp_discover(fm_protocol_t *proto, fm_target_t *target, int retries)
 {
 	fm_probe_params_t params;
-	fm_probe_t *probe;
+	fm_multiprobe_t *multiprobe;
 
 	memset(&params, 0, sizeof(params));
 	params.retries = retries? : FM_ARP_PROBE_RETRIES;
 
-	probe = fm_arp_create_host_probe(&fm_arp_host_probe_class, target, &params, NULL);
-	if (probe == NULL)
+	multiprobe = fm_multiprobe_alloc(FM_PROBE_MODE_HOST, "arp-query");
+	if (!fm_multiprobe_configure(multiprobe, &fm_arp_host_probe_class, &params, NULL)
+	 || !fm_multiprobe_add_target(multiprobe, target)) {
+		fm_multiprobe_free(multiprobe);
 		return false;
+	}
 
-	fm_target_add_new_probe(target, probe);
+	fm_job_run(&multiprobe->job, NULL);
 	return true;
-}
-
-int
-fm_arp_probe_original_ifindex(const fm_probe_t *probe)
-{
-	fm_arp_request_t *arp = fm_arp_probe_get_request(probe);
-
-	if (arp == NULL)
-		return -1;
-
-	return arp->arp_params.src_lladdr.sll_ifindex;
 }
 
 /*

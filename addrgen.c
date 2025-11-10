@@ -425,10 +425,15 @@ fm_local_discovery_job_callback(const fm_job_t *job, void *user_data)
 }
 
 static void
-fm_local_discovery_info_callback(const fm_address_t *new_addr, void *user_data)
+fm_local_discovery_info_callback(const fm_pkt_t *pkt, void *user_data)
 {
 	struct fm_local_discovery_enumerator *disco = user_data;
+	const fm_address_t *new_addr;
 
+	if (pkt->info.ee != NULL)
+		return;
+
+	new_addr = &pkt->peer_addr;
 	if (fm_address_generator_address_eligible(new_addr))
 		fm_address_array_append_unique(&disco->found, new_addr);
 }
@@ -447,7 +452,7 @@ fm_local_discovery_enumerator_create(const fm_interface_t *nic, int family, cons
 	struct fm_local_discovery_enumerator *disco;
 	fm_probe_params_t probe_params = { 0 };
 	fm_protocol_t *proto;
-	fm_probe_t *probe;
+	fm_multiprobe_t *multiprobe;
 
 	disco = NEW_ADDRESS_ENUMERATOR(fm_local_discovery_enumerator);
 
@@ -455,19 +460,18 @@ fm_local_discovery_enumerator_create(const fm_interface_t *nic, int family, cons
 	probe_params.retries = 3;
 	probe_params.ttl = 1;
 
-	probe = fm_icmp_create_broadcast_probe(proto, family, nic, src_addr,
+	multiprobe = fm_icmp_create_broadcast_probe(proto, family, nic, src_addr,
 					fm_local_discovery_info_callback, disco,
 					&probe_params, NULL);
-	if (probe == NULL) {
+	if (multiprobe == NULL) {
 		free(disco);
 		return NULL;
 	}
 
-	disco->pending = &probe->job;
-	disco->completion = fm_probe_wait_for_completion(probe, fm_local_discovery_job_callback, disco);
+	disco->pending = &multiprobe->job;
+	disco->completion = fm_job_wait_for_completion(&multiprobe->job, fm_local_discovery_job_callback, disco);
 
-	/* fm_job_group_add_new(&probe->job, fm_scheduler_get_global_queue()); */
-	fm_probe_run_globally(probe);
+	fm_job_run(&multiprobe->job, NULL);
 
 	return &disco->base;
 }

@@ -107,7 +107,8 @@ struct fm_job {
  */
 struct fm_scheduler {
 	fm_scanner_t *		scanner;
-	fm_target_pool_t *	target_pool;
+
+	fm_target_manager_t *	target_manager;
 
 	const struct fm_scheduler_ops {
 		const char *	name;
@@ -123,6 +124,7 @@ struct fm_scheduler {
 
 extern fm_job_group_t *	fm_scheduler_create_global_queue(void);
 extern fm_job_group_t *	fm_scheduler_get_global_queue(void);
+extern void		fm_scheduler_schedule_targets(fm_scheduler_t *sched, fm_scanner_t *scanner, fm_sched_stats_t *stats);
 
 extern void		fm_job_move_to_group(fm_job_t *job, struct hlist_head *head);
 extern void		fm_job_list_destroy(struct hlist_head *head);
@@ -136,6 +138,7 @@ extern void		fm_job_group_destroy(fm_job_group_t *);
 extern bool		fm_job_group_is_done(const fm_job_group_t *);
 
 extern void		fm_job_init(fm_job_t *, const fm_job_ops_t *, const char *);
+extern void		fm_job_run(fm_job_t *, fm_job_group_t *);
 extern void		fm_job_postpone(fm_job_t *);
 extern void		fm_job_continue(fm_job_t *);
 extern fm_completion_t *fm_job_wait_for_completion(fm_job_t *, void (*)(const fm_job_t *, void *), void *);
@@ -151,6 +154,20 @@ static inline bool
 fm_job_list_is_empty(const struct hlist_head *head)
 {
 	return head->first == NULL;
+}
+
+static inline bool
+fm_timeout_update(fm_time_t *aggregate, fm_time_t timeout)
+{
+	if (timeout == 0)
+		return false;
+
+	if (*aggregate == 0 || timeout < *aggregate) {
+		*aggregate = timeout;
+		return true;
+	}
+
+	return false;
 }
 
 struct fm_linear_scheduler {

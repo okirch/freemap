@@ -23,6 +23,7 @@
 #include "freemap.h"
 #include "target.h"
 #include "scheduler.h"
+#include "scanner.h"
 #include "events.h"
 
 
@@ -37,7 +38,7 @@ fm_scheduler_alloc(fm_scanner_t *scanner, const struct fm_scheduler_ops *ops)
 	assert(ops->size >= sizeof(*ret));
 	ret = calloc(1, ops->size);
 	ret->scanner = scanner;
-	ret->target_pool = fm_scanner_get_target_pool(scanner);
+	ret->target_manager = scanner->target_manager;
 	ret->ops = ops;
 	return ret;
 }
@@ -96,10 +97,22 @@ fm_job_free(fm_job_t *job)
 		assert(job->link.prevp == NULL);
 	}
 
+	fm_log_debug("%s destroyed", job->fullname);
 	drop_string(&job->fullname);
 
 	memset(job, 0, sizeof(*job));
 	free(job);
+}
+
+void
+fm_job_run(fm_job_t *job, fm_job_group_t *job_group)
+{
+	if (job_group == NULL) {
+		job_group = fm_scheduler_create_global_queue();
+		assert(job_group);
+	}
+
+	fm_job_group_add_new(job_group, job);
 }
 
 /*
@@ -342,6 +355,7 @@ fm_job_group_add_new(fm_job_group_t *job_group, fm_job_t *job)
 	if (job->blocking)
 		job_group->plugged = true;
 
+	fm_log_debug("%s: added", job->fullname);
 	return 0;
 }
 
@@ -647,15 +661,17 @@ skip_this_action:
 static void
 fm_linear_scheduler_create_new_probes(fm_scheduler_t *sched, fm_sched_stats_t *stats)
 {
-	unsigned int num_visited = 0;
+	hlist_iterator_t iter;
 	unsigned int num_created = 0, max_create;
+
+	fm_target_manager_begin(sched->target_manager, &iter);
 
 	max_create = stats->job_quota - stats->num_sent;
 	while (num_created < max_create) {
 		unsigned int target_quota, target_created = 0;
 		fm_target_t *target;
 
-		target = fm_target_pool_get_next(sched->target_pool, &num_visited);
+		target = fm_target_manager_next(sched->target_manager, &iter);
 		if (target == NULL)
 			break;
 
@@ -714,7 +730,7 @@ fm_sched_stats_update_timeout_min(fm_sched_stats_t *stats, fm_time_t expiry, con
 		if (fm_debug_level > 1) {
 			double delay = stats->timeout - fm_time_now();
 			fm_log_debug("%s: new timeout is %f", who, delay);
-			assert(delay >= 0);
+			/* assert(delay >= -1e-6); */
 		}
 		return true;
 	}

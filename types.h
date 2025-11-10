@@ -67,6 +67,9 @@ typedef struct fm_completion fm_completion_t;
 typedef struct fm_host_asset fm_host_asset_t;
 typedef struct fm_protocol_asset fm_protocol_asset_t;
 
+typedef struct fm_multiprobe	fm_multiprobe_t;
+typedef struct fm_host_tasklet  fm_host_tasklet_t;
+
 /* For now, fm_address is just a sockaddr_storage */
 typedef struct sockaddr_storage	fm_address_t;
 
@@ -223,7 +226,7 @@ typedef struct fm_routing_info {
 		fm_address_t	link_address;
 	} src, dst, nh;
 
-	fm_interface_t *	nic;
+	const fm_interface_t *	nic;
 
 	fm_neighbor_t *		incomplete_neighbor_entry;
 } fm_routing_info_t;
@@ -254,6 +257,10 @@ typedef enum {
 
 	FM_NOT_SUPPORTED = -4,
 	FM_NO_ROUTE_TO_HOST = -5,
+
+	/* Returned by eg the traceroute transmit call to signal the
+	 * caller that the probe is done with a given target. */
+	FM_TASK_COMPLETE = -6,
 } fm_error_t;
 
 /*

@@ -38,6 +38,8 @@ struct fm_extant {
 	fm_host_asset_t *	host;
 	fm_socket_timestamp_t	timestamp;
 	fm_probe_t *		probe;
+
+	struct fm_tasklet *	tasklet;
 };
 
 typedef struct fm_extant_list {

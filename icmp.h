@@ -28,30 +28,28 @@ typedef struct fm_icmp_extra_params {
 		int		send_type;
 		int		response_type;
 	} ipv4, ipv6;
+
+	uint16_t		tos;		/* copied from probe_params */
+	uint16_t		ttl;		/* copied from probe_params */
+	uint16_t		ident;
+	uint16_t		sequence;
 } fm_icmp_extra_params_t;
 
-typedef struct fm_icmp_request {
+typedef struct fm_icmp_control {
 	fm_protocol_t *		proto;
-	fm_target_t *		target;
 
 	fm_socket_t *		sock;
 	bool			sock_is_shared;
 	bool			kernel_trashes_id;
 	bool			extants_are_multi_shot;
 
-	int			family;
-	fm_address_t		host_address;
 	fm_probe_params_t	params;
 	fm_icmp_extra_params_t	extra_params;
+} fm_icmp_control_t;
 
-	fm_buffer_t *		packet_header;
-	struct fm_csum_hdr *	csum_header;
-
-	struct icmp_params {
-		uint16_t	ipproto;
-		uint16_t	ident;
-		uint16_t	seq;
-	} icmp;
+typedef struct fm_icmp_request {
+	fm_icmp_control_t *	control;
+	fm_target_control_t	target_control;
 } fm_icmp_request_t;
 
 typedef struct fm_icmp_extant_info {

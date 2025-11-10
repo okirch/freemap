@@ -31,15 +31,12 @@
 #include "rawpacket.h"
 #include "buffer.h"
 
-typedef struct fm_udp_request {
+typedef struct fm_udp_control {
 	fm_protocol_t *		proto;
-	fm_target_t *		target;
 
 	fm_socket_t *		sock;
 	bool			sock_is_shared;
 
-	int			family;
-	fm_address_t		host_address;
 	fm_probe_params_t	params;
 
 	/* This should be configurable at the probe level, but
@@ -58,6 +55,11 @@ typedef struct fm_udp_request {
 	/* Set of packages we're supposed to use in probing the port */
 	unsigned int		service_index;
 	fm_service_probe_t *	service_probe;
+} fm_udp_control_t;
+
+typedef struct fm_udp_request {
+	fm_udp_control_t *	control;
+	fm_target_control_t	target_control;
 } fm_udp_request_t;
 
 typedef struct fm_udp_extant_info {
@@ -229,7 +231,7 @@ fm_udp_synthesize_headers(fm_pkt_t *pkt)
  * UDP action
  */
 static void
-fm_udp_request_free(fm_udp_request_t *udp)
+fm_udp_control_free(fm_udp_control_t *udp)
 {
 	if (udp->sock != NULL && !udp->sock_is_shared)
 		fm_socket_free(udp->sock);
@@ -238,37 +240,51 @@ fm_udp_request_free(fm_udp_request_t *udp)
 	free(udp);
 }
 
-static fm_udp_request_t *
-fm_udp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
+static fm_udp_control_t *
+fm_udp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const void *extra_params)
 {
-	fm_udp_request_t *udp;
-
-	if (params->port == 0) {
-		fm_log_error("%s: trying to create a udp request without destination port");
-		return NULL;
-	}
+	fm_udp_control_t *udp;
 
 	udp = calloc(1, sizeof(*udp));
 	udp->proto = proto;
-	udp->target = target;
 	udp->params = *params;
 
 	if (udp->params.retries == 0)
 		udp->params.retries = fm_global.udp.retries;
 	udp->total_retries = udp->params.retries;
 
-	udp->family = target->address.ss_family;
-	udp->host_address = target->address;
-	if (!fm_address_set_port(&udp->host_address, params->port)) {
-		fm_udp_request_free(udp);
-		return NULL;
-	}
-
 	return udp;
 }
 
+static fm_udp_request_t *
+fm_udp_request_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const void *extra_params)
+{
+	fm_udp_request_t *req;
+
+	req = calloc(1, sizeof(*req));
+	req->control = fm_udp_control_alloc(proto, params, extra_params);
+	return req;
+}
+
+static bool
+fm_udp_control_init_target(fm_udp_control_t *udp, fm_target_control_t *target_control, fm_target_t *target)
+{
+	const fm_address_t *addr = &target->address;
+
+	target_control->family = addr->ss_family;
+	target_control->target = target;
+	target_control->address = *addr;
+	return true;
+}
+
+static bool
+fm_udp_request_set_target(fm_udp_request_t *req, fm_target_t *target)
+{
+	return fm_udp_request_init_target(req->control, &req->target_control, target);
+}
+
 static void
-fm_udp_request_set_socket(fm_udp_request_t *udp, fm_socket_t *sock)
+fm_udp_control_set_socket(fm_udp_control_t *udp, fm_socket_t *sock)
 {
 	fm_address_t local_addr;
 
@@ -283,7 +299,7 @@ fm_udp_request_set_socket(fm_udp_request_t *udp, fm_socket_t *sock)
 }
 
 static void
-fm_udp_request_set_service(fm_udp_request_t *udp, fm_service_probe_t *service_probe)
+fm_udp_control_set_service(fm_udp_control_t *udp, fm_service_probe_t *service_probe)
 {
 	unsigned int npackets;
 
@@ -296,6 +312,13 @@ fm_udp_request_set_service(fm_udp_request_t *udp, fm_service_probe_t *service_pr
 	udp->total_retries = udp->params.retries * npackets;
 }
 
+static void
+fm_udp_request_free(fm_udp_request_t *req)
+{
+	fm_udp_control_free(req->control);
+	free(req);
+}
+
 /*
  * Track extant UDP requests.
  * We currently do not track individual packets and their response(s), we just
@@ -303,10 +326,10 @@ fm_udp_request_set_service(fm_udp_request_t *udp, fm_service_probe_t *service_pr
  * We do not even distinguish by the source port used on our end.
  */
 static void
-fm_udp_extant_info_build(const fm_udp_request_t *udp, fm_udp_extant_info_t *extant_info)
+fm_udp_extant_info_build(const fm_udp_control_t *udp, uint16_t dst_port, fm_udp_extant_info_t *extant_info)
 {
 	extant_info->src_port = udp->src_port;
-	extant_info->dst_port = udp->params.port;
+	extant_info->dst_port = dst_port;
 }
 
 static fm_extant_t *
@@ -391,7 +414,7 @@ fm_udp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *it
  * See if we have a probe packet
  */
 static const fm_buffer_t *
-fm_udp_request_next_service_probe(fm_udp_request_t *udp)
+fm_udp_request_next_service_probe(fm_udp_control_t *udp)
 {
 	unsigned int index = udp->service_index;
 	const fm_buffer_t *payload;
@@ -417,6 +440,8 @@ fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port, const fm_buffer_t 
 	pkt = fm_pkt_alloc(dstaddr->ss_family, 0);
 	pkt->peer_addr = *dstaddr;
 
+	fm_address_set_port(&pkt->peer_addr, port);
+
 	/* If we have a service probe payload, send a (copy) of that packet, else
 	 * send a single NUL byte as payload */
 	if (payload != NULL) {
@@ -433,7 +458,7 @@ fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port, const fm_buffer_t 
 }
 
 static fm_error_t
-fm_udp_request_schedule(fm_udp_request_t *udp, fm_time_t *expires)
+fm_udp_request_schedule(fm_udp_control_t *udp, fm_time_t *expires)
 {
 	if (udp->total_retries == 0)
 		return FM_TIMED_OUT;
@@ -452,39 +477,34 @@ fm_udp_request_schedule(fm_udp_request_t *udp, fm_time_t *expires)
  * The probe argument is only here because we need to notify it when done.
  */
 static fm_error_t
-fm_udp_request_send(fm_udp_request_t *udp, fm_extant_t **extant_ret)
+fm_udp_request_send(fm_udp_control_t *udp, fm_target_control_t *target_control, int param_type, int param_value, fm_extant_t **extant_ret)
 {
 	fm_udp_extant_info_t extant_info;
+	fm_target_t *target = target_control->target;
 	fm_socket_t *sock;
 	fm_pkt_t *pkt;
 	const fm_buffer_t *payload;
+	uint16_t dst_port;
 
 	if ((sock = udp->sock) != NULL) {
 		/* pass */
-	} else if (udp->use_connected_socket) {
-		fm_address_t local_addr;
-
-		udp->sock = fm_udp_create_connected_socket(udp->proto, &udp->host_address);
-		sock = udp->sock;
-
-		if (!fm_socket_get_local_address(sock, &local_addr)) {
-			fm_log_warning("UDP: unable to get local address after connect: %m");
-		} else {
-			udp->src_port = fm_address_get_port(&local_addr);
-		}
 	} else {
-		sock = fm_protocol_create_host_shared_socket(udp->proto, udp->target);
+		sock = fm_protocol_create_host_shared_socket(udp->proto, target);
 	}
 
 	if (sock == NULL) {
-		fm_log_error("Unable to create UDP socket for %s: %m",
-				fm_address_format(&udp->host_address));
+		fm_log_error("Unable to create UDP socket for %s: %m", target->id);
 		return FM_SEND_ERROR;
 	}
 
+	if (param_type == FM_PARAM_TYPE_PORT)
+		dst_port = param_value;
+	else
+		dst_port = udp->params.port;
+
 	payload = fm_udp_request_next_service_probe(udp);
 
-	pkt = fm_udp_build_packet(&udp->host_address, udp->params.port, payload);
+	pkt = fm_udp_build_packet(&target_control->address, dst_port, payload);
 
 	/* apply ttl, tos etc */
 	fm_pkt_apply_probe_params(pkt, &udp->params, udp->proto->supported_parameters);
@@ -494,16 +514,16 @@ fm_udp_request_send(fm_udp_request_t *udp, fm_extant_t **extant_ret)
 		return FM_SEND_ERROR;
 	}
 
-	fm_udp_extant_info_build(udp, &extant_info);
-	*extant_ret = fm_socket_add_extant(sock, udp->target->host_asset,
-			udp->family, IPPROTO_UDP, &extant_info, sizeof(extant_info));
+	fm_udp_extant_info_build(udp, dst_port, &extant_info);
+	*extant_ret = fm_socket_add_extant(sock, target->host_asset,
+			target_control->family, IPPROTO_UDP, &extant_info, sizeof(extant_info));
 
 	assert(*extant_ret);
 
 	udp->total_retries -= 1;
 
 	/* update the asset state */
-	fm_target_update_port_state(udp->target, FM_PROTO_UDP, udp->params.port, FM_ASSET_STATE_PROBE_SENT);
+	fm_target_update_port_state(target, FM_PROTO_UDP, dst_port, FM_ASSET_STATE_PROBE_SENT);
 
 	return 0;
 }
@@ -532,7 +552,7 @@ fm_udp_port_probe_schedule(fm_probe_t *probe)
 {
 	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
 
-	return fm_udp_request_schedule(udp, &probe->job.expires);
+	return fm_udp_request_schedule(udp->control, &probe->job.expires);
 }
 
 /*
@@ -541,11 +561,13 @@ fm_udp_port_probe_schedule(fm_probe_t *probe)
 static fm_error_t
 fm_udp_port_probe_send(fm_probe_t *probe)
 {
-	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
+	fm_udp_request_t *req = fm_udp_probe_get_request(probe);
 	fm_extant_t *extant = NULL;
 	fm_error_t error;
 
-	error = fm_udp_request_send(udp, &extant);
+	error = fm_udp_request_send(req->control, &req->target_control,
+					FM_PARAM_TYPE_NONE, 0,
+					&extant);
 	if (extant != NULL)
 		extant->probe = probe;
 
@@ -555,24 +577,24 @@ fm_udp_port_probe_send(fm_probe_t *probe)
 static fm_error_t
 fm_udp_port_probe_set_socket(fm_probe_t *probe, fm_socket_t *sock)
 {
-	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
+	fm_udp_request_t *req = fm_udp_probe_get_request(probe);
 
-	if (udp == NULL)
+	if (req == NULL)
 		return FM_NOT_SUPPORTED;
 
-	fm_udp_request_set_socket(udp, sock);
+	fm_udp_control_set_socket(req->control, sock);
 	return 0;
 }
 
 static fm_error_t
 fm_udp_port_probe_set_service(fm_probe_t *probe, fm_service_probe_t *service_probe)
 {
-	fm_udp_request_t *udp = fm_udp_probe_get_request(probe);
+	fm_udp_request_t *req = fm_udp_probe_get_request(probe);
 
-	if (udp == NULL)
+	if (req == NULL)
 		return FM_NOT_SUPPORTED;
 
-	fm_udp_request_set_service(udp, service_probe);
+	fm_udp_control_set_service(req->control, service_probe);
 	return 0;
 }
 
@@ -618,26 +640,90 @@ static fm_probe_t *
 fm_udp_create_parameterized_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
 	fm_protocol_t *proto = pclass->proto;
-	fm_udp_request_t *udp;
+	fm_udp_request_t *req;
 	fm_probe_t *probe;
 	char name[32];
 
 	assert(proto && proto->id == FM_PROTO_UDP);
 
-	udp = fm_udp_request_alloc(proto, target, params, extra_params);
-	if (udp == NULL)
+	req = fm_udp_request_alloc(proto, params, extra_params);
+	if (req == NULL)
 		return NULL;
+
+	fm_udp_request_set_target(req, target);
 
 	snprintf(name, sizeof(name), "udp/port=%u,ttl=%u", params->port, params->ttl);
 	probe = fm_probe_alloc(name, &fm_udp_port_probe_ops, target);
 
-	fm_udp_probe_set_request(probe, udp);
+	fm_udp_probe_set_request(probe, req);
 
 	/* UDP services may be slow to respond. */
 	probe->rtt_application_bias = fm_global.udp.application_delay;
 
-	fm_log_debug("Created UDP socket probe for %s\n", fm_address_format(&udp->host_address));
+	fm_log_debug("Created UDP socket probe for %s\n", target->id);
 	return probe;
+}
+
+/*
+ * New multiprobe implementation
+ */
+static bool
+fm_udp_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task, fm_target_t *target)
+{
+	fm_udp_control_t *udp = multiprobe->control;
+
+	return fm_udp_control_init_target(udp, &host_task->control, target);
+}
+
+static fm_error_t
+fm_udp_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task,
+		int param_type, int param_value,
+		fm_extant_t **extant_ret, double *timeout_ret)
+{
+	fm_udp_control_t *udp = multiprobe->control;
+
+	return fm_udp_request_send(udp, &host_task->control,
+			param_type, param_value, extant_ret);
+}
+
+static void
+fm_udp_multiprobe_destroy(fm_multiprobe_t *multiprobe)
+{
+	fm_udp_control_t *icmp = multiprobe->control;
+
+	multiprobe->control = NULL;
+	fm_udp_control_free(icmp);
+}
+
+static fm_multiprobe_ops_t	fm_udp_multiprobe_ops = {
+	.add_target		= fm_udp_multiprobe_add_target,
+	.transmit		= fm_udp_multiprobe_transmit,
+	.destroy		= fm_udp_multiprobe_destroy,
+};
+
+static bool
+fm_udp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const void *extra_params)
+{
+	fm_udp_control_t *udp;
+
+	if (multiprobe->control != NULL) {
+		fm_log_error("cannot reconfigure probe %s", multiprobe->name);
+		return false;
+	}
+
+	/* Set the default timings and retries */
+	multiprobe->timings.packet_spacing = fm_global.udp.packet_spacing * 1e-3;
+	multiprobe->timings.timeout = fm_global.udp.timeout * 1e-3;
+	if (multiprobe->params.retries == 0)
+		multiprobe->params.retries = fm_global.udp.retries;
+
+	udp = fm_udp_control_alloc(pclass->proto, &multiprobe->params, extra_params);
+	if (udp == NULL)
+		return false;
+
+	multiprobe->ops = &fm_udp_multiprobe_ops;
+	multiprobe->control = udp;
+	return true;
 }
 
 static struct fm_probe_class fm_udp_port_probe_class = {
@@ -646,6 +732,7 @@ static struct fm_probe_class fm_udp_port_probe_class = {
 	.modes		= FM_PROBE_MODE_TOPO|FM_PROBE_MODE_HOST|FM_PROBE_MODE_PORT,
 	.features	= FM_FEATURE_SERVICE_PROBES_MASK,
 	.create_probe	= fm_udp_create_parameterized_probe,
+	.configure	= fm_udp_configure_probe,
 };
 
 FM_PROBE_CLASS_REGISTER(fm_udp_port_probe_class)

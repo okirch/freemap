@@ -121,6 +121,7 @@ static const char *strings[FM_MAX_ERROR_INDEX] = {
 	[-FM_TRY_AGAIN] = "Try again",
 	[-FM_NOT_SUPPORTED] = "Not supported",
 	[-FM_NO_ROUTE_TO_HOST] = "No route to host",
+	[-FM_TASK_COMPLETE] = "Probe task complete",
 };
 
 const char *

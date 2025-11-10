@@ -38,14 +38,10 @@ typedef struct fm_tcp_extra_params {
 	uint32_t		ack;
 } fm_tcp_extra_params_t;
 
-typedef struct fm_tcp_request {
+typedef struct fm_tcp_control {
 	fm_protocol_t *		proto;
-	fm_target_t *		target;
 	fm_socket_t *		sock;
 
-	int			family;
-	fm_address_t		host_address;
-	fm_address_t		local_address;
 	fm_csum_hdr_t *		csum_header;
 
 	/* This is used primarily for connected sockets and
@@ -54,6 +50,11 @@ typedef struct fm_tcp_request {
 
 	fm_probe_params_t	params;
 	fm_tcp_extra_params_t	extra_params;
+} fm_tcp_control_t;
+
+typedef struct fm_tcp_request {
+	fm_tcp_control_t *	control;
+	fm_target_control_t	target_control;
 } fm_tcp_request_t;
 
 typedef struct tcp_extant_info {
@@ -63,6 +64,7 @@ typedef struct tcp_extant_info {
 
 
 static fm_socket_t *	fm_tcp_create_socket(fm_protocol_t *proto, int af);
+static fm_socket_t *	fm_tcp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 static bool		fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *);
 static fm_extant_t *	fm_tcp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_tcp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
@@ -86,6 +88,7 @@ static struct fm_protocol	fm_tcp_sock_ops = {
 			  FM_FEATURE_STATUS_CALLBACK_MASK,
 
 	.create_socket	= fm_tcp_create_socket,
+	.create_host_shared_socket = fm_tcp_create_shared_socket,
 	.locate_error	= fm_tcp_locate_error,
 	.locate_response= fm_tcp_locate_response,
 	.connection_established = fm_tcp_connecton_established,
@@ -116,11 +119,53 @@ fm_tcp_create_socket(fm_protocol_t *proto, int af)
 	return sock;
 }
 
+static fm_socket_t *
+fm_tcp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
+{
+	const fm_address_t *dst_address = &target->address;
+	fm_address_t bind_address;
+	fm_socket_t *sock = NULL;
+
+	sock = fm_protocol_create_socket(proto, dst_address->ss_family);
+
+	/* The following code is not used yet. We will use that eg for
+	 * allocating source ports from a given range.
+	 * Before we get there, we would have to implement something like a port pool
+	 */
+	if (1) {
+		/* Pick the local host address to use when talking to this target. */
+		if (!fm_target_get_local_bind_address(target, &bind_address)) {
+			fm_log_error("%s: unable to determine local address to use when binding",
+					fm_address_format(dst_address));
+			goto failed;
+		}
+
+		/* make sure the port number is 0 */
+		fm_address_set_port(&bind_address, 0);
+
+		if (!fm_socket_bind(sock, &bind_address)) {
+			fm_log_error("%s: unable to bind to local address %s",
+					fm_address_format(dst_address),
+					fm_address_format(&bind_address));
+			goto failed;
+		}
+	}
+
+	fm_socket_enable_recverr(sock);
+	target->tcp_sock = sock;
+
+	return sock;
+
+failed:
+	fm_socket_free(sock);
+	return NULL;
+}
+
 /*
  * TCP action
  */
 static void
-fm_tcp_request_free(fm_tcp_request_t *tcp)
+fm_tcp_control_free(fm_tcp_control_t *tcp)
 {
 	if (tcp->sock != NULL) {
 		fm_socket_free(tcp->sock);
@@ -143,20 +188,13 @@ fm_tcp_generate_sequence(void)
 	return seq;
 }
 
-static fm_tcp_request_t *
-fm_tcp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const fm_tcp_extra_params_t *extra_params)
+static fm_tcp_control_t *
+fm_tcp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const fm_tcp_extra_params_t *extra_params)
 {
-	fm_tcp_request_t *tcp;
-
-	if (params->port == 0) {
-		fm_log_error("%s: trying to create a tcp request without destination port");
-		return NULL;
-	}
-
+	fm_tcp_control_t *tcp;
 
 	tcp = calloc(1, sizeof(*tcp));
 	tcp->proto = proto;
-	tcp->target = target;
 	tcp->params = *params;
 
 	if (tcp->params.retries == 0)
@@ -171,14 +209,56 @@ fm_tcp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_p
 		tcp->extra_params.sequence = fm_tcp_generate_sequence();
 	tcp->extra_params.ack = tcp->extra_params.sequence + 0x80;
 
-	tcp->family = target->address.ss_family;
-	tcp->host_address = target->address;
-	if (!fm_address_set_port(&tcp->host_address, params->port)) {
-		fm_tcp_request_free(tcp);
-		return NULL;
+	return tcp;
+}
+
+static fm_tcp_request_t *
+fm_tcp_request_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const fm_tcp_extra_params_t *extra_params)
+{
+	fm_tcp_request_t *req;
+
+	req = calloc(1, sizeof(*req));
+	req->control = fm_tcp_control_alloc(proto, params, extra_params);
+	return req;
+}
+
+static bool
+fm_tcp_control_init_target(fm_tcp_control_t *tcp, fm_target_control_t *target_control, fm_target_t *target)
+{
+	const fm_address_t *addr = &target->address;
+	fm_socket_t *sock = NULL;
+
+	/* For the time being, we create a single raw socket per target host */
+	sock = fm_protocol_create_host_shared_socket(tcp->proto, target);
+	if (sock == NULL) {
+		fm_log_error("could not create shared TCP socket for %s", target->id);
+		return false;
 	}
 
-	return tcp;
+	target_control->family = addr->ss_family;
+	target_control->target = target;
+	target_control->address = *addr;
+	target_control->sock = sock;
+
+	if (!fm_socket_get_local_address(target_control->sock, &target_control->local_address))
+		fm_log_warning("TCP: unable to get local address: %m");
+
+	return true;
+}
+
+static bool
+fm_tcp_request_set_target(fm_tcp_request_t *req, fm_target_t *target)
+{
+	return fm_tcp_control_init_target(req->control, &req->target_control, target);
+}
+
+
+static void
+fm_tcp_request_free(fm_tcp_request_t *req)
+{
+	fm_target_control_destroy(&req->target_control);
+	fm_tcp_control_free(req->control);
+	free(req);
 }
 
 /*
@@ -188,10 +268,10 @@ fm_tcp_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_p
  * We do not even distinguish by the source port used on our end.
  */
 static void
-fm_tcp_extant_info_build(fm_tcp_request_t *tcp, fm_tcp_extant_info_t *extant_info)
+fm_tcp_extant_info_build(fm_tcp_control_t *tcp, uint16_t src_port, uint16_t dst_port, fm_tcp_extant_info_t *extant_info)
 {
-	extant_info->src_port = tcp->src_port;
-	extant_info->dst_port = tcp->params.port;
+	extant_info->src_port = src_port;
+	extant_info->dst_port = dst_port;
 }
 
 static fm_extant_t *
@@ -222,6 +302,7 @@ fm_tcp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
 	fm_parsed_pkt_t *cooked;
 	fm_parsed_hdr_t *hdr;
 	fm_extant_t *extant;
+	int icmp_type;
 	bool unreachable;
 
 	if ((cooked = pkt->parsed) == NULL)
@@ -230,11 +311,18 @@ fm_tcp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
 	/* First, check the ICMP error header - does it tell us the port is unreachable? */
 	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_ICMP)) == NULL)
 		return NULL;
+
 	unreachable = fm_icmp_header_is_host_unreachable(&hdr->icmp);
+	icmp_type = hdr->icmp.type;
 
 	/* Then, look at the enclosed TCP header */
 	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_TCP)) == NULL)
 		return NULL;
+
+	fm_log_debug("TCP: %s:%u -> %s:%u received ICMP error %u",
+			fm_address_format(&pkt->peer_addr), hdr->tcp.src_port,
+			fm_address_format(&pkt->local_addr), hdr->tcp.dst_port,
+			icmp_type);
 
 	extant = fm_tcp_locate_common(pkt, hdr->tcp.src_port, hdr->tcp.dst_port, iter);
 
@@ -255,6 +343,11 @@ fm_tcp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *it
 	if ((cooked = pkt->parsed) == NULL
 	 || (hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_TCP)) == NULL)
 		return NULL;
+
+	fm_log_debug("TCP: %s:%u -> %s:%u received response, flags=0x%x",
+			fm_address_format(&pkt->peer_addr), hdr->tcp.src_port,
+			fm_address_format(&pkt->local_addr), hdr->tcp.dst_port,
+			hdr->tcp.flags);
 
 	extant = fm_tcp_locate_common(pkt, hdr->tcp.dst_port, hdr->tcp.src_port, iter);
 
@@ -295,9 +388,10 @@ fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *pkt)
 }
 
 static fm_pkt_t *
-fm_tcp_build_raw_packet(fm_tcp_request_t *tcp)
+fm_tcp_build_raw_packet(fm_tcp_control_t *tcp, uint16_t dst_port, fm_target_control_t *target_control)
 {
 	fm_tcp_header_info_t hdrinfo;
+	fm_address_t dst_addr;
 	void *tcp_hdr_addr;
 	fm_buffer_t *payload;
 	fm_pkt_t *pkt;
@@ -313,16 +407,20 @@ fm_tcp_build_raw_packet(fm_tcp_request_t *tcp)
 	payload = fm_buffer_alloc(128);
 	tcp_hdr_addr = (void *) fm_buffer_head(payload);
 
-	if (!fm_raw_packet_add_tcp_header(payload, &tcp->local_address, &tcp->host_address, &hdrinfo, 0))
+	/* Build the dest addr with port */
+	dst_addr = target_control->address;
+	fm_address_set_port(&dst_addr, dst_port);
+
+	if (!fm_raw_packet_add_tcp_header(payload, &target_control->local_address, &dst_addr, &hdrinfo, 0))
 		return NULL;
 
 	/* Prepare the checksum pseudo header */
-	if (tcp->csum_header == NULL && tcp->family == AF_INET6) {
-		tcp->csum_header = fm_ipv6_checksum_header(&tcp->local_address, &tcp->host_address, IPPROTO_TCP);
+	if (tcp->csum_header == NULL && target_control->family == AF_INET6) {
+		tcp->csum_header = fm_ipv6_checksum_header(&target_control->local_address, &dst_addr, IPPROTO_TCP);
 		if (tcp->csum_header == NULL) {
 			fm_log_error("refusing to create TCP checksum header for %s -> %s",
-					fm_address_format(&tcp->local_address),
-					fm_address_format(&tcp->host_address));
+					fm_address_format(&target_control->local_address),
+					fm_address_format(&dst_addr));
 			return NULL;
 		}
 		tcp->csum_header->checksum.offset = 16;
@@ -334,15 +432,15 @@ fm_tcp_build_raw_packet(fm_tcp_request_t *tcp)
 		fm_log_fatal("got my wires crossed in the tcp checksum thing");
 	}
 
-	pkt = fm_pkt_alloc(tcp->family, 0);
+	pkt = fm_pkt_alloc(target_control->family, 0);
 	pkt->payload = payload;
-	pkt->peer_addr = tcp->host_address;
+	pkt->peer_addr = target_control->address;
 	fm_address_set_port(&pkt->peer_addr, 0);
 	return pkt;
 }
 
 static fm_error_t
-fm_tcp_request_schedule(fm_tcp_request_t *tcp, fm_time_t *expires)
+fm_tcp_control_schedule(fm_tcp_control_t *tcp, fm_time_t *expires)
 {
 	if (tcp->params.retries == 0)
 		return FM_TIMED_OUT;
@@ -357,55 +455,59 @@ fm_tcp_request_schedule(fm_tcp_request_t *tcp, fm_time_t *expires)
 }
 
 static fm_error_t
-fm_tcp_request_send(fm_tcp_request_t *tcp, fm_extant_t **extant_ret)
+fm_tcp_request_send(fm_tcp_control_t *tcp, fm_target_control_t *target_control, int param_type, int param_value, fm_extant_t **extant_ret)
 {
 	fm_tcp_extant_info_t extant_info;
+	uint16_t src_port, dst_port;
 
-	if (tcp->sock == NULL) {
-		tcp->sock = fm_protocol_create_socket(tcp->proto, tcp->host_address.ss_family);
-		if (tcp->sock == NULL) {
+	if (target_control->sock == NULL) {
+		target_control->sock = fm_protocol_create_socket(tcp->proto, target_control->family);
+		if (target_control->sock == NULL) {
 			fm_log_error("Unable to create TCP socket for %s: %m",
-					fm_address_format(&tcp->host_address));
+					fm_address_format(&target_control->address));
 			return FM_SEND_ERROR;
 		}
 
-		if (!fm_socket_connect(tcp->sock, &tcp->host_address)) {
+		if (!fm_socket_connect(target_control->sock, &target_control->address)) {
 			fm_log_error("Unable to connect TCP socket for %s: %m",
-					fm_address_format(&tcp->host_address));
+					fm_address_format(&target_control->address));
 			return FM_SEND_ERROR;
 		}
 
-		if (!fm_socket_get_local_address(tcp->sock, &tcp->local_address)) {
+		if (!fm_socket_get_local_address(target_control->sock, &target_control->local_address)) {
 			fm_log_warning("TCP: unable to get local address after connect: %m");
-		} else {
-			tcp->src_port = fm_address_get_port(&tcp->local_address);
 		}
 
 		fm_log_debug("Created TCP connection %s -> %s",
-					fm_address_format(&tcp->local_address),
-					fm_address_format(&tcp->host_address));
+					fm_address_format(&target_control->local_address),
+					fm_address_format(&target_control->address));
 	}
+
+	src_port = fm_address_get_port(&target_control->local_address);
+	dst_port = tcp->params.port;
+	if (param_type == FM_PARAM_TYPE_PORT)
+		dst_port = param_value;
 
 	{
 		/* build the TCP packet and transmit */
 		fm_pkt_t *pkt;
 
-		if (!(pkt = fm_tcp_build_raw_packet(tcp)))
+		if (!(pkt = fm_tcp_build_raw_packet(tcp, dst_port, target_control)))
 			return FM_SEND_ERROR;
 
 		/* apply ttl, tos etc */
 		fm_pkt_apply_probe_params(pkt, &tcp->params, tcp->proto->supported_parameters);
 
-		if (!fm_socket_send_pkt_and_burn(tcp->sock, pkt))
+		if (!fm_socket_send_pkt_and_burn(target_control->sock, pkt))
 			return FM_SEND_ERROR;
 	}
 
-	fm_tcp_extant_info_build(tcp, &extant_info);
-	*extant_ret = fm_socket_add_extant(tcp->sock, tcp->target->host_asset,
-				tcp->family, IPPROTO_TCP, &extant_info, sizeof(extant_info));
+	fm_tcp_extant_info_build(tcp, src_port, dst_port, &extant_info);
+	*extant_ret = fm_socket_add_extant(target_control->sock, target_control->target->host_asset,
+				target_control->family, IPPROTO_TCP, &extant_info, sizeof(extant_info));
 
 	/* update the asset state */
-	fm_target_update_port_state(tcp->target, FM_PROTO_TCP, tcp->params.port, FM_ASSET_STATE_PROBE_SENT);
+	fm_target_update_port_state(target_control->target, FM_PROTO_TCP, tcp->params.port, FM_ASSET_STATE_PROBE_SENT);
 
 	tcp->params.retries -= 1;
 
@@ -439,9 +541,9 @@ fm_tcp_port_probe_destroy(fm_probe_t *probe)
 static fm_error_t
 fm_tcp_port_probe_schedule(fm_probe_t *probe)
 {
-	fm_tcp_request_t *tcp = fm_tcp_probe_get_request(probe);
+	fm_tcp_request_t *req = fm_tcp_probe_get_request(probe);
 
-	return fm_tcp_request_schedule(tcp, &probe->job.expires);
+	return fm_tcp_control_schedule(req->control, &probe->job.expires);
 }
 
 /*
@@ -450,11 +552,11 @@ fm_tcp_port_probe_schedule(fm_probe_t *probe)
 static fm_error_t
 fm_tcp_port_probe_send(fm_probe_t *probe)
 {
-	fm_tcp_request_t *tcp = fm_tcp_probe_get_request(probe);
+	fm_tcp_request_t *req = fm_tcp_probe_get_request(probe);
 	fm_extant_t *extant = NULL;
 	fm_error_t error;
 
-	error = fm_tcp_request_send(tcp, &extant);
+	error = fm_tcp_request_send(req->control, &req->target_control, FM_PARAM_TYPE_NONE, 0, &extant);
 	if (extant != NULL)
 		extant->probe = probe;
 
@@ -486,25 +588,89 @@ static fm_probe_t *
 fm_tcp_create_parameterized_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
 {
 	fm_protocol_t *proto = pclass->proto;
-	fm_tcp_request_t *tcp;
+	fm_tcp_request_t *req;
 	fm_probe_t *probe;
 	char name[32];
 
 	assert(proto && proto->id == FM_PROTO_TCP);
 
-	if (!(tcp = fm_tcp_request_alloc(proto, target, params, extra_params)))
+	if (!(req = fm_tcp_request_alloc(proto, params, extra_params)))
 		return NULL;
+
+	fm_tcp_request_set_target(req, target);
 
 	snprintf(name, sizeof(name), "tcp/%u", params->port);
 	probe = fm_probe_alloc(name, &fm_tcp_port_probe_ops, target);
 
-	fm_tcp_probe_set_request(probe, tcp);
+	fm_tcp_probe_set_request(probe, req);
 
 	/* TCP services may take up to .5 sec for the queued TCP connection to be accepted. */
 	probe->rtt_application_bias = fm_global.tcp.application_delay;
 
-	fm_log_debug("Created TCP socket probe for %s\n", fm_address_format(&tcp->host_address));
+	fm_log_debug("Created TCP socket probe for %s\n", target->id);
 	return probe;
+}
+
+/*
+ * New multiprobe implementation
+ */
+static bool
+fm_tcp_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task, fm_target_t *target)
+{
+	fm_tcp_control_t *tcp = multiprobe->control;
+
+	return fm_tcp_control_init_target(tcp, &host_task->control, target);
+}
+
+static fm_error_t
+fm_tcp_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task,
+		int param_type, int param_value,
+		fm_extant_t **extant_ret, double *timeout_ret)
+{
+	fm_tcp_control_t *tcp = multiprobe->control;
+
+	return fm_tcp_request_send(tcp, &host_task->control,
+			param_type, param_value, extant_ret);
+}
+
+static void
+fm_tcp_multiprobe_destroy(fm_multiprobe_t *multiprobe)
+{
+	fm_tcp_control_t *icmp = multiprobe->control;
+
+	multiprobe->control = NULL;
+	fm_tcp_control_free(icmp);
+}
+
+static fm_multiprobe_ops_t	fm_tcp_multiprobe_ops = {
+	.add_target		= fm_tcp_multiprobe_add_target,
+	.transmit		= fm_tcp_multiprobe_transmit,
+	.destroy		= fm_tcp_multiprobe_destroy,
+};
+
+static bool
+fm_tcp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const void *extra_params)
+{
+	fm_tcp_control_t *tcp;
+
+	if (multiprobe->control != NULL) {
+		fm_log_error("cannot reconfigure probe %s", multiprobe->name);
+		return false;
+	}
+
+	/* Set the default timings and retries */
+	multiprobe->timings.packet_spacing = fm_global.tcp.packet_spacing * 1e-3;
+	multiprobe->timings.timeout = fm_global.tcp.timeout * 1e-3;
+	if (multiprobe->params.retries == 0)
+		multiprobe->params.retries = fm_global.tcp.retries;
+
+	tcp = fm_tcp_control_alloc(pclass->proto, &multiprobe->params, extra_params);
+	if (tcp == NULL)
+		return false;
+
+	multiprobe->ops = &fm_tcp_multiprobe_ops;
+	multiprobe->control = tcp;
+	return true;
 }
 
 static struct fm_probe_class	fm_tcp_port_probe_class = {
@@ -512,6 +678,7 @@ static struct fm_probe_class	fm_tcp_port_probe_class = {
 	.proto_id	= FM_PROTO_TCP,
 	.modes		= FM_PROBE_MODE_TOPO|FM_PROBE_MODE_HOST|FM_PROBE_MODE_PORT,
 	.create_probe	= fm_tcp_create_parameterized_probe,
+	.configure	= fm_tcp_configure_probe,
 };
 
 FM_PROBE_CLASS_REGISTER(fm_tcp_port_probe_class)

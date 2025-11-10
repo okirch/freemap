@@ -44,6 +44,11 @@ struct fm_socket {
 	/* must be set before we can poll */
 	fm_protocol_t *		proto;
 
+	struct {
+		void		(*callback)(const fm_pkt_t *pkt, void *user_data);
+		void *		user_data;
+	} data_tap;
+
 	/* Packet analysis code */
 	fm_packet_parser_t *	data_parser;
 	fm_packet_parser_t *	error_parser;

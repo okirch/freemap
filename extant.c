@@ -66,6 +66,7 @@ fm_extant_free(fm_extant_t *extant)
 {
 	fm_extant_unlink(extant);
 	extant->probe = NULL;
+	extant->tasklet = NULL;
 	free(extant);
 }
 
@@ -80,13 +81,19 @@ fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt)
 {
 	double rtt = fm_pkt_rtt(pkt, &extant->timestamp);
 	fm_probe_t *probe = extant->probe;
+	fm_tasklet_t *tasklet;
 
-	fm_probe_update_rtt_estimate(probe, &rtt);
+	if (probe != NULL) {
+		fm_probe_update_rtt_estimate(probe, &rtt);
 
-	if (fm_probe_invoke_status_callback(probe, pkt, rtt))
-		return; /* whoever is watching this probe wants us to keep going */
+		if (fm_probe_invoke_status_callback(probe, pkt, rtt))
+			return; /* whoever is watching this probe wants us to keep going */
 
-	fm_probe_mark_complete(probe);
+		fm_probe_mark_complete(probe);
+	}
+
+	if (extant->single_shot && (tasklet = extant->tasklet) != NULL)
+		fm_tasklet_extant_done(tasklet, extant);
 }
 
 void
@@ -94,13 +101,19 @@ fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt)
 {
 	double rtt = fm_pkt_rtt(pkt, &extant->timestamp);
 	fm_probe_t *probe = extant->probe;
+	fm_tasklet_t *tasklet;
 
-	fm_probe_update_rtt_estimate(probe, &rtt);
+	if (probe != NULL) {
+		fm_probe_update_rtt_estimate(probe, &rtt);
 
-	if (fm_probe_invoke_status_callback(probe, pkt, rtt))
-		return; /* whoever is watching this probe wants us to keep going */
+		if (fm_probe_invoke_status_callback(probe, pkt, rtt))
+			return; /* whoever is watching this probe wants us to keep going */
 
-	fm_probe_mark_complete(probe);
+		fm_probe_mark_complete(probe);
+	}
+
+	if (extant->single_shot && (tasklet = extant->tasklet) != NULL)
+		fm_tasklet_extant_done(tasklet, extant);
 }
 
 /*
@@ -141,16 +154,9 @@ fm_extant_map_process_data(fm_extant_map_t *map, fm_protocol_t *proto, fm_pkt_t 
 	hlist_iterator_t iter;
 	fm_extant_t *extant;
 
-	fm_log_debug("%s(%s)", __func__, fm_address_format(&pkt->peer_addr));
-
 	fm_extant_iterator_init(&iter, &map->pending);
 	if ((extant = fm_protocol_locate_response(proto, pkt, &iter)) == NULL)
 		return false;
-
-	if (extant->probe)
-		fm_log_debug("%s: received response", fm_probe_name(extant->probe));
-	else
-		fm_log_debug("%: found anonymous extant %p", __func__, extant);
 
 	/* Mark the probe as successful, and update the RTT estimate */
 	fm_extant_received_reply(extant, pkt);
@@ -172,16 +178,9 @@ fm_extant_map_process_error(fm_extant_map_t *map, fm_protocol_t *proto, fm_pkt_t
 	hlist_iterator_t iter;
 	fm_extant_t *extant;
 
-	fm_log_debug("%s(%s)", __func__, fm_address_format(&pkt->peer_addr));
-
 	fm_extant_iterator_init(&iter, &map->pending);
 	if ((extant = fm_protocol_locate_error(proto, pkt, &iter)) == NULL)
 		return false;
-
-	if (extant->probe)
-		fm_log_debug("%s: received error", fm_probe_name(extant->probe));
-	else
-		fm_log_debug("%: found anonymous extant %p", __func__, extant);
 
 	/* Mark the probe as failed, and update the RTT estimate */
 	fm_extant_received_error(extant, pkt);

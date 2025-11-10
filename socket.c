@@ -799,6 +799,9 @@ fm_socket_recv_and_dispatch_packet(fm_socket_t *sock, int flags)
 				fm_address_format(&pkt->peer_addr));
 	}
 
+	if (sock->data_tap.callback != NULL)
+		sock->data_tap.callback(pkt, sock->data_tap.user_data);
+
 	/* If there's an extent map attached to the socket, try to locate
 	 * a pending request and update it with the results.
 	 * Else discard the packet.
@@ -838,6 +841,13 @@ fm_socket_install_error_parser(fm_socket_t *sock, int proto_id)
 	if (sock->error_parser == NULL)
 		sock->error_parser = fm_packet_parser_alloc();
 	return fm_packet_parser_add_layer(sock->error_parser, proto_id);
+}
+
+void
+fm_socket_install_data_tap(fm_socket_t *sock, void (*callback)(const fm_pkt_t *, void *), void *user_data)
+{
+	sock->data_tap.callback = callback;
+	sock->data_tap.user_data = user_data;
 }
 
 /*
@@ -1205,10 +1215,10 @@ fm_socket_poll_all(fm_time_t timeout)
 
 	timeout_ms = 100;
 	if (timeout > 0) {
-		timeout_ms = 1000 * (timeout - fm_time_now()) + .5;
-		assert(timeout_ms >= 0);
-
-		if (timeout_ms > 2000) {
+		timeout_ms = 1000 * (timeout - fm_time_now()) + 1;
+		if (timeout_ms < 0)
+			timeout_ms = 0;
+		else if (timeout_ms > 2000) {
 			fm_log_warning("%s: excessively large timeout %f sec", timeout - fm_time_now());
 			timeout_ms = 2000;
 		}

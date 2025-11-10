@@ -102,6 +102,12 @@ hlist_head_reassign(struct hlist_head *src_head, struct hlist_head *dst_head)
 	src_head->first = NULL;
 }
 
+static inline bool
+hlist_is_empty(const struct hlist_head *head)
+{
+	return head->first == NULL;
+}
+
 typedef struct list_iterator {
 	struct hlist *next;
 } hlist_iterator_t;
