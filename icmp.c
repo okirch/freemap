@@ -38,8 +38,8 @@
 #include "rawpacket.h"
 #include "socket.h"
 
-static fm_socket_t *	fm_icmp_create_raw_socket(fm_protocol_t *proto, int ipproto);
-static fm_socket_t *	fm_icmp_create_shared_raw_socket(fm_protocol_t *proto, fm_target_t *target);
+static fm_socket_t *	fm_icmp_create_socket(fm_protocol_t *proto, int ipproto);
+static fm_socket_t *	fm_icmp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 
 static fm_socket_t *	fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr);
 static int		fm_icmp_protocol_for_family(int af);
@@ -53,7 +53,7 @@ static void		fm_icmp_probe_set_request(fm_probe_t *probe, fm_icmp_request_t *icm
 /* Global extant map for all ICMP related stuff */
 static fm_extant_map_t	fm_icmp_extant_map = FM_EXTANT_MAP_INIT;
 
-static struct fm_protocol	fm_icmp_rawsock_ops = {
+static struct fm_protocol	fm_icmp_sock_ops = {
 	.obj_size	= sizeof(fm_protocol_t),
 	.name		= "icmp",
 	.id		= FM_PROTO_ICMP,
@@ -65,15 +65,14 @@ static struct fm_protocol	fm_icmp_rawsock_ops = {
 			  FM_PARAM_TYPE_RETRIES_MASK |
 			  FM_FEATURE_STATUS_CALLBACK_MASK,
 
-	.create_socket	= fm_icmp_create_raw_socket,
-	.create_host_shared_socket = fm_icmp_create_shared_raw_socket,
+	.create_socket	= fm_icmp_create_socket,
+	.create_host_shared_socket = fm_icmp_create_shared_socket,
 
 	.locate_error	= fm_icmp_locate_error,
 	.locate_response= fm_icmp_locate_response,
 };
 
-
-FM_PROTOCOL_REGISTER(fm_icmp_rawsock_ops);
+FM_PROTOCOL_REGISTER(fm_icmp_sock_ops);
 
 /*
  * Create a DGRAM socket and connect it.
@@ -188,7 +187,7 @@ fm_icmp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *i
  * SOCK_RAW sockets
  */
 static fm_socket_t *
-fm_icmp_create_raw_socket(fm_protocol_t *proto, int af)
+fm_icmp_create_socket(fm_protocol_t *proto, int af)
 {
 	fm_socket_t *sock;
 	int ipproto;
@@ -215,7 +214,7 @@ fm_icmp_create_raw_socket(fm_protocol_t *proto, int af)
 }
 
 static fm_socket_t *
-fm_icmp_create_shared_raw_socket(fm_protocol_t *proto, fm_target_t *target)
+fm_icmp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
 {
 	const fm_address_t *addr = &target->address;
 	fm_socket_t **sharedp;
