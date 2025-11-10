@@ -756,8 +756,8 @@ fm_socket_recv(fm_socket_t *sock,
 	return n;
 }
 
-static fm_pkt_t *
-fm_socket_recv_packet(fm_socket_t *sock, int flags)
+static bool
+fm_socket_recv_and_dispatch_packet(fm_socket_t *sock, int flags)
 {
 	const unsigned int MAX_PAYLOAD = 512;
 	fm_packet_parser_t *parser;
@@ -778,7 +778,7 @@ fm_socket_recv_packet(fm_socket_t *sock, int flags)
 				&pkt->info, flags);
 	if (n < 0) {
 		fm_pkt_free(pkt);
-		return NULL;
+		return false;
 	}
 
 	bp->wpos = n;
@@ -799,9 +799,10 @@ fm_socket_recv_packet(fm_socket_t *sock, int flags)
 				fm_address_format(&pkt->peer_addr));
 	}
 
-	/* If there's an extent map attached to the socket,
-	 * see if we can score a quick win and locate the
-	 * original request directly. */
+	/* If there's an extent map attached to the socket, try to locate
+	 * a pending request and update it with the results.
+	 * Else discard the packet.
+	 */
 	if (sock->extant_map) {
 		bool processed;
 
@@ -812,11 +813,12 @@ fm_socket_recv_packet(fm_socket_t *sock, int flags)
 		if (processed) {
 			fm_pkt_free(pkt);
 			errno = EAGAIN;
-			return NULL;
+			return false;
 		}
 	}
 
-	return pkt;
+	fm_pkt_free(pkt);
+	return true;
 }
 
 /*
@@ -1109,7 +1111,6 @@ static void
 fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 {
 	fm_protocol_t *proto;
-	fm_pkt_t *pkt;
 	int err;
 
 	if ((proto = sock->proto) == NULL)
@@ -1121,9 +1122,8 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 	 * POLLIN below will see ECONNREFUSED.
 	 */
 	if (bits & POLLERR) {
-		pkt = fm_socket_recv_packet(sock, MSG_ERRQUEUE);
-		if (pkt != NULL) {
-			fm_pkt_free(pkt);
+		if (fm_socket_recv_and_dispatch_packet(sock, MSG_ERRQUEUE)) {
+			/* good */
 		} else if (errno != EAGAIN) {
 			fm_log_error("socket %d: POLLERR set but recvmsg failed: %m", sock->fd);
 		} else if (fm_socket_get_pending_error(sock, &err)) {
@@ -1134,10 +1134,8 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 	}
 
 	if (bits & POLLIN) {
-		pkt = fm_socket_recv_packet(sock, 0);
-
-		if (pkt != NULL) {
-			fm_pkt_free(pkt);
+		if (fm_socket_recv_and_dispatch_packet(sock, 0)) {
+			/* good */
 		} else if (errno != EAGAIN) {
 			fm_socket_process_os_error(sock, errno);
 		}
@@ -1152,6 +1150,8 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		if (connect(sock->fd, (struct sockaddr *) &sock->peer_address, sock->addrlen) < 0) {
 			fm_socket_process_os_error(sock, err);
 		} else {
+			fm_pkt_t *pkt;
+
 			pkt = fm_socket_build_dummy_packet(sock);
 			proto->connection_established(proto, pkt);
 			fm_pkt_free(pkt);
