@@ -57,7 +57,6 @@ typedef struct fm_ipproto_extant_info {
 } fm_ipproto_extant_info_t;
 
 static fm_socket_t *	fm_ipproto_create_socket(fm_protocol_t *proto, int ipproto);
-static bool		fm_ipproto_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 
 static fm_ipproto_request_t *fm_ipproto_probe_get_request(const fm_probe_t *probe);
 static void		fm_ipproto_probe_set_request(fm_probe_t *probe, fm_ipproto_request_t *req);
@@ -69,8 +68,8 @@ static struct fm_protocol	fm_ipproto_ops = {
 	.id		= FM_PROTO_IP,
 
 	.create_socket	= fm_ipproto_create_socket,
-	/* We do not expect to receive a response, so no response handler for now */
-	.process_error	= fm_ipproto_process_error,
+
+	/* We do not expect to receive a response, but we at least need an error handler */
 };
 
 FM_PROTOCOL_REGISTER(fm_ipproto_ops);
@@ -284,46 +283,6 @@ fm_ipproto_request_send(fm_ipproto_request_t *req, fm_ipproto_extant_info_t *ext
 
 	req->params.retries -= 1;
 	return 0;
-}
-
-
-/*
- * Track extant IP proto requests.
- * We currently do not track individual packets and their response(s), we just
- * record the fact that we *did* send a specific protocol probe to a target.
- * We do not even distinguish by the source port used on our end.
- */
-static fm_extant_t *
-fm_ipproto_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt, fm_asset_state_t state)
-{
-	fm_target_t *target;
-	hlist_iterator_t iter;
-	int ipproto;
-
-	ipproto = 5;
-
-	target = fm_target_pool_find(&pkt->peer_addr);
-	if (target == NULL)
-		return NULL;
-
-	fm_target_update_host_state(target, FM_PROTO_IP, state);
-
-	fm_extant_iterator_init(&iter, &target->expecting);
-	return fm_extant_iterator_match(&iter, pkt->family, ipproto);
-}
-
-static bool
-fm_ipproto_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
-{
-	fm_extant_t *extant;
-
-	extant = fm_ipproto_locate_probe(proto, pkt, FM_ASSET_STATE_CLOSED);
-	if (extant != NULL) {
-		fm_extant_received_error(extant, pkt);
-		fm_extant_free(extant);
-	}
-
-	return true;
 }
 
 /*

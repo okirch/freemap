@@ -67,8 +67,6 @@ typedef struct fm_udp_extant_info {
 
 static fm_socket_t *	fm_udp_create_bsd_socket(fm_protocol_t *proto, int af);
 static fm_socket_t *	fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);
-static bool		fm_udp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
-static bool		fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static fm_extant_t *	fm_udp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_udp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 
@@ -93,8 +91,6 @@ static struct fm_protocol	fm_udp_bsdsock_ops = {
 
 	.create_socket	= fm_udp_create_bsd_socket,
 	.create_host_shared_socket = fm_udp_create_shared_socket,
-	.process_packet = fm_udp_process_packet,
-	.process_error	= fm_udp_process_error,
 	.locate_error	= fm_udp_locate_error,
 	.locate_response= fm_udp_locate_response,
 };
@@ -385,72 +381,6 @@ fm_udp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *it
 		fm_host_asset_update_port_state(extant->host, FM_PROTO_UDP, hdr->udp.src_port, FM_ASSET_STATE_OPEN);
 
 	return extant;
-}
-
-static fm_extant_t *
-fm_udp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt, fm_asset_state_t state)
-{
-	fm_target_t *target;
-	unsigned short dst_port, src_port = 0;
-	hlist_iterator_t iter;
-	fm_extant_t *extant;
-
-	target = fm_target_pool_find(&pkt->peer_addr);
-	if (target == NULL)
-		return NULL;
-
-	src_port = fm_address_get_port(&pkt->local_addr);
-	dst_port = fm_address_get_port(&pkt->peer_addr);
-
-	/* update the asset */
-	fm_target_update_port_state(target, FM_PROTO_UDP, dst_port, state);
-
-	/* If this is an ICMP error, we might as well mark the router/end host
-	 * as reachable. */
-	if (pkt->info.offender != NULL)
-		fm_host_asset_update_state_by_address(pkt->info.offender, proto->id, FM_ASSET_STATE_OPEN);
-
-	fm_extant_iterator_init(&iter, &target->expecting);
-	while ((extant = fm_extant_iterator_match(&iter, pkt->family, IPPROTO_UDP)) != NULL) {
-		const fm_udp_extant_info_t *info = (fm_udp_extant_info_t *) (extant + 1);
-
-		if (info->dst_port == dst_port
-		 && (src_port == 0 || info->src_port == src_port))
-			return extant;
-	}
-
-	return extant;
-}
-
-/*
- * Handle UDP reply packet
- */
-static bool
-fm_udp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
-{
-	fm_extant_t *extant;
-
-	extant = fm_udp_locate_probe(proto, pkt, FM_ASSET_STATE_OPEN);
-	if (extant != NULL) {
-		fm_extant_received_reply(extant, pkt);
-		fm_extant_free(extant);
-	}
-
-	return true;
-}
-
-static bool
-fm_udp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
-{
-	fm_extant_t *extant;
-
-	extant = fm_udp_locate_probe(proto, pkt, FM_ASSET_STATE_CLOSED);
-	if (extant != NULL) {
-		fm_extant_received_error(extant, pkt);
-		fm_extant_free(extant);
-	}
-
-	return true;
 }
 
 /*

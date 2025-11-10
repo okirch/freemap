@@ -1075,7 +1075,7 @@ fm_socket_error_dest_unreachable(const fm_pkt_info_t *info)
 /*
  * Packet delivery and tracing
  */
-static void
+static inline void
 fm_socket_log_packet(fm_socket_t *sock, const char *verb, fm_pkt_t *pkt)
 {
 	fm_buffer_t *payload = pkt->payload;
@@ -1086,14 +1086,6 @@ fm_socket_log_packet(fm_socket_t *sock, const char *verb, fm_pkt_t *pkt)
 	} else {
 		printf("sock %d %s packet from %s (no payload)\n", sock->fd, verb, fm_address_format(&sock->peer_address));
 	}
-}
-
-static void
-fm_socket_process_error(fm_socket_t *sock, fm_protocol_t *proto, fm_pkt_t *pkt)
-{
-	if (sock->trace)
-		fm_socket_log_packet(sock, "received error", pkt);
-	proto->process_error(proto, pkt);
 }
 
 static void
@@ -1108,22 +1100,6 @@ fm_socket_process_os_error(fm_socket_t *sock, int _errno)
 	pkt = fm_socket_build_error_packet(sock, errno);
 	proto->handle_os_error(proto, pkt);
 	fm_pkt_free(pkt);
-}
-
-static void
-fm_socket_process_packet(fm_socket_t *sock, fm_protocol_t *proto, fm_pkt_t *pkt)
-{
-	if (sock->type == SOCK_RAW && proto->id == FM_PROTO_TCP
-	 && sock->peer_address.ss_family != AF_UNSPEC) {
-		uint16_t port = fm_address_get_port(&pkt->peer_addr);
-
-		if (port == 0)
-			pkt->peer_addr = sock->peer_address;
-	}
-
-	if (sock->trace)
-		fm_socket_log_packet(sock, "received", pkt);
-	proto->process_packet(proto, pkt);
 }
 
 /*
@@ -1144,10 +1120,9 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 	 * Instead we get an EAGAIN here, and the recvmsg for the regular
 	 * POLLIN below will see ECONNREFUSED.
 	 */
-	if ((bits & POLLERR) && proto->process_error != NULL) {
+	if (bits & POLLERR) {
 		pkt = fm_socket_recv_packet(sock, MSG_ERRQUEUE);
 		if (pkt != NULL) {
-			fm_socket_process_error(sock, proto, pkt);
 			fm_pkt_free(pkt);
 		} else if (errno != EAGAIN) {
 			fm_log_error("socket %d: POLLERR set but recvmsg failed: %m", sock->fd);
@@ -1158,11 +1133,10 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		bits &= ~POLLERR;
 	}
 
-	if ((bits & POLLIN) && proto->process_packet != NULL) {
+	if (bits & POLLIN) {
 		pkt = fm_socket_recv_packet(sock, 0);
 
 		if (pkt != NULL) {
-			fm_socket_process_packet(sock, proto, pkt);
 			fm_pkt_free(pkt);
 		} else if (errno != EAGAIN) {
 			fm_socket_process_os_error(sock, errno);
@@ -1171,7 +1145,7 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		bits &= ~POLLIN;
 	}
 
-	if ((bits & POLLOUT) && proto->connection_established != NULL) {
+	if (bits & POLLOUT) {
 		/* POLLOUT being asserted does not mean the remote port is there;
 		 * it just means the kernel can tell us whether the connection attempt
 		 * succeeded. So go and reap the status */

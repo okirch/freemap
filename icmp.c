@@ -39,23 +39,17 @@
 #include "socket.h"
 
 static fm_socket_t *	fm_icmp_create_bsd_socket(fm_protocol_t *proto, int ipproto);
-static bool		fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
-static bool		fm_icmp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static fm_socket_t *	fm_icmp_create_raw_socket(fm_protocol_t *proto, int ipproto);
 static fm_socket_t *	fm_icmp_create_shared_raw_socket(fm_protocol_t *proto, fm_target_t *target);
 
 static fm_socket_t *	fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr);
 static int		fm_icmp_protocol_for_family(int af);
 static void		fm_icmp_request_build_extant_info(fm_icmp_extant_info_t *info, int v4_request_type, int v4_response_type, int id, int seq);
-static fm_extant_t *	fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response);
 static fm_extant_t *	fm_icmp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_icmp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 
 static fm_icmp_request_t *fm_icmp_probe_get_request(const fm_probe_t *probe);
 static void		fm_icmp_probe_set_request(fm_probe_t *probe, fm_icmp_request_t *icmp);
-
-/* This is for ICMP discovery probes */
-static fm_extant_list_t	global_extant_list;
 
 /* Global extant map for all ICMP related stuff */
 static fm_extant_map_t	fm_icmp_extant_map = FM_EXTANT_MAP_INIT;
@@ -73,8 +67,7 @@ static struct fm_protocol	fm_icmp_bsdsock_ops = {
 			  FM_FEATURE_STATUS_CALLBACK_MASK,
 
 	.create_socket	= fm_icmp_create_bsd_socket,
-	.process_packet	= fm_icmp_process_packet,
-	.process_error	= fm_icmp_process_error,
+
 	.locate_error	= fm_icmp_locate_error,
 	.locate_response= fm_icmp_locate_response,
 };
@@ -94,8 +87,7 @@ static struct fm_protocol	fm_icmp_rawsock_ops = {
 
 	.create_socket	= fm_icmp_create_raw_socket,
 	.create_host_shared_socket = fm_icmp_create_shared_raw_socket,
-	.process_packet	= fm_icmp_process_packet,
-	.process_error	= fm_icmp_process_error,
+
 	.locate_error	= fm_icmp_locate_error,
 	.locate_response= fm_icmp_locate_response,
 };
@@ -234,67 +226,6 @@ fm_icmp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *i
         }
 
 	return NULL;
-}
-
-static bool
-fm_icmp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
-{
-	fm_extant_t *extant = NULL;
-
-	fm_host_asset_update_state_by_address(&pkt->peer_addr, FM_PROTO_ICMP, FM_ASSET_STATE_OPEN);
-
-	extant = fm_icmp_locate_probe(&pkt->peer_addr, pkt, true);
-	if (extant != NULL) {
-		/* Mark the probe as successful, and update the RTT estimate */
-		fm_extant_received_reply(extant, pkt);
-
-		/* For regular host probes, we could now free the extant.
-		 * However, for discovery probes, there will be any number of
-		 * responses, and we want to catch them all.
-		 * So we just leave the extant untouched.
-		 */
-		/* fm_extant_free(extant); */
-	}
-
-	return true;
-}
-
-bool
-fm_icmp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
-{
-	const struct sock_extended_err *ee;
-	fm_extant_t *extant = NULL;
-
-	/* fm_print_hexdump(pkt->data, pkt->len); */
-
-	if ((ee = pkt->info.ee) == NULL)
-		return false;
-
-	if (pkt->family == AF_INET && ee->ee_origin == SO_EE_ORIGIN_ICMP) {
-		fm_log_debug("%s received ICMP error type %d code %d\n",
-				fm_address_format(&pkt->peer_addr),
-				ee->ee_type, ee->ee_code);
-
-		/* update asset state right away */
-		if (ee->ee_type == ICMP_DEST_UNREACH)
-			fm_host_asset_update_state_by_address(&pkt->peer_addr, FM_PROTO_ICMP, FM_ASSET_STATE_CLOSED);
-		if (pkt->info.offender != NULL)
-			fm_host_asset_update_state_by_address(pkt->info.offender, FM_PROTO_ICMP, FM_ASSET_STATE_OPEN);
-
-		/* The errqueue stuff is a bit non-intuitive at times. When receiving an
-		 * ICMP packet, the "from" address is the IP we originally sent the packet
-		 * to, and the offender is the address of the host that generated the
-		 * ICMP packet. */
-		extant = fm_icmp_locate_probe(&pkt->peer_addr, pkt, false);
-	}
-
-	if (extant != NULL) {
-		/* Mark the probe as failed, and update the RTT estimate */
-		fm_extant_received_error(extant, pkt);
-		fm_extant_free(extant);
-	}
-
-	return true;
 }
 
 /*
@@ -641,91 +572,6 @@ fm_icmp_request_build_extant_info(fm_icmp_extant_info_t *info, int v4_request_ty
 	info->match.v4_response_type = v4_response_type;
 	info->match.seq = seq;
 	info->match.id = id;
-}
-
-static fm_extant_t *
-fm_icmp_locate_by_request(hlist_iterator_t *iter, int af, const fm_icmp_header_info_t *icmp_info)
-{
-	fm_extant_t *extant;
-
-        while ((extant = fm_extant_iterator_match(iter, af, IPPROTO_ICMP)) != NULL) {
-		fm_icmp_extant_info_t *ei = (fm_icmp_extant_info_t *) (extant + 1);
-
-		if (ei->match.v4_request_type == icmp_info->v4_type
-		 && (ei->match.id < 0 || ei->match.id == icmp_info->id)
-		 && ei->match.seq == icmp_info->seq)
-			return extant;
-        }
-
-	return NULL;
-}
-
-static fm_extant_t *
-fm_icmp_locate_by_response(hlist_iterator_t *iter, int af, const fm_icmp_header_info_t *icmp_info)
-{
-	fm_extant_t *extant;
-
-        while ((extant = fm_extant_iterator_match(iter, af, IPPROTO_ICMP)) != NULL) {
-		fm_icmp_extant_info_t *ei = (fm_icmp_extant_info_t *) (extant + 1);
-
-		if (ei->match.v4_response_type == icmp_info->v4_type
-		 && (ei->match.id < 0 || ei->match.id == icmp_info->id)
-		 && ei->match.seq == icmp_info->seq)
-			return extant;
-        }
-
-	return NULL;
-}
-
-static fm_extant_t *
-fm_icmp_locate_probe_on_list(fm_extant_list_t *awaiters, int af, const fm_icmp_header_info_t *icmp_info, bool is_response)
-{
-	hlist_iterator_t iter;
-
-        fm_extant_iterator_init(&iter, awaiters);
-	if (is_response)
-		return fm_icmp_locate_by_response(&iter, af, icmp_info);
-	return fm_icmp_locate_by_request(&iter, af, icmp_info);
-}
-
-fm_extant_t *
-fm_icmp_locate_probe(const struct sockaddr_storage *target_addr, fm_pkt_t *pkt, bool is_response)
-{
-	fm_parsed_pkt_t *cooked;
-	fm_parsed_hdr_t *hdr;
-	fm_target_t *target;
-
-	if (pkt->family != target_addr->ss_family)
-		return NULL;
-
-	if ((cooked = pkt->parsed) == NULL
-	 || (hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_ICMP)) == NULL)
-		return NULL;
-
-	if (fm_debug_level) {
-		if (pkt->family == AF_INET)
-			fm_log_debug("ICMPv4: message with type=%d, code=%d from %s", 
-					hdr->icmp.v4_type, hdr->icmp.v4_code,
-					fm_address_format(&pkt->peer_addr));
-		else
-			fm_log_debug("ICMPv6: message with v4-equivalent type=%d, code=%d from %s", 
-					hdr->icmp.v4_type, hdr->icmp.v4_code,
-					fm_address_format(&pkt->peer_addr));
-	}
-
-	if (global_extant_list.hlist.first != NULL) {
-		fm_extant_t *extant = NULL;
-
-		extant = fm_icmp_locate_probe_on_list(&global_extant_list, pkt->family, &hdr->icmp, is_response);
-		if (extant != NULL)
-			return extant;
-	}
-
-	target = fm_target_pool_find(target_addr);
-	if (target == NULL)
-		return NULL;
-
-	return fm_icmp_locate_probe_on_list(&target->expecting, pkt->family, &hdr->icmp, is_response);
 }
 
 /*

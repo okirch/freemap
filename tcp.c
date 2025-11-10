@@ -64,8 +64,6 @@ typedef struct tcp_extant_info {
 
 static fm_socket_t *	fm_tcp_create_bsd_socket(fm_protocol_t *proto, int af);
 static fm_socket_t *	fm_tcp_create_raw_socket(fm_protocol_t *proto, int af);
-static bool		fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt);
-static bool		fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt);
 static bool		fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *);
 static fm_extant_t *	fm_tcp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_tcp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
@@ -89,11 +87,9 @@ static struct fm_protocol	fm_tcp_bsdsock_ops = {
 			  FM_FEATURE_STATUS_CALLBACK_MASK,
 
 	.create_socket	= fm_tcp_create_bsd_socket,
-	.process_packet = fm_tcp_process_packet,
-	.process_error	= fm_tcp_process_error,
-	.connection_established = fm_tcp_connecton_established,
 	.locate_error	= fm_tcp_locate_error,
 	.locate_response= fm_tcp_locate_response,
+	.connection_established = fm_tcp_connecton_established,
 };
 
 FM_PROTOCOL_REGISTER(fm_tcp_bsdsock_ops);
@@ -111,12 +107,10 @@ static struct fm_protocol	fm_tcp_rawsock_ops = {
 			  FM_PARAM_TYPE_RETRIES_MASK |
 			  FM_FEATURE_STATUS_CALLBACK_MASK,
 
-	.process_packet = fm_tcp_process_packet,
-	.process_error	= fm_tcp_process_error,
 	.create_socket	= fm_tcp_create_raw_socket,
-	.connection_established = fm_tcp_connecton_established,
 	.locate_error	= fm_tcp_locate_error,
 	.locate_response= fm_tcp_locate_response,
+	.connection_established = fm_tcp_connecton_established,
 };
 
 FM_PROTOCOL_REGISTER(fm_tcp_rawsock_ops);
@@ -314,102 +308,10 @@ fm_tcp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *it
 	return extant;
 }
 
-static fm_extant_t *
-fm_tcp_locate_probe(fm_protocol_t *proto, fm_pkt_t *pkt,  fm_asset_state_t state)
-{
-	fm_parsed_pkt_t *cooked = pkt->parsed;
-	fm_parsed_hdr_t *hdr;
-	fm_target_t *target;
-	unsigned short src_port;
-	unsigned short dst_port;
-	hlist_iterator_t iter;
-	fm_extant_t *extant;
-
-	target = fm_target_pool_find(&pkt->peer_addr);
-	if (target == NULL)
-		return NULL;
-
-	src_port = fm_address_get_port(&pkt->local_addr);
-	dst_port = fm_address_get_port(&pkt->peer_addr);
-
-	if (cooked != NULL
-	 && (hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_TCP)) != NULL) {
-		src_port = hdr->tcp.src_port;
-		dst_port = hdr->tcp.dst_port;
-	}
-
-	/* update the asset */
-	fm_target_update_port_state(target, FM_PROTO_TCP, dst_port, state);
-
-	fm_extant_iterator_init(&iter, &target->expecting);
-	while ((extant = fm_extant_iterator_match(&iter, pkt->family, IPPROTO_TCP)) != NULL) {
-		const struct tcp_extant_info *info = (struct tcp_extant_info *) (extant + 1);
-
-		if (info->dst_port == dst_port
-		 && (src_port == 0 || info->src_port == src_port))
-			return extant;
-	}
-
-	return extant;
-}
-
 /*
- * Handle TCP reply packet
- * We only get here for raw sockets
+ * Callback from socket layer to indicate the connection has been established.
+ * We only get here for stream sockets
  */
-static bool
-fm_tcp_process_packet(fm_protocol_t *proto, fm_pkt_t *pkt)
-{
-	fm_parsed_pkt_t *cooked = pkt->parsed;
-	fm_parsed_hdr_t *hdr;
-	fm_asset_state_t state = FM_ASSET_STATE_UNDEF;
-	fm_tcp_header_info_t *tcp_info;
-	fm_extant_t *extant;
-
-	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_IP)) != NULL
-	 || (hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_IPV6)) != NULL) {
-		fm_log_debug("%s: packet %s -> %s; proto %d",
-				proto->name,
-				fm_address_format(&hdr->ip.src_addr),
-				fm_address_format(&hdr->ip.dst_addr),
-				hdr->ip.ipproto);
-	}
-
-	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_TCP)) == NULL) {
-		fm_log_debug("%s: short or truncated TCP packet", proto->name);
-		return false;
-	}
-
-	tcp_info = &hdr->tcp;
-
-	fm_log_debug("   tcp hdr %d -> %d: flags=0x%x seq 0x%x ack 0x%x",
-			tcp_info->src_port,
-			tcp_info->dst_port,
-			tcp_info->flags,
-			tcp_info->seq,
-			tcp_info->ack_seq);
-
-	if (tcp_info->flags & TH_RST)
-		state = FM_ASSET_STATE_CLOSED;
-	else
-	if (tcp_info->flags & TH_ACK)
-		state = FM_ASSET_STATE_OPEN;
-	/* else weird */
-
-	if (state == FM_ASSET_STATE_UNDEF) {
-		fm_log_debug("don't know what to think of this packet");
-		return false;
-	}
-
-	extant = fm_tcp_locate_probe(proto, pkt, state);
-	if (extant != NULL) {
-		fm_extant_received_reply(extant, pkt);
-		fm_extant_free(extant);
-	}
-
-	return true;
-}
-
 static bool
 fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *pkt)
 {
@@ -427,26 +329,6 @@ fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *pkt)
 		fm_host_asset_update_port_state(extant->host, FM_PROTO_TCP, src_port, FM_ASSET_STATE_OPEN);
 		fm_extant_received_reply(extant, NULL);
 		fm_extant_free(extant);
-	}
-
-	return true;
-}
-
-static bool
-fm_tcp_process_error(fm_protocol_t *proto, fm_pkt_t *pkt)
-{
-	fm_extant_t *extant;
-
-	fm_buffer_dump(pkt->payload, "ICMP error for TCP probe");
-
-	extant = fm_tcp_locate_probe(proto, pkt, FM_ASSET_STATE_CLOSED);
-	if (extant != NULL) {
-		fm_log_debug("%s(): located probe %s", __func__, extant->probe->job.fullname);
-		fm_extant_received_error(extant, pkt);
-		fm_extant_free(extant);
-	}
-	else {
-		fm_log_debug("%s(): extant not found", __func__);
 	}
 
 	return true;
