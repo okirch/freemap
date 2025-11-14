@@ -134,9 +134,9 @@ rtcache_entry_cmp(const void *a, const void *b)
 	if (diff == 0)
 		diff = -(rta->dst.prefix_len - rtb->dst.prefix_len);
 
-	/* put higher priority before shorter */
+	/* put lower metric before higher */
 	if (diff == 0)
-		diff = -(rta->priority - rtb->priority);
+		diff = -(rtb->priority - rta->priority);
 
 	return diff;
 }
@@ -285,6 +285,7 @@ fm_routing_lookup(fm_routing_info_t *info)
 		return false;
 	}
 
+	info->nic = route->interface;
 	info->src.network_address = route->pref_src_addr;
 
 	if (route->interface == NULL) {
