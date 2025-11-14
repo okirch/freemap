@@ -71,6 +71,36 @@ fm_extant_free(fm_extant_t *extant)
 }
 
 /*
+ * Add a notifier to the extant. This will be invoked when the extant matched
+ * an incoming packet.
+ */
+void
+fm_extant_set_notifier(fm_extant_t *extant, const fm_extant_notifier_t *notifier)
+{
+	if (extant->notifier == notifier)
+		return;
+	if (extant->notifier != NULL) {
+		fm_log_error("Conflicting notifier on extant");
+		return;
+	}
+
+	extant->notifier = notifier;
+}
+
+static inline void
+fm_extant_invoke_notifier(fm_extant_t *extant, const fm_pkt_t *pkt, const double *rtt)
+{
+	fm_extant_notifier_t *notify = extant->notifier;
+
+	if (notify != NULL) {
+		double rtt;
+
+		rtt = fm_pkt_rtt(pkt, &extant->timestamp);
+		notify->callback(extant, pkt, &rtt, notify->user_data);
+	}
+}
+
+/*
  * Process the verdict on an extant packet.
  * If the kernel did not give us a timestamp via SO_TIMESTAMP, the packet's timetstamp will be
  * unset. In this case, fm_timestamp_delta() will just use the current wall time
@@ -92,6 +122,8 @@ fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt)
 		fm_probe_mark_complete(probe);
 	}
 
+	fm_extant_invoke_notifier(extant, pkt, NULL);
+
 	if (extant->single_shot && (tasklet = extant->tasklet) != NULL)
 		fm_tasklet_extant_done(tasklet, extant);
 }
@@ -111,6 +143,8 @@ fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt)
 
 		fm_probe_mark_complete(probe);
 	}
+
+	fm_extant_invoke_notifier(extant, pkt, NULL);
 
 	if (extant->single_shot && (tasklet = extant->tasklet) != NULL)
 		fm_tasklet_extant_done(tasklet, extant);

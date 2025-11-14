@@ -25,6 +25,8 @@
 #include "freemap.h"
 #include "lists.h"
 
+typedef struct fm_extant_notify fm_extant_notifier_t;
+
 /*
  * Hold the state of an extant request
  */
@@ -39,6 +41,7 @@ struct fm_extant {
 	fm_socket_timestamp_t	timestamp;
 	fm_probe_t *		probe;
 
+	fm_extant_notifier_t *	notifier;
 	struct fm_tasklet *	tasklet;
 };
 
@@ -48,6 +51,11 @@ typedef struct fm_extant_list {
 
 struct fm_extant_map {
 	fm_extant_list_t	pending;
+};
+
+struct fm_extant_notify {
+	void			(*callback)(const fm_extant_t *, const fm_pkt_t *, const double *rtt, void *);
+	void *			user_data;
 };
 
 #define FM_EXTANT_MAP_INIT { { { NULL } } }
@@ -63,6 +71,7 @@ extern fm_extant_t *	fm_extant_alloc(fm_probe_t *, int af, int ipproto,
 extern fm_extant_t *	fm_extant_alloc_list(fm_probe_t *probe, int af, int ipproto,
 				const void *payload, size_t payload_size,
 				fm_extant_list_t *exlist);
+extern void		fm_extant_set_notifier(fm_extant_t *, const fm_extant_notifier_t *);
 extern void		fm_extant_free(fm_extant_t *extant);
 
 extern void		fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt);
