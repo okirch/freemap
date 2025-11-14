@@ -21,6 +21,8 @@
 #define FREEMAP_TRACEROUTE_H
 
 #include "freemap.h"
+#include "probe.h"
+#include "routing.h"
 #include "utils.h"
 
 #define FM_MAX_TOPO_DEPTH	64
@@ -46,8 +48,15 @@ typedef struct fm_topo_hop_state {
 	unsigned int		probes_sent;
 
 	fm_ratelimit_t *	ratelimit;
-	fm_job_t *		pending;
-	fm_completion_t *	completion;
+	double			next_send_time;
+
+	struct fm_topo_hop_extant {
+		double		timeout;
+		fm_extant_t *	extant;
+	} pending[FM_RTT_SAMPLES_WANTED];
+
+	/* The notifier to be installed on any extant for this ttl */
+	fm_extant_notifier_t	notifier;
 
 	/* Set when we learn about a new gateway.
 	 */
@@ -59,6 +68,8 @@ typedef struct fm_topo_shared_sockets {
 	unsigned int		refcount;
 	int			family;
 	fm_protocol_t *		packet_proto;
+	const fm_interface_t *	interface;
+	fm_address_t		local_address;
 
 	fm_socket_t *		socks[FM_MAX_TOPO_DEPTH];
 } fm_topo_shared_sockets_t;
@@ -66,16 +77,19 @@ typedef struct fm_topo_shared_sockets {
 typedef struct fm_topo_state {
 	fm_protocol_t *		proto;
 	fm_target_t *		target;
-	fm_socket_t *		sock;
 	fm_host_asset_t *	host_asset;
 
 	int			family;
 	fm_address_t		host_address;
+
+	fm_target_control_t	_control;
+
 	fm_probe_params_t	params;
 
 	fm_topo_extra_params_t	topo_params;
 	fm_protocol_t *		packet_proto;
 	fm_probe_class_t *	packet_probe_class;
+	fm_multiprobe_t *	packet_probe;
 
 	unsigned int		next_ttl;
 	unsigned int		destination_ttl;

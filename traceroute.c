@@ -37,11 +37,14 @@ static fm_topo_state_t *	fm_topo_probe_get_request(const fm_probe_t *probe);
 static void			fm_topo_probe_set_request(fm_probe_t *probe, fm_topo_state_t *topo);
 static void			fm_topo_state_free(fm_topo_state_t *topo);
 static fm_probe_class_t *	fm_topo_get_packet_probe_class(const char *proto_name);
+static bool			fm_topo_create_packet_probe(fm_topo_state_t *topo);
+static void			fm_topo_hop_remove_extant(fm_topo_hop_state_t *hop, const fm_extant_t *extant);
+static void			fm_topo_hop_pkt_notifier(const fm_extant_t *extant, const fm_pkt_t *pkt, const double *rtt, void *user_data);
 
 static fm_tgateway_t *		fm_tgateway_default(void);
 static fm_tgateway_t *		fm_tgateway_for_address(unsigned int, const fm_address_t *);
 
-static fm_topo_shared_sockets_t *fm_topo_shared_sockets_get(fm_protocol_t *packet_proto, int af);
+static fm_topo_shared_sockets_t *fm_topo_shared_sockets_get(fm_protocol_t *packet_proto, const fm_address_t *dst_addr);
 static fm_socket_t *		fm_topo_shared_socket_open(fm_topo_shared_sockets_t *shared, unsigned ttl);
 static void			fm_topo_shared_sockets_release(fm_topo_shared_sockets_t *shared);
 
@@ -49,27 +52,17 @@ static void			fm_topo_shared_sockets_release(fm_topo_shared_sockets_t *shared);
  * topology scan state
  */
 static fm_topo_state_t *
-fm_topo_state_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const fm_topo_extra_params_t *extra_params)
+fm_topo_state_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const fm_topo_extra_params_t *extra_params)
 {
 	fm_topo_state_t *topo;
-	const char *packet_proto_name = NULL;
 	unsigned int ttl;
 
 	topo = calloc(1, sizeof(*topo));
 	topo->proto = proto;
-	topo->target = target;
 	topo->params = *params;
 
-	topo->family = target->address.ss_family;
-	topo->host_address = target->address;
-	topo->host_asset = target->host_asset;
-	if (topo->host_asset != NULL) {
-		fm_host_asset_clear_routing(topo->host_asset, topo->family);
-		fm_host_asset_update_state(topo->host_asset, FM_ASSET_STATE_PROBE_SENT);
-	}
-
 	if (topo->params.port == 0)
-		topo->params.port = 44444; /* make this configurable */
+		topo->params.port = 65534; /* make this configurable */
 	if (topo->params.retries <= FM_RTT_SAMPLES_WANTED)
 		topo->params.retries = FM_RTT_SAMPLES_WANTED;
 
@@ -86,6 +79,9 @@ fm_topo_state_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_pa
 
 	topo->packet_proto = topo->packet_probe_class->proto;
 
+	if (!fm_topo_create_packet_probe(topo))
+		goto failed;
+
 	/* Set the globally unknown gateway and its rate limiters. */
 	topo->unknown_gateway = fm_tgateway_default();
 
@@ -94,18 +90,9 @@ fm_topo_state_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_pa
 
 		hop->distance = ttl;
 		hop->ratelimit = &topo->unknown_gateway->unknown_next_hop_rate[ttl];
-	}
 
-	if (topo->packet_proto->supported_parameters & FM_FEATURE_SOCKET_SHARING_MASK) {
-		topo->shared_socks = fm_topo_shared_sockets_get(topo->packet_proto, topo->family);
-
-		if (extra_params->packet_proto_params) {
-			fm_log_warning("traceroute: ignoring %s options", packet_proto_name);
-			/* If we want to honor these, we would need to share fm_topo_shared_sockets_t
-			 * per traceroute probe rather than locally.
-			 * FIXME: maybe stick fm_topo_shared_sockets_t into the tracerout extra_params?
-			 * Would be icky, because it's not really a parameter... :-( */
-		}
+		hop->notifier.callback = fm_topo_hop_pkt_notifier;
+		hop->notifier.user_data = hop;
 	}
 
 	/* start with ttl 1 */
@@ -118,6 +105,17 @@ failed:
 	return NULL;
 
 	return topo;
+}
+
+static bool
+fm_topo_state_init_target(fm_topo_state_t *topo, fm_target_control_t *target_control, fm_target_t *target)
+{
+	const fm_address_t *addr = &target->address;
+
+	target_control->family = addr->ss_family;
+	target_control->target = target;
+	target_control->address = *addr;
+	return true;
 }
 
 /*
@@ -160,6 +158,23 @@ fm_topo_get_packet_probe_class(const char *proto_name)
 	return probe_class;
 }
 
+static bool
+fm_topo_create_packet_probe(fm_topo_state_t *topo)
+{
+	fm_multiprobe_t *packet_probe;
+	fm_probe_params_t params = { .port = 65534, };
+
+	packet_probe = fm_multiprobe_alloc(FM_PROBE_MODE_TOPO, topo->packet_probe_class->name);
+
+	if (!fm_multiprobe_configure(packet_probe, topo->packet_probe_class, &params, NULL)) {
+		fm_multiprobe_free(packet_probe);
+		return false;
+	}
+
+	topo->packet_probe = packet_probe;
+	return true;
+}
+
 static void
 fm_topo_state_free(fm_topo_state_t *topo)
 {
@@ -172,13 +187,15 @@ fm_topo_state_free(fm_topo_state_t *topo)
 
 	for (i = 0; i < FM_MAX_TOPO_DEPTH; ++i) {
 		fm_topo_hop_state_t *hop = &topo->hop[i];
+		unsigned int k;
 
-		if (hop->pending) {
-			fm_job_cancel_completion(hop->pending, hop->completion);
-			hop->pending = NULL;
+		for (k = 0; k < FM_RTT_SAMPLES_WANTED; ++k) {
+			fm_extant_t *extant = hop->pending[k].extant;
 
-			fm_completion_free(hop->completion);
-			hop->completion = NULL;
+			if (extant != NULL) {
+				hop->pending[k].extant = NULL;
+				fm_extant_free(extant);
+			}
 		}
 	}
 
@@ -237,29 +254,30 @@ fm_topo_state_report_flapping_gateways(fm_topo_state_t *topo)
 
 /*
  * Callback from the packet protocol when it received a response, or an error
- * Returning true means: please keep going.
  */
-static bool
-fm_topo_hop_probe_pkt_callback(const fm_probe_t *probe, const fm_pkt_t *pkt, double rtt, void *user_data)
+static void
+fm_topo_hop_pkt_notifier(const fm_extant_t *extant, const fm_pkt_t *pkt, const double *rtt, void *user_data)
 {
 	fm_topo_hop_state_t *hop = user_data;
 	const struct sock_extended_err *ee;
 
+	/* First things first - forget about this extant; it will be freed by the caller */
+	fm_topo_hop_remove_extant(hop, extant);
+
 	if ((ee = pkt->info.ee) == NULL) {
 		/* For UDP, we never receive a response packet - but for ICMP echo probes,
 		 * we actually do. */
-		fm_log_debug("%s responded to %s",
-				fm_address_format(&pkt->peer_addr),
-				probe->name);
+		fm_log_debug("%s responded to traceroute probe",
+				fm_address_format(&pkt->peer_addr));
 
 		fm_topo_hop_set_gateway(hop, &pkt->peer_addr);
 	} else {
 		if (ee->ee_origin != SO_EE_ORIGIN_ICMP && ee->ee_origin != SO_EE_ORIGIN_LOCAL)
-			return true;
+			return;
 
 		if (pkt->info.offender == NULL) {
 			fm_log_error("received ICMP packet but no offender?");
-			return true;
+			return;
 		}
 
 		if (ee->ee_type == ICMP_TIME_EXCEEDED) {
@@ -277,7 +295,7 @@ fm_topo_hop_probe_pkt_callback(const fm_probe_t *probe, const fm_pkt_t *pkt, dou
 					hop->distance,
 					fm_address_format(pkt->info.offender),
 					rtt);
-			return true;
+			return;
 		}
 
 		fm_topo_hop_set_gateway(hop, pkt->info.offender);
@@ -285,13 +303,12 @@ fm_topo_hop_probe_pkt_callback(const fm_probe_t *probe, const fm_pkt_t *pkt, dou
 
 	hop->state = FM_ASSET_STATE_OPEN;
 
-	{
+	if (rtt != NULL) {
 		fm_rtt_stats_t *rtt_stats = &hop->gateway->rtt;
 
-		fm_rtt_stats_update(rtt_stats, rtt);
-		if (rtt_stats->nsamples < FM_RTT_SAMPLES_WANTED) {
-			/* keep going, we want more rtt samples */
-			return true;
+		fm_rtt_stats_update(rtt_stats, *rtt);
+		if (rtt_stats->nsamples >= FM_RTT_SAMPLES_WANTED) {
+			/* FIXME: we're done with this hop */
 		}
 	}
 
@@ -301,12 +318,125 @@ fm_topo_hop_probe_pkt_callback(const fm_probe_t *probe, const fm_pkt_t *pkt, dou
 	 * able to give that token back to the rate limiter.
 	 * Alas, we do not have a back pointer to the target here. */
 
+	return;
+}
+
+/*
+ * After sending the probe packet for given ttl, record the extant here.
+ */
+static void
+fm_topo_hop_add_extant(fm_topo_hop_state_t *hop, fm_extant_t *extant, double relative_timeout)
+{
+	unsigned int index;
+
+	assert(hop->probes_sent < FM_RTT_SAMPLES_WANTED);
+
+	index = hop->probes_sent++;
+	hop->pending[index].extant = extant;
+	hop->pending[index].timeout = fm_time_now() + relative_timeout;
+
+	fm_extant_set_notifier(extant, &hop->notifier);
+}
+
+/*
+ * We received a response. The extant will no longer be valid.
+ */
+static void
+fm_topo_hop_remove_extant(fm_topo_hop_state_t *hop, const fm_extant_t *extant)
+{
+	unsigned int k;
+
+	for (k = 0; k < hop->probes_sent; ++k) {
+		struct fm_topo_hop_extant *hop_pending = &hop->pending[k];
+
+		if (hop_pending->extant == extant)
+			hop_pending->extant = NULL;
+	}
+}
+
+/*
+ * Check all extant probe packets; expire those that are over time.
+ */
+static bool
+fm_topo_hop_check_pending(fm_topo_hop_state_t *hop, double *timeout_ret)
+{
+	fm_time_t now = fm_time_now();
+	bool have_pending = false;
+	unsigned int k;
+
+	fm_timeout_update(timeout_ret, hop->next_send_time);
+
+	for (k = 0; k < hop->probes_sent; ++k) {
+		struct fm_topo_hop_extant *hop_pending = &hop->pending[k];
+
+		if (hop_pending->extant != NULL) {
+			if (hop_pending->timeout <= now) {
+				fm_log_debug("  hop %2u probe %u expired", hop->distance, k);
+				fm_extant_free(hop_pending->extant);
+				hop_pending->extant = NULL;
+			} else {
+				fm_timeout_update(timeout_ret, hop_pending->timeout);
+				have_pending = true;
+			}
+		}
+	}
+
+	return have_pending;
+}
+
+/*
+ * Get the packet timeout for a given hop
+ */
+static bool
+fm_topo_hop_get_timeout(fm_topo_hop_state_t *hop, double *timeout_ret)
+{
+	unsigned int k;
+
+	/* The pending extant are in order of packet transmission, and their
+	 * respective timeout will be send_time + packet_timeout.
+	 * If we can still send packets, return the next_send_time (Assuming
+	 * that packet_spacing <= packet_timeout).
+	 */
+	if (hop->next_send_time != 0) {
+		fm_timeout_update(timeout_ret, hop->next_send_time);
+		return true;
+	}
+
+	for (k = 0; k < hop->probes_sent; ++k) {
+		if (hop->pending[k].extant != NULL) {
+			fm_timeout_update(timeout_ret, hop->pending[k].timeout);
+			return true;
+		}
+	}
+
 	return false;
+}
+
+/*
+ * Cancel any pending extants.
+ */
+static bool
+fm_topo_hop_cancel_pending(fm_topo_hop_state_t *hop)
+{
+	unsigned int k, num_dropped = 0;
+
+	/* The pending extant are in order of packet transmission, and their
+	 * respective timeout will be send_time + packet_spacing */
+	for (k = 0; k < hop->probes_sent; ++k) {
+		if (hop->pending[k].extant != NULL) {
+			fm_extant_free(hop->pending[k].extant);
+			hop->pending[k].extant = NULL;
+			num_dropped += 1;
+		}
+	}
+
+	return !!num_dropped;
 }
 
 /*
  * Callback from the scheduler when one of our hop probes completes
  */
+#if 0
 static void
 fm_topo_hop_probe_complete(const fm_job_t *job, void *user_data)
 {
@@ -323,6 +453,7 @@ fm_topo_hop_probe_complete(const fm_job_t *job, void *user_data)
 		hop->completion = NULL;
 	}
 }
+#endif
 
 /*
  * Get the current probing horizon
@@ -344,7 +475,7 @@ fm_topo_state_max_ttl(fm_topo_state_t *topo)
  * Check whether we have pending probes
  */
 static bool
-fm_topo_state_check_pending(fm_topo_state_t *topo, double *delay_ret)
+fm_topo_state_check_pending(fm_topo_state_t *topo, double *timeout_ret)
 {
 	const fm_time_t now = fm_time_now();
 	unsigned int ttl, max_ttl;
@@ -353,20 +484,17 @@ fm_topo_state_check_pending(fm_topo_state_t *topo, double *delay_ret)
 	max_ttl = fm_topo_state_max_ttl(topo);
 	for (ttl = 1; ttl < max_ttl; ++ttl) {
 		fm_topo_hop_state_t *hop = &topo->hop[ttl];
-		fm_job_t *pending;
-		double delay;
+		double hop_timeout = 0;
 
-		if ((pending = hop->pending) == NULL)
-			continue;
+		if (fm_topo_hop_check_pending(hop, &hop_timeout)) {
+			assert(hop_timeout);
 
-		delay = pending->expires - now;
-		if (delay < 0) {
-			fm_log_warning("traceroute: hop %u has a pending probe w/o expiry", ttl);
-		} else if (delay < *delay_ret) {
-			*delay_ret = delay;
+			fm_log_debug("  %2u pending probe delay=%f sec", ttl, hop_timeout - now);
+			fm_timeout_update(timeout_ret, hop_timeout);
+			have_pending = true;
+		} else {
+			fm_log_debug("  %2u nothing is pending", ttl);
 		}
-		fm_log_debug("  %2u pending probe %s delay=%f sec", ttl, pending->fullname, delay);
-		have_pending = true;
 	}
 
 	return have_pending;
@@ -472,7 +600,7 @@ fm_topo_state_check_gateways(fm_topo_state_t *topo)
  * Select the next distance to probe
  */
 static fm_error_t
-fm_topo_state_select_ttl(fm_topo_state_t *topo, double *delay_ret, fm_topo_hop_state_t **next_hop_ret)
+fm_topo_state_select_ttl(fm_topo_state_t *topo, double *timeout_ret, fm_topo_hop_state_t **next_hop_ret)
 {
 	unsigned int ttl, max_ttl;
 	bool have_pending = false;
@@ -505,7 +633,7 @@ fm_topo_state_select_ttl(fm_topo_state_t *topo, double *delay_ret, fm_topo_hop_s
 	for (ttl = topo->next_ttl; ttl < max_ttl; ++ttl) {
 		fm_topo_hop_state_t *hop = &topo->hop[ttl];
 
-		if (hop->pending != NULL)
+		if (hop->probes_sent >= FM_RTT_SAMPLES_WANTED)
 			continue; /* we've dealt with you already */
 
 		if (hop->state != FM_ASSET_STATE_UNDEF) {
@@ -523,15 +651,17 @@ fm_topo_state_select_ttl(fm_topo_state_t *topo, double *delay_ret, fm_topo_hop_s
 			if (*next_hop_ret == NULL)
 				*next_hop_ret = hop;
 		} else {
-			double delay = fm_ratelimit_wait_until(hop->ratelimit, 1);
+			double timeout, delay = fm_ratelimit_wait_until(hop->ratelimit, 1);
 
 			fm_log_debug("  %2u delay=%f sec", ttl, delay);
-			if (delay < *delay_ret)
-				*delay_ret = delay;
+
+			timeout = fm_time_now() + delay;
+			if (*timeout_ret == 0 || timeout < *timeout_ret)
+				*timeout_ret = timeout;
 		}
 	}
 
-	have_pending = fm_topo_state_check_pending(topo, delay_ret);
+	have_pending = fm_topo_state_check_pending(topo, timeout_ret);
 
 	if (topo->destination_ttl != 0) {
 		/* We have reached the destination.
@@ -540,13 +670,8 @@ fm_topo_state_select_ttl(fm_topo_state_t *topo, double *delay_ret, fm_topo_hop_s
 		for (ttl = topo->destination_ttl + 1; ttl < max_ttl; ++ttl) {
 			fm_topo_hop_state_t *hop = &topo->hop[ttl];
 
-			if (hop->pending == NULL)
-				continue;
-
-			fm_log_debug("  %2u cancel pending probe %s", ttl, hop->pending->fullname);
-			fm_job_cancel_completion(hop->pending, hop->completion);
-			fm_job_mark_complete(hop->pending);
-			hop->pending = NULL;
+			if (fm_topo_hop_cancel_pending(hop))
+				fm_log_debug("  %2u cancelled pending probe(s)", ttl);
 		}
 
 		done = true;
@@ -564,55 +689,58 @@ fm_topo_state_select_ttl(fm_topo_state_t *topo, double *delay_ret, fm_topo_hop_s
 }
 
 static fm_error_t
-fm_topo_state_send_probe(fm_topo_state_t *topo, fm_topo_hop_state_t *hop, double *delay_ret)
+fm_topo_state_send_probe(fm_topo_state_t *topo, fm_topo_hop_state_t *hop, double *timeout_ret)
 {
-	fm_protocol_t *packet_proto = topo->packet_proto;
 	unsigned int ttl = hop->distance;
-	fm_probe_params_t params;
-	fm_probe_t *probe;
+	fm_target_control_t fake_control = topo->_control;
+	fm_extant_t *extant;
+	fm_socket_t *sock;
+	double timeout;
 	fm_error_t error;
 
-	assert(hop->pending == NULL);
-
-	memset(&params, 0, sizeof(params));
-	/* copy retries, port, tos and override ttl */
-	params = topo->params;
-	params.ttl = ttl;
-
-	probe = fm_create_host_probe(topo->packet_probe_class, topo->target, &params, NULL);
-	if (probe == NULL) {
-		fm_log_error("%s: unable to create %s probe", fm_address_format(&topo->target->address), packet_proto->name);
-		return FM_SEND_ERROR;
-	}
+	assert(hop->probes_sent < FM_RTT_SAMPLES_WANTED);
 
 	/* sock sharing is very sustainable. not very hygienic, but sustainable */
-	if (topo->shared_socks != NULL) {
-		fm_socket_t *sock;
-
-		sock = fm_topo_shared_socket_open(topo->shared_socks, ttl);
-		assert(sock->family == topo->host_address.ss_family);
-
-		error = fm_probe_set_socket(probe, sock);
-		if (error != 0) {
-			fm_log_error("%s: unable to set shared socket: %s", probe->name, fm_strerror(error));
-			fm_probe_free(probe);
-			return error;
-		}
-	}
-
-	hop->completion = fm_probe_wait_for_completion(probe, fm_topo_hop_probe_complete, hop);
-
-	fm_probe_install_status_callback(probe, fm_topo_hop_probe_pkt_callback, hop);
-
-	error = fm_target_add_new_probe(topo->target, probe);
-
-	if (error == 0) {
-		fm_ratelimit_consume(hop->ratelimit, 1);
-		hop->state = FM_ASSET_STATE_PROBE_SENT;
-		hop->pending = &probe->job;
+	if (topo->shared_socks == NULL) {
+		abort();
 	} else {
-		hop->state = FM_ASSET_STATE_CLOSED;
+		sock = fm_topo_shared_socket_open(topo->shared_socks, ttl);
 	}
+
+	assert(sock->family == topo->host_address.ss_family);
+
+	/* Overwrite the target control information with the socket for this TTL value, and
+	 * the source address of this socket */
+	fake_control.local_address = sock->local_address;
+	fake_control.sock = sock;
+
+	error = fm_multiprobe_transmit_ttl_probe(topo->packet_probe, &fake_control, ttl, &extant, &timeout);
+	if (error != 0) {
+		fm_log_error("fm_multiprobe_transmit_ttl_probe: %s", fm_strerror(error));
+		hop->state = FM_ASSET_STATE_CLOSED;
+		return error;
+	}
+
+	fm_topo_hop_add_extant(hop, extant, topo->packet_probe->timings.timeout);
+
+	hop->next_send_time = 0;
+	if (hop->probes_sent < FM_RTT_SAMPLES_WANTED)
+		hop->next_send_time = fm_time_now() + topo->packet_probe->timings.packet_spacing;
+
+	// hop->completion = fm_probe_wait_for_completion(probe, fm_topo_hop_probe_complete, hop);
+
+	// fm_multiprobe_install_status_callback(topo->packet_probe, fm_topo_hop_probe_pkt_callback, hop);
+
+	// error = fm_target_add_new_probe(topo->target, probe);
+
+	/* Consume 1 token from the gateway rate limit */
+	fm_ratelimit_consume(hop->ratelimit, 1);
+
+	if (hop->probes_sent >= FM_RTT_SAMPLES_WANTED)
+		hop->state = FM_ASSET_STATE_PROBE_SENT;
+
+	/* The timeout values of this hop have changed; update the global timeout */
+	fm_topo_hop_get_timeout(hop, timeout_ret);
 
 	return error;
 }
@@ -719,17 +847,28 @@ fm_tgateway_for_address(unsigned int distance, const fm_address_t *addr)
  * Shared sockets
  */
 static fm_topo_shared_sockets_t *
-fm_topo_shared_sockets_get(fm_protocol_t *packet_proto, int af)
+fm_topo_shared_sockets_get(fm_protocol_t *packet_proto, const fm_address_t *dst_addr)
 {
 	static fm_topo_shared_sockets_t *shared_socks[64];
 	static unsigned int nshared = 0;
+	fm_routing_info_t rtinfo;
 	fm_topo_shared_sockets_t *s;
 	unsigned int i;
+	int af;
 
+	memset(&rtinfo, 0, sizeof(rtinfo));
+	rtinfo.dst.network_address = *dst_addr;
+
+	if (!fm_routing_lookup(&rtinfo)) {
+		fm_log_error("traceroute: no route to %s", fm_address_format(dst_addr));
+		return NULL;
+	}
+
+	af = dst_addr->ss_family;
 	for (i = 0; i < nshared; ++i) {
 		s = shared_socks[i];
 
-		if (s->packet_proto == packet_proto && s->family == af) {
+		if (s->packet_proto == packet_proto && s->family == af && s->interface == rtinfo.nic) {
 			s->refcount++;
 			return s;
 		}
@@ -740,6 +879,7 @@ fm_topo_shared_sockets_get(fm_protocol_t *packet_proto, int af)
 	s = calloc(1, sizeof(*s));
 	s->refcount = 1;
 	s->packet_proto = packet_proto;
+	s->local_address = rtinfo.src.network_address;
 	s->family = af;
 
 	shared_socks[nshared++] = s;
@@ -754,10 +894,11 @@ fm_topo_shared_socket_open(fm_topo_shared_sockets_t *shared, unsigned ttl)
 
 	if ((sock = shared->socks[ttl]) == NULL) {
 		sock = fm_protocol_create_socket(shared->packet_proto, shared->family);
+		sock->trace = true;
 
 		memset(&local_addr, 0, sizeof(local_addr));
 		local_addr.ss_family = shared->family;
-		if (!fm_socket_bind(sock, &local_addr))
+		if (!fm_socket_bind(sock, &shared->local_address))
 			fm_log_fatal("%s: cannot bind socket", __func__);
 
 		fm_log_debug("Created shared %s socket", shared->packet_proto->name);
@@ -809,18 +950,19 @@ fm_topo_probe_schedule(fm_probe_t *probe)
 /*
  * Send the probe.
  */
+#if 0
 static fm_error_t
 fm_topo_probe_send(fm_probe_t *probe)
 {
 	fm_topo_state_t *topo;
 	fm_topo_hop_state_t *hop;
-	double delay = 1;
+	double timeout = 0;
 	fm_error_t error;
 
 	fm_log_debug("%s: traceroute ready to run", fm_probe_name(probe));
 
 	topo = fm_topo_probe_get_request(probe);
-	error = fm_topo_state_select_ttl(topo, &delay, &hop);
+	error = fm_topo_state_select_ttl(topo, &timeout, &hop);
 	if (hop == NULL) {
 		if (error == 0 || error == FM_TIMED_OUT) {
 			if (fm_debug_level >= 1)
@@ -851,6 +993,7 @@ fm_topo_probe_send(fm_probe_t *probe)
 
 	return error;
 }
+#endif
 
 struct fm_topo_probe {
 	fm_probe_t		base;
@@ -862,7 +1005,7 @@ static struct fm_probe_ops fm_topo_probe_ops = {
 	.name 		= "topo",
 
 	.destroy	= fm_topo_probe_destroy,
-	.send		= fm_topo_probe_send,
+//	.send		= fm_topo_probe_send,
 	.schedule	= fm_topo_probe_schedule,
 };
 
@@ -953,7 +1096,7 @@ fm_topo_create_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_pro
 	fm_probe_t *probe;
 	char name[32];
 
-	topo = fm_topo_state_alloc(NULL, target, params, (fm_topo_extra_params_t *) extra_params);
+	topo = fm_topo_state_alloc(NULL, params, (fm_topo_extra_params_t *) extra_params);
 	if (topo == NULL)
 		return NULL;
 
@@ -963,6 +1106,157 @@ fm_topo_create_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_pro
 	fm_topo_probe_set_request(probe, topo);
 
 	return probe;
+}
+
+/*
+ * New multiprobe implementation
+ */
+static bool
+fm_topo_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task, fm_target_t *target)
+{
+	fm_target_control_t *target_control = &host_task->control;
+	fm_topo_state_t *topo = multiprobe->control;
+	fm_host_asset_t *host_asset;
+
+	if (topo->target != NULL) {
+		fm_log_error("%s: traceroute probe currently supports only one target at a time", multiprobe->name);
+		return false;
+	}
+
+	if (!fm_topo_state_init_target(topo, target_control, target))
+		return false;
+
+	/* At the moment, traceroute is not multiprobe compliant */
+	topo->_control = host_task->control;
+
+	topo->host_address = target->address;
+
+	host_asset = target->host_asset;
+	if (host_asset != NULL) {
+		fm_host_asset_clear_routing(host_asset, topo->family);
+		fm_host_asset_update_state(host_asset, FM_ASSET_STATE_PROBE_SENT);
+	}
+
+	// if (topo->packet_proto->supported_parameters & FM_FEATURE_SOCKET_SHARING_MASK) {
+	if (true) {
+		topo->shared_socks = fm_topo_shared_sockets_get(topo->packet_proto, &target_control->address);
+
+		/* Apply extra params if any */
+	}
+
+	return true;
+}
+
+static fm_error_t
+fm_topo_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task,
+		int param_type, int param_value,
+		fm_extant_t **extant_ret, double *timeout_ret)
+{
+	fm_topo_state_t *topo = multiprobe->control;
+	fm_topo_hop_state_t *hop;
+	double timeout = 0;
+	fm_error_t error;
+
+	fm_log_debug("%s: traceroute ready to run", multiprobe->name);
+
+	error = fm_topo_state_select_ttl(topo, &timeout, &hop);
+	if (hop == NULL) {
+		if (error == 0) {
+			// fm_job_mark_complete(&multiprobe->job);
+			/* Signal to the caller that this host is complete */
+			error = FM_TASK_COMPLETE;
+		} else
+		if (error == FM_TIMED_OUT) {
+			fm_log_debug("%s: no more hops, timed out", host_task->name);
+		} else
+		if (error == FM_TRY_AGAIN) {
+			fm_log_debug("%s: come back in %f seconds", host_task->name, timeout - fm_time_now());
+			*timeout_ret = timeout;
+			assert(*timeout_ret);
+		}
+
+		if (error == FM_TASK_COMPLETE || error == FM_TIMED_OUT) {
+			if (fm_debug_level >= 1)
+				fm_topo_state_display(topo);
+		}
+
+		return error;
+	}
+
+	fm_log_debug("%s/ttl=%u: sending probe packet %u", multiprobe->name, hop->distance, hop->probes_sent);
+
+	error = fm_topo_state_send_probe(topo, hop, &timeout);
+	if (error == 0) {
+		fm_topo_hop_state_t *next_hop;
+
+		*timeout_ret = timeout;
+
+		fm_ratelimit_consume(&host_task->target->host_rate_limit, 1);
+
+		/* The traceroute multiprobe uses just one tasklet for the entire activity, rather than one
+		 * for each probe packet (or one for each hop distance).
+		 * So, we just return TRY_AGAIN and ask to be called back soon.
+		 *
+		 * However, when we do that, the caller will *not* consume any tokens from the
+		 * rate limit of the target host - which is why we have to do it here. */
+		error = fm_topo_state_select_ttl(topo, timeout_ret, &next_hop);
+		if (error == 0) {
+			fm_log_debug("%s: hop %u probe sent; hop %u ready to send", multiprobe->name, hop->distance, next_hop->distance);
+			*timeout_ret = fm_time_now();
+			error = FM_TRY_AGAIN;
+		} else {
+			assert(error == FM_TRY_AGAIN);
+			fm_log_debug("%s: hop %u probe sent; come back in %f sec", multiprobe->name, hop->distance, timeout - fm_time_now());
+		}
+	}
+
+	if (error == FM_TRY_AGAIN)
+		assert(*timeout_ret);
+
+	return error;
+}
+
+static void
+fm_topo_multiprobe_destroy(fm_multiprobe_t *multiprobe)
+{
+	fm_topo_state_t *icmp = multiprobe->control;
+
+	multiprobe->control = NULL;
+	fm_topo_state_free(icmp);
+}
+
+static fm_multiprobe_ops_t	fm_topo_multiprobe_ops = {
+	.add_target		= fm_topo_multiprobe_add_target,
+	.transmit		= fm_topo_multiprobe_transmit,
+	.destroy		= fm_topo_multiprobe_destroy,
+};
+
+static bool
+fm_topo_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const void *extra_params)
+{
+	fm_topo_state_t *topo;
+
+	if (multiprobe->control != NULL) {
+		fm_log_error("cannot reconfigure probe %s", multiprobe->name);
+		return false;
+	}
+
+#ifdef notyet
+	/* Set the default timings and retries */
+	multiprobe->timings.packet_spacing = fm_global.traceroute.packet_spacing;
+	multiprobe->timings.timeout = fm_global.traceroute.timeout;
+	if (multiprobe->params.retries == 0)
+		multiprobe->params.retries = fm_global.traceroute.retries;
+#endif
+
+	topo = fm_topo_state_alloc(pclass->proto, &multiprobe->params, extra_params);
+	if (topo == NULL)
+		return false;
+
+	multiprobe->ops = &fm_topo_multiprobe_ops;
+	multiprobe->control = topo;
+
+	return true;
 }
 
 /*
@@ -978,7 +1272,7 @@ static struct fm_probe_class fm_traceroute_host_probe_class = {
 			  FM_PARAM_TYPE_RETRIES_MASK,
 
 	.process_extra_parameters = fm_topo_process_extra_parameters,
-	.create_probe	= fm_topo_create_probe,
+	.configure	= fm_topo_configure_probe,
 };
 
 FM_PROBE_CLASS_REGISTER(fm_traceroute_host_probe_class)
