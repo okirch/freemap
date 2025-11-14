@@ -81,6 +81,28 @@ fm_pkt_apply_probe_params(fm_pkt_t *pkt, const fm_probe_params_t *params, unsign
 		pkt->info.tos = params->tos;
 }
 
+bool
+fm_pkt_apply_param(fm_pkt_t *pkt, int param_type, unsigned int param_value)
+{
+	switch (param_type) {
+	case FM_PARAM_TYPE_NONE:
+		break;
+
+	case FM_PARAM_TYPE_TTL:
+		pkt->info.ttl = param_value;
+		break;
+
+	case FM_PARAM_TYPE_TOS:
+		pkt->info.tos = param_value;
+		break;
+
+	default:
+		return false;
+	}
+
+	return true;
+}
+
 const void *
 fm_pkt_pull(fm_pkt_t *pkt, unsigned int wanted)
 {

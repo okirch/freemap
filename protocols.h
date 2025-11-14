@@ -102,6 +102,7 @@ extern const void *	fm_pkt_pull(fm_pkt_t *pkt, unsigned int wanted);
 extern const void *	fm_pkt_push(fm_pkt_t *pkt, unsigned int wanted);
 extern fm_pkt_t *	fm_pkt_alloc(int family, unsigned int size);
 extern void		fm_pkt_apply_probe_params(fm_pkt_t *, const fm_probe_params_t *, unsigned int mask);
+extern bool		fm_pkt_apply_param(fm_pkt_t *pkt, int param_type, unsigned int param_value);
 extern void		fm_pkt_free(fm_pkt_t *pkt);
 
 
