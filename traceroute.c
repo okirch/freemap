@@ -28,13 +28,11 @@
 #include "traceroute.h"
 #include "scanner.h"
 #include "protocols.h"
-#include "target.h" /* for fm_probe_t */
+#include "target.h"
 #include "socket.h"
 #include "utils.h"
 
 
-static fm_topo_state_t *	fm_topo_probe_get_request(const fm_probe_t *probe);
-static void			fm_topo_probe_set_request(fm_probe_t *probe, fm_topo_state_t *topo);
 static void			fm_topo_state_free(fm_topo_state_t *topo);
 static fm_probe_class_t *	fm_topo_get_packet_probe_class(const char *proto_name);
 static bool			fm_topo_create_packet_probe(fm_topo_state_t *topo);
@@ -928,108 +926,6 @@ fm_topo_shared_sockets_release(fm_topo_shared_sockets_t *shared)
 	}
 }
 
-/*
- * Probe destructor
- */
-static void
-fm_topo_probe_destroy(fm_probe_t *probe)
-{
-	fm_topo_probe_set_request(probe, NULL);
-}
-
-/*
- * Schedule the probe.
- * This is a no-op, we will do the decision inside fm_topo_probe_send()
- */
-static fm_error_t
-fm_topo_probe_schedule(fm_probe_t *probe)
-{
-	return 0;
-}
-
-/*
- * Send the probe.
- */
-#if 0
-static fm_error_t
-fm_topo_probe_send(fm_probe_t *probe)
-{
-	fm_topo_state_t *topo;
-	fm_topo_hop_state_t *hop;
-	double timeout = 0;
-	fm_error_t error;
-
-	fm_log_debug("%s: traceroute ready to run", fm_probe_name(probe));
-
-	topo = fm_topo_probe_get_request(probe);
-	error = fm_topo_state_select_ttl(topo, &timeout, &hop);
-	if (hop == NULL) {
-		if (error == 0 || error == FM_TIMED_OUT) {
-			if (fm_debug_level >= 1)
-				fm_topo_state_display(topo);
-		}
-
-		if (error == 0) {
-			fm_probe_mark_complete(probe);
-		} else
-		if (error == FM_TIMED_OUT) {
-			fm_log_debug("%s: no more hops, timed out", fm_address_format(&topo->host_address));
-		} else
-		if (error == FM_TRY_AGAIN) {
-			fm_log_debug("%s: come back in %f seconds", fm_address_format(&topo->host_address), delay);
-			fm_probe_set_expiry(probe, delay);
-		}
-
-		return error;
-	}
-
-	fm_log_debug("%s: %s: sending probe with ttl=%u", fm_address_format(&topo->host_address), probe->name, hop->distance);
-
-	error = fm_topo_state_send_probe(topo, hop, &delay);
-	if (error == 0 || error == FM_TRY_AGAIN) {
-		fm_log_debug("%s: hop %u probe sent, come back in %f seconds", fm_address_format(&topo->host_address), hop->distance, delay);
-		fm_probe_set_expiry(probe, delay);
-	}
-
-	return error;
-}
-#endif
-
-struct fm_topo_probe {
-	fm_probe_t		base;
-	fm_topo_state_t *	topo;
-};
-
-static struct fm_probe_ops fm_topo_probe_ops = {
-	.obj_size	= sizeof(struct fm_topo_probe),
-	.name 		= "topo",
-
-	.destroy	= fm_topo_probe_destroy,
-//	.send		= fm_topo_probe_send,
-	.schedule	= fm_topo_probe_schedule,
-};
-
-static fm_topo_state_t *
-fm_topo_probe_get_request(const fm_probe_t *probe)
-{
-	if (probe->ops != &fm_topo_probe_ops)
-		return NULL;
-
-	return ((struct fm_topo_probe *) probe)->topo;
-}
-
-static void
-fm_topo_probe_set_request(fm_probe_t *probe, fm_topo_state_t *topo)
-{
-	if (probe->ops == &fm_topo_probe_ops) {
-		struct fm_topo_probe *priv = (struct fm_topo_probe *) probe;
-
-		if (priv->topo != NULL)
-			fm_topo_state_free(priv->topo);
-		priv->topo = topo;
-	}
-}
-
 static void *
 fm_topo_process_extra_parameters(fm_probe_class_t *pclass, const fm_string_array_t *extra_args)
 {
@@ -1087,25 +983,6 @@ fm_topo_process_extra_parameters(fm_probe_class_t *pclass, const fm_string_array
 failed:
 	free(extra_params);
 	return NULL;
-}
-
-static fm_probe_t *
-fm_topo_create_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
-{
-	fm_topo_state_t *topo;
-	fm_probe_t *probe;
-	char name[32];
-
-	topo = fm_topo_state_alloc(NULL, params, (fm_topo_extra_params_t *) extra_params);
-	if (topo == NULL)
-		return NULL;
-
-	snprintf(name, sizeof(name), "topo/%s", topo->packet_proto->name);
-	probe = fm_probe_alloc(name, &fm_topo_probe_ops, target);
-
-	fm_topo_probe_set_request(probe, topo);
-
-	return probe;
 }
 
 /*
