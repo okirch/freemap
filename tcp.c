@@ -52,11 +52,6 @@ typedef struct fm_tcp_control {
 	fm_tcp_extra_params_t	extra_params;
 } fm_tcp_control_t;
 
-typedef struct fm_tcp_request {
-	fm_tcp_control_t *	control;
-	fm_target_control_t	target_control;
-} fm_tcp_request_t;
-
 typedef struct tcp_extant_info {
 	unsigned int		src_port;
 	unsigned int		dst_port;
@@ -68,9 +63,6 @@ static fm_socket_t *	fm_tcp_create_shared_socket(fm_protocol_t *proto, fm_target
 static bool		fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *);
 static fm_extant_t *	fm_tcp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_tcp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
-
-static fm_tcp_request_t *fm_tcp_probe_get_request(const fm_probe_t *probe);
-static void		fm_tcp_probe_set_request(fm_probe_t *probe, fm_tcp_request_t *tcp);
 
 /* Global extant map for all TCP related stuff */
 static fm_extant_map_t	fm_tcp_extant_map = FM_EXTANT_MAP_INIT;
@@ -104,8 +96,8 @@ fm_tcp_create_socket(fm_protocol_t *proto, int af)
 	sock = fm_socket_create(af, SOCK_RAW, IPPROTO_TCP, proto);
 	if (sock != NULL) {
 		fm_socket_enable_recverr(sock);
+		fm_socket_enable_hdrincl(sock);
 
-		/* Raw sockets always include the IP header, else it's the same as above. */
 		fm_socket_install_data_parser(sock, FM_PROTO_IP);
 		fm_socket_install_data_parser(sock, FM_PROTO_TCP);
 
@@ -212,16 +204,6 @@ fm_tcp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, cons
 	return tcp;
 }
 
-static fm_tcp_request_t *
-fm_tcp_request_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const fm_tcp_extra_params_t *extra_params)
-{
-	fm_tcp_request_t *req;
-
-	req = calloc(1, sizeof(*req));
-	req->control = fm_tcp_control_alloc(proto, params, extra_params);
-	return req;
-}
-
 static bool
 fm_tcp_control_init_target(fm_tcp_control_t *tcp, fm_target_control_t *target_control, fm_target_t *target)
 {
@@ -244,21 +226,6 @@ fm_tcp_control_init_target(fm_tcp_control_t *tcp, fm_target_control_t *target_co
 		fm_log_warning("TCP: unable to get local address: %m");
 
 	return true;
-}
-
-static bool
-fm_tcp_request_set_target(fm_tcp_request_t *req, fm_target_t *target)
-{
-	return fm_tcp_control_init_target(req->control, &req->target_control, target);
-}
-
-
-static void
-fm_tcp_request_free(fm_tcp_request_t *req)
-{
-	fm_target_control_destroy(&req->target_control);
-	fm_tcp_control_free(req->control);
-	free(req);
 }
 
 /*
@@ -388,7 +355,8 @@ fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *pkt)
 }
 
 static fm_pkt_t *
-fm_tcp_build_raw_packet(fm_tcp_control_t *tcp, uint16_t dst_port, fm_target_control_t *target_control)
+fm_tcp_build_raw_packet(fm_tcp_control_t *tcp, uint16_t dst_port, fm_target_control_t *target_control,
+		const fm_probe_params_t *params)
 {
 	fm_tcp_header_info_t hdrinfo;
 	fm_address_t dst_addr;
@@ -404,15 +372,20 @@ fm_tcp_build_raw_packet(fm_tcp_control_t *tcp, uint16_t dst_port, fm_target_cont
 		hdrinfo.ack_seq = tcp->extra_params.ack;
 	hdrinfo.mtu = 576;
 
-	payload = fm_buffer_alloc(128);
-	tcp_hdr_addr = (void *) fm_buffer_head(payload);
-
 	/* Build the dest addr with port */
 	dst_addr = target_control->address;
 	fm_address_set_port(&dst_addr, dst_port);
 
+	payload = fm_buffer_alloc(128);
+
+	if (!fm_raw_packet_add_network_header(payload, &target_control->local_address, &dst_addr,
+					IPPROTO_TCP, params->ttl, params->tos,
+					20 /* standard TCP header length */))
+		return NULL; /* FIXME: free payload */
+
+	tcp_hdr_addr = (void *) fm_buffer_head(payload);
 	if (!fm_raw_packet_add_tcp_header(payload, &target_control->local_address, &dst_addr, &hdrinfo, 0))
-		return NULL;
+		return NULL; /* FIXME: free payload */
 
 	/* Prepare the checksum pseudo header */
 	if (tcp->csum_header == NULL && target_control->family == AF_INET6) {
@@ -435,29 +408,15 @@ fm_tcp_build_raw_packet(fm_tcp_control_t *tcp, uint16_t dst_port, fm_target_cont
 	pkt = fm_pkt_alloc(target_control->family, 0);
 	pkt->payload = payload;
 	pkt->peer_addr = target_control->address;
-	fm_address_set_port(&pkt->peer_addr, 0);
+	fm_address_set_port(&pkt->peer_addr, dst_port);
 	return pkt;
-}
-
-static fm_error_t
-fm_tcp_control_schedule(fm_tcp_control_t *tcp, fm_time_t *expires)
-{
-	if (tcp->params.retries == 0)
-		return FM_TIMED_OUT;
-
-	/* After sending the last probe, we wait until the full timeout has expired.
-	 * For any earlier probe, we wait for the specified packet spacing */
-	if (tcp->params.retries == 1)
-		*expires = fm_time_now() + 1e-3 * fm_global.tcp.timeout;
-	else
-		*expires = fm_time_now() + 1e-3 * fm_global.tcp.packet_spacing;
-	return 0;
 }
 
 static fm_error_t
 fm_tcp_request_send(fm_tcp_control_t *tcp, fm_target_control_t *target_control, int param_type, int param_value, fm_extant_t **extant_ret)
 {
 	fm_tcp_extant_info_t extant_info;
+	fm_probe_params_t param_copy;
 	uint16_t src_port, dst_port;
 
 	if (target_control->sock == NULL) {
@@ -483,20 +442,22 @@ fm_tcp_request_send(fm_tcp_control_t *tcp, fm_target_control_t *target_control, 
 					fm_address_format(&target_control->address));
 	}
 
+	param_copy = tcp->params;
 	src_port = fm_address_get_port(&target_control->local_address);
 	dst_port = tcp->params.port;
 	if (param_type == FM_PARAM_TYPE_PORT)
 		dst_port = param_value;
+	else if (param_type == FM_PARAM_TYPE_TTL)
+		param_copy.ttl = param_value;
+	else if (param_type == FM_PARAM_TYPE_TOS)
+		param_copy.tos = param_value;
 
 	{
 		/* build the TCP packet and transmit */
 		fm_pkt_t *pkt;
 
-		if (!(pkt = fm_tcp_build_raw_packet(tcp, dst_port, target_control)))
+		if (!(pkt = fm_tcp_build_raw_packet(tcp, dst_port, target_control, &param_copy)))
 			return FM_SEND_ERROR;
-
-		/* apply ttl, tos etc */
-		fm_pkt_apply_probe_params(pkt, &tcp->params, tcp->proto->supported_parameters);
 
 		if (!fm_socket_send_pkt_and_burn(target_control->sock, pkt))
 			return FM_SEND_ERROR;
@@ -507,108 +468,11 @@ fm_tcp_request_send(fm_tcp_control_t *tcp, fm_target_control_t *target_control, 
 				target_control->family, IPPROTO_TCP, &extant_info, sizeof(extant_info));
 
 	/* update the asset state */
-	fm_target_update_port_state(target_control->target, FM_PROTO_TCP, tcp->params.port, FM_ASSET_STATE_PROBE_SENT);
+	fm_target_update_port_state(target_control->target, FM_PROTO_TCP, dst_port, FM_ASSET_STATE_PROBE_SENT);
 
 	tcp->params.retries -= 1;
 
 	return 0;
-}
-
-/*
- * TCP port probes using standard BSD sockets
- */
-struct fm_tcp_port_probe {
-	fm_probe_t		base;
-	fm_tcp_request_t *	tcp;
-};
-
-static void
-fm_tcp_port_probe_destroy(fm_probe_t *probe)
-{
-	fm_tcp_request_t *tcp = fm_tcp_probe_get_request(probe);
-
-	if (tcp != NULL) {
-		fm_tcp_request_free(tcp);
-		fm_tcp_probe_set_request(probe, NULL);
-	}
-
-	fm_extant_map_forget_probe(&fm_tcp_extant_map, probe);
-}
-
-/*
- * Check whether we're clear to send. If so, set the probe timer
- */
-static fm_error_t
-fm_tcp_port_probe_schedule(fm_probe_t *probe)
-{
-	fm_tcp_request_t *req = fm_tcp_probe_get_request(probe);
-
-	return fm_tcp_control_schedule(req->control, &probe->job.expires);
-}
-
-/*
- * Transmit a packet
- */
-static fm_error_t
-fm_tcp_port_probe_send(fm_probe_t *probe)
-{
-	fm_tcp_request_t *req = fm_tcp_probe_get_request(probe);
-	fm_extant_t *extant = NULL;
-	fm_error_t error;
-
-	error = fm_tcp_request_send(req->control, &req->target_control, FM_PARAM_TYPE_NONE, 0, &extant);
-	if (extant != NULL)
-		extant->probe = probe;
-
-	return error;
-}
-
-static struct fm_probe_ops fm_tcp_port_probe_ops = {
-	.obj_size	= sizeof(struct fm_tcp_port_probe),
-	.name 		= "tcp",
-
-	.destroy	= fm_tcp_port_probe_destroy,
-	.schedule	= fm_tcp_port_probe_schedule,
-	.send		= fm_tcp_port_probe_send,
-};
-
-static fm_tcp_request_t *
-fm_tcp_probe_get_request(const fm_probe_t *probe)
-{
-	return ((struct fm_tcp_port_probe *) probe)->tcp;
-}
-
-static void
-fm_tcp_probe_set_request(fm_probe_t *probe, fm_tcp_request_t *tcp)
-{
-	((struct fm_tcp_port_probe *) probe)->tcp = tcp;
-}
-
-static fm_probe_t *
-fm_tcp_create_parameterized_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
-{
-	fm_protocol_t *proto = pclass->proto;
-	fm_tcp_request_t *req;
-	fm_probe_t *probe;
-	char name[32];
-
-	assert(proto && proto->id == FM_PROTO_TCP);
-
-	if (!(req = fm_tcp_request_alloc(proto, params, extra_params)))
-		return NULL;
-
-	fm_tcp_request_set_target(req, target);
-
-	snprintf(name, sizeof(name), "tcp/%u", params->port);
-	probe = fm_probe_alloc(name, &fm_tcp_port_probe_ops, target);
-
-	fm_tcp_probe_set_request(probe, req);
-
-	/* TCP services may take up to .5 sec for the queued TCP connection to be accepted. */
-	probe->rtt_application_bias = fm_global.tcp.application_delay;
-
-	fm_log_debug("Created TCP socket probe for %s\n", target->id);
-	return probe;
 }
 
 /*
@@ -677,7 +541,6 @@ static struct fm_probe_class	fm_tcp_port_probe_class = {
 	.name		= "tcp",
 	.proto_id	= FM_PROTO_TCP,
 	.modes		= FM_PROBE_MODE_TOPO|FM_PROBE_MODE_HOST|FM_PROBE_MODE_PORT,
-	.create_probe	= fm_tcp_create_parameterized_probe,
 	.configure	= fm_tcp_configure_probe,
 };
 
