@@ -31,7 +31,7 @@
 
 #include "scanner.h"
 #include "protocols.h"
-#include "target.h" /* for fm_probe_t */
+#include "target.h"
 #include "buffer.h"
 #include "utils.h"
 #include "icmp.h"
@@ -46,9 +46,6 @@ static int		fm_icmp_protocol_for_family(int af);
 static void		fm_icmp_request_build_extant_info(fm_icmp_extant_info_t *info, int v4_request_type, int v4_response_type, int id, int seq);
 static fm_extant_t *	fm_icmp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_icmp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
-
-static fm_icmp_request_t *fm_icmp_probe_get_request(const fm_probe_t *probe);
-static void		fm_icmp_probe_set_request(fm_probe_t *probe, fm_icmp_request_t *icmp);
 
 /* Global extant map for all ICMP related stuff */
 static fm_extant_map_t	fm_icmp_extant_map = FM_EXTANT_MAP_INIT;
@@ -331,16 +328,6 @@ fm_icmp_control_free(fm_icmp_control_t *icmp)
 	free(icmp);
 }
 
-static fm_icmp_request_t *
-fm_icmp_request_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const fm_icmp_extra_params_t *extra_params)
-{
-	fm_icmp_request_t *req;
-
-	req = calloc(1, sizeof(*req));
-	req->control = fm_icmp_control_alloc(proto, params, extra_params);
-	return req;
-}
-
 static bool
 fm_icmp_request_init_target(fm_icmp_control_t *icmp, fm_target_control_t *target_control, fm_target_t *target)
 {
@@ -360,128 +347,10 @@ fm_icmp_request_init_target(fm_icmp_control_t *icmp, fm_target_control_t *target
 	return true;
 }
 
-static bool
-fm_icmp_request_set_target(fm_icmp_request_t *req, fm_target_t *target)
-{
-	return fm_icmp_request_init_target(req->control, &req->target_control, target);
-}
-
-static bool
-fm_icmp_request_set_broadcast(fm_icmp_request_t *req, int af, const fm_interface_t *nic, const fm_address_t *net_src_addr)
-{
-	fm_icmp_control_t *icmp = req->control;
-	fm_address_t network_broadcast;
-	struct sockaddr_ll lladdr, llbcast;
-	fm_socket_t *sock;
-	fm_target_control_t *target_control;
-
-	/* Note, for IPv6 over ethernet, the get_llbroadcast function will actually return the
-	 * all-nodes MAC multicast address 33:33:00:00:00:01.
-	 * I wonder what this does for IPv4... */
-	if (!fm_interface_get_lladdr(nic, &lladdr)
-	 || !fm_interface_get_llbroadcast(nic, &llbcast))
-		return false;
-
-	if (af == AF_INET) {
-		fm_address_set_ipv4_local_broadcast(&network_broadcast);
-		lladdr.sll_protocol = htons(ETH_P_IP);
-		llbcast.sll_protocol = htons(ETH_P_IP);
-	} else if (af == AF_INET6) {
-		fm_address_set_ipv6_all_hosts_multicast(&network_broadcast);
-		lladdr.sll_protocol = htons(ETH_P_IPV6);
-		llbcast.sll_protocol = htons(ETH_P_IPV6);
-	} else {
-		return false;
-	}
-
-	if (af != AF_INET6) {
-		fm_log_error("ICMP broadcast currently implemented for IPv6 only");
-		return false;
-	}
-
-	/* get a PF_PACKET socket */
-	sock = fm_raw_socket_get((fm_address_t *) &lladdr, icmp->proto, SOCK_DGRAM);
-	if (sock == NULL)
-		return false;
-
-	target_control = &req->target_control;
-	target_control->family = af;
-	target_control->address = network_broadcast;
-
-	icmp->sock = sock;
-	icmp->sock_is_shared = true;
-
-	icmp->packet_header = fm_buffer_alloc(128);
-	fm_raw_packet_add_ipv6_header(icmp->packet_header, net_src_addr, &network_broadcast, 
-			IPPROTO_ICMPV6, icmp->params.ttl, icmp->params.tos, 
-			sizeof(struct icmp6_hdr));
-
-	icmp->csum_header = fm_ipv6_checksum_header(net_src_addr, &network_broadcast, IPPROTO_ICMPV6);
-	icmp->csum_header->checksum.offset = 2;
-	icmp->csum_header->checksum.width = 2;
-
-	/* Normally, extants are destroyed after the first response; we want them to
-	 * stay around so that we see *all* responses */
-	icmp->extants_are_multi_shot = true;
-
-	return icmp;
-}
-
-/*
- * Free an existing request
- */
-static void
-fm_icmp_request_free(fm_icmp_request_t *req)
-{
-	fm_target_control_destroy(&req->target_control);
-	fm_icmp_control_free(req->control);
-	free(req);
-}
-
 /*
  * Set the shared socket (for traceroute)
  */
-static void
-fm_icmp_control_set_socket(fm_icmp_control_t *icmp, fm_socket_t *sock)
-{
-	icmp->sock = sock;
-	icmp->sock_is_shared = true;
-}
-
-/*
- * Do the scheduling
- */
-static fm_error_t
-fm_icmp_control_schedule(fm_icmp_control_t *icmp, fm_time_t *expires)
-{
-	if (icmp->params.retries == 0)
-		return FM_TIMED_OUT;
-
-	/* After sending the last probe, we wait until the full timeout has expired.
-	 * For any earlier probe, we wait for the specified packet spacing */
-	if (icmp->params.retries == 1)
-		*expires = fm_time_now() + 1e-3 * fm_global.icmp.timeout;
-	else
-		*expires = fm_time_now() + 1e-3 * fm_global.icmp.packet_spacing;
-	return 0;
-}
-
-static inline bool
-fm_icmp_instantiate_params(struct icmp_params *params, fm_target_t *target)
-{
-	/* params->host_address = target->address; */
-
-	params->ipproto = fm_icmp_protocol_for_family(target->address.ss_family);
-	if (params->ipproto < 0) {
-		fm_log_error("Cannot create ICMP probe for %s", fm_address_format(&target->address));
-		return false;
-	}
-
-	/* params->ident = 0x1234; */
-	return true;
-}
-
-int
+static int
 fm_icmp_protocol_for_family(int af)
 {
 	switch (af) {
@@ -649,159 +518,6 @@ fm_icmp_request_send(fm_icmp_control_t *icmp, fm_target_control_t *host,
 	return 0;
 }
 
-/*
- * The ICMP host probe
- */
-struct fm_icmp_host_probe {
-	fm_probe_t		base;
-	fm_icmp_request_t *	icmp;
-
-	void			(*discovery_callback)(const fm_address_t *, void *);
-	void *			user_data;
-};
-
-/*
- * Check whether we're clear to send. If so, set the probe timer
- */
-static fm_error_t
-fm_icmp_host_probe_schedule(fm_probe_t *probe)
-{
-	fm_icmp_request_t *req = fm_icmp_probe_get_request(probe);
-
-	if (req == NULL)
-		return FM_NOT_SUPPORTED;
-
-	return fm_icmp_control_schedule(req->control, &probe->job.expires);
-}
-
-
-/*
- * Send the probe.
- */
-static fm_error_t
-fm_icmp_host_probe_send(fm_probe_t *probe)
-{
-	fm_icmp_request_t *req = fm_icmp_probe_get_request(probe);
-	fm_extant_t *extant = NULL;
-	fm_error_t error;
-
-	error = fm_icmp_request_send(req->control, &req->target_control, &extant);
-	if (extant != NULL)
-		extant->probe = probe;
-
-	return error;
-}
-
-static fm_error_t
-fm_icmp_host_probe_set_socket(fm_probe_t *probe, fm_socket_t *sock)
-{
-	fm_icmp_request_t *icmp = fm_icmp_probe_get_request(probe);
-
-	if (icmp == NULL)
-		return FM_NOT_SUPPORTED;
-
-	fm_icmp_control_set_socket(icmp->control, sock);
-	return 0;
-}
-
-static bool
-fm_icmp_host_probe_data_tap(const fm_probe_t *probe, const fm_pkt_t *pkt, double rtt, void *user_data)
-{
-	const struct sock_extended_err *ee;
-
-	if ((ee = pkt->info.ee) == NULL) {
-		/* We received a response. The host is reachable */
-		fm_log_debug("%s: have a response, done", probe->name);
-		return false;
-	} else
-	if (pkt->family == AF_INET && ee->ee_origin == SO_EE_ORIGIN_ICMP) {
-		if (ee->ee_type == ICMP_DEST_UNREACH) {
-			fm_log_debug("%s: received ICMP unreachable", fm_probe_name(probe));
-			return false;
-		} else {
-			fm_log_debug("%s ignoring icmp packet with type %d.%d",
-					fm_address_format(&pkt->peer_addr),
-					ee->ee_type, ee->ee_code);
-		}
-	}
-
-	/* by default, keep going */
-	return true;
-}
-
-static bool
-fm_icmp_discovery_data_tap(const fm_probe_t *probe, const fm_pkt_t *pkt, double rtt, void *user_data)
-{
-	const struct sock_extended_err *ee;
-
-	if ((ee = pkt->info.ee) == NULL) {
-		struct fm_icmp_host_probe *icmp_probe = (struct fm_icmp_host_probe *) probe;
-
-		/* FIXME: link-local addresses need the interface index in the sockaddr.
-		 * Add it. */
-		fm_log_debug("%s: DISCOVERED %s", probe->name, fm_address_format(&pkt->peer_addr));
-		icmp_probe->discovery_callback(&pkt->peer_addr, icmp_probe->user_data);
-	}
-
-	/* keep going */
-	return true;
-}
-
-static void
-fm_icmp_host_probe_set_discovery_callback(fm_probe_t *probe,
-				void (*callback)(const fm_address_t *, void *user_data), void *user_data)
-{
-	struct fm_icmp_host_probe *icmp_probe = (struct fm_icmp_host_probe *) probe;
-
-	icmp_probe->discovery_callback = callback;
-	icmp_probe->user_data = user_data;
-
-	fm_probe_install_status_callback(probe, fm_icmp_discovery_data_tap, NULL);
-}
-
-
-static void
-fm_icmp_host_probe_destroy(fm_probe_t *probe)
-{
-	fm_icmp_probe_set_request(probe, NULL);
-	fm_extant_map_forget_probe(&fm_icmp_extant_map, probe);
-}
-
-static struct fm_probe_ops fm_icmp_host_probe_ops = {
-	.obj_size	= sizeof(struct fm_icmp_host_probe),
-	.name 		= "icmp",
-
-	.default_timeout= 1000,	/* FM_ICMP_RESPONSE_TIMEOUT */
-
-	.destroy	= fm_icmp_host_probe_destroy,
-	.schedule	= fm_icmp_host_probe_schedule,
-	.send		= fm_icmp_host_probe_send,
-	.set_socket	= fm_icmp_host_probe_set_socket,
-};
-
-static fm_icmp_request_t *
-fm_icmp_probe_get_request(const fm_probe_t *probe)
-{
-	if (probe->ops != &fm_icmp_host_probe_ops)
-		return NULL;
-
-	return ((struct fm_icmp_host_probe *) probe)->icmp;
-}
-
-static void
-fm_icmp_probe_set_request(fm_probe_t *probe, fm_icmp_request_t *icmp)
-{
-	struct fm_icmp_host_probe *icmp_probe;
-
-	if (probe->ops != &fm_icmp_host_probe_ops)
-		return;
-
-	icmp_probe = (struct fm_icmp_host_probe *) probe;
-	if (icmp_probe->icmp != NULL)
-		fm_icmp_request_free(icmp_probe->icmp);
-	icmp_probe->icmp = icmp;
-}
-
 static void *
 fm_icmp_process_extra_parameters(const fm_probe_class_t *pclass, const fm_string_array_t *extra_args)
 {
@@ -833,39 +549,6 @@ fm_icmp_process_extra_parameters(const fm_probe_class_t *pclass, const fm_string
 
 	return extra_params;
 
-}
-
-
-static fm_probe_t *
-fm_icmp_create_host_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
-{
-	fm_protocol_t *proto = pclass->proto;
-	fm_icmp_request_t *req;
-	fm_icmp_control_t *icmp;
-	fm_probe_t *probe;
-	char name[32];
-
-	assert(proto && proto->id == FM_PROTO_ICMP);
-
-	req = fm_icmp_request_alloc(proto, params, extra_params);
-	if (req == NULL)
-		return NULL;
-
-	icmp = req->control;
-	if (!fm_icmp_request_set_target(req, target)) {
-		fm_icmp_request_free(req);
-		return NULL;
-	}
-
-	snprintf(name, sizeof(name), "icmp/%s/%04x", icmp->extra_params.type_name, icmp->icmp.seq);
-	probe = fm_probe_alloc(name, &fm_icmp_host_probe_ops, target);
-
-	fm_icmp_probe_set_request(probe, req);
-
-	fm_probe_install_status_callback(probe, fm_icmp_host_probe_data_tap, NULL);
-
-	fm_log_debug("Created ICMP socket probe for %s\n", target->id);
-	return probe;
 }
 
 /*
