@@ -23,7 +23,7 @@
 
 #include "freemap.h"
 #include "protocols.h"
-#include "target.h" /* for fm_probe_t */
+#include "target.h"
 #include "scanner.h"
 #include "rawpacket.h"
 #include "socket.h"
@@ -36,12 +36,6 @@ typedef struct fm_arp_control {
 	fm_probe_params_t	params;
 } fm_arp_control_t;
 
-typedef struct fm_arp_request {
-	fm_arp_control_t *	control;
-
-	fm_target_control_t	target_control;
-} fm_arp_request_t;
-
 typedef struct fm_arp_extant_info {
 	struct in_addr		dst_addr;
 } fm_arp_extant_info_t;
@@ -53,9 +47,6 @@ static fm_extant_t *	fm_arp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hl
 static fm_extant_t *	fm_arp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 
 static void		fm_arp_update_cache(const fm_arp_header_info_t *arp_info, fm_extant_t *extant, int ifindex);
-
-static fm_arp_request_t *fm_arp_probe_get_request(const fm_probe_t *probe);
-static void		fm_arp_probe_set_request(fm_probe_t *probe, fm_arp_request_t *arp);
 
 /* Global extant map for all ARP related stuff */
 static fm_extant_map_t fm_arp_extant_map = FM_EXTANT_MAP_INIT;
@@ -134,29 +125,6 @@ fm_arp_control_init_target(fm_arp_control_t *arp, fm_target_control_t *target_co
 	target_control->arp.src_ipaddr = src_ipaddr;
 	target_control->arp.src_lladdr = src_lladdr;
 	return true;
-}
-
-static fm_arp_request_t *
-fm_arp_request_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const void *extra_params)
-{
-	fm_arp_request_t *req;
-
-	req = calloc(1, sizeof(*req));
-	req->control = fm_arp_control_alloc(proto, params, extra_params);
-	return req;
-}
-
-static bool
-fm_arp_request_set_target(fm_arp_request_t *req, fm_target_t *target)
-{
-	return fm_arp_request_init_target(req->control, &req->target_control, target);
-}
-
-static void
-fm_arp_request_free(fm_arp_request_t *req)
-{
-	fm_arp_control_free(req->control);
-	free(req);
 }
 
 /*
@@ -348,114 +316,6 @@ fm_arp_control_send(fm_arp_control_t *arp, fm_target_control_t *target_control, 
 		arp->params.retries -= 1;
 
 	return 0;
-}
-
-
-/*
- * ARP probes using standard BSD sockets
- */
-struct fm_arp_host_probe {
-	fm_probe_t		base;
-	fm_arp_request_t *	arp;
-};
-
-/*
- * Probe destructor
- */
-static void
-fm_arp_host_probe_destroy(fm_probe_t *probe)
-{
-	fm_arp_request_t *arp = fm_arp_probe_get_request(probe);
-
-	if (arp != NULL) {
-		fm_arp_request_free(arp);
-		fm_arp_probe_set_request(probe, NULL);
-	}
-
-	fm_extant_map_forget_probe(&fm_arp_extant_map, probe);
-}
-
-static fm_error_t
-fm_arp_host_probe_send(fm_probe_t *probe)
-{
-	fm_arp_request_t *arp = fm_arp_probe_get_request(probe);
-	fm_extant_t *extant;
-	fm_error_t error;
-
-	error = fm_arp_request_send(arp->control, &arp->target_control, &extant);
-	if (extant != NULL)
-		extant->probe = probe;
-
-	return error;
-}
-
-static fm_error_t
-fm_arp_host_probe_schedule(fm_probe_t *probe)
-{
-	fm_arp_request_t *req = fm_arp_probe_get_request(probe);
-	fm_arp_control_t *arp = req->control;
-
-	if (arp->params.retries == 0)
-		return FM_TIMED_OUT;
-
-	/* After sending the last probe, we wait until the full timeout has expired.
-	 * For any earlier probe, we wait for the specified packet spacing */
-	if (arp->params.retries == 1)
-		probe->job.expires = fm_time_now() + 1e-3 * fm_global.arp.timeout;
-	else
-		probe->job.expires = fm_time_now() + 1e-3 * fm_global.arp.packet_spacing;
-	return 0;
-}
-
-static struct fm_probe_ops fm_arp_host_probe_ops = {
-	.obj_size	= sizeof(struct fm_arp_host_probe),
-	.name 		= "arp",
-
-	.default_timeout= 1000,	/* FM_ARP_RESPONSE_TIMEOUT */
-
-	.destroy	= fm_arp_host_probe_destroy,
-	.send		= fm_arp_host_probe_send,
-	.schedule	= fm_arp_host_probe_schedule,
-};
-
-static fm_arp_request_t *
-fm_arp_probe_get_request(const fm_probe_t *probe)
-{
-	if (probe->ops != &fm_arp_host_probe_ops)
-		return NULL;
-
-	return ((struct fm_arp_host_probe *) probe)->arp;
-}
-
-static void
-fm_arp_probe_set_request(fm_probe_t *probe, fm_arp_request_t *arp)
-{
-	((struct fm_arp_host_probe *) probe)->arp = arp;
-}
-
-static fm_probe_t *
-fm_arp_create_host_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
-{
-	fm_protocol_t *proto = pclass->proto;
-	fm_arp_request_t *req;
-	fm_probe_t *probe;
-
-	assert(proto && proto->id == FM_PROTO_ARP);
-
-	req = fm_arp_request_alloc(proto, params, extra_params);
-	if (req == NULL)
-		return NULL;
-
-	if (!fm_arp_request_set_target(req, target)) {
-		fm_arp_request_free(req);
-		return NULL;
-	}
-
-	probe = fm_probe_alloc("arp", &fm_arp_host_probe_ops, target);
-	fm_arp_probe_set_request(probe, req);
-
-	fm_log_debug("Created ARP socket probe for %s\n", fm_address_format(&target->address));
-	return probe;
 }
 
 /*
