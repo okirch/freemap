@@ -101,8 +101,11 @@ fm_tcp_create_socket(fm_protocol_t *proto, int af)
 		fm_socket_install_data_parser(sock, FM_PROTO_IP);
 		fm_socket_install_data_parser(sock, FM_PROTO_TCP);
 
+#if 0
+		/* It's a raw socket, so the ICMP message will be parsed by the kernel. */
 		fm_socket_install_error_parser(sock, FM_PROTO_IP);
 		fm_socket_install_error_parser(sock, FM_PROTO_ICMP);
+#endif
 		fm_socket_install_error_parser(sock, FM_PROTO_IP);
 		fm_socket_install_error_parser(sock, FM_PROTO_TCP);
 
