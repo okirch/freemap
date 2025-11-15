@@ -108,7 +108,7 @@ typedef struct fm_target_control {
 		} arp;
 		struct {
 			fm_buffer_t *		packet_header;
-			struct fm_csum_hdr *	csum_header;
+			fm_csum_partial_t	csum;
 			uint16_t		retries;
 		} icmp;
 	};

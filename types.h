@@ -19,6 +19,7 @@
 #define FREEMAP_TYPES_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 
@@ -209,6 +210,10 @@ typedef struct fm_pkt {
 	fm_parsed_pkt_t *	parsed;
 	fm_buffer_t *		payload;
 } fm_pkt_t;
+
+typedef struct fm_csum_partial {
+	uint32_t	value;
+} fm_csum_partial_t;
 
 /*
  * This is used when doing a full routing lookup for PF_PACKET packets.

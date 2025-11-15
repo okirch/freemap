@@ -344,6 +344,13 @@ fm_icmp_request_init_target(fm_icmp_control_t *icmp, fm_target_control_t *target
 	target_control->address = *addr;
 	target_control->sock = sock;
 
+	if (target_control->family == AF_INET6) {
+		fm_ipv6_transport_csum_partial(&target_control->icmp.csum,
+						&target_control->target->local_bind_address,
+						&target_control->address,
+						IPPROTO_ICMPV6);
+	}
+
 	return true;
 }
 
@@ -375,7 +382,6 @@ fm_icmp_request_build_packet(fm_icmp_control_t *icmp, fm_target_control_t *host,
 {
 	fm_pkt_t *pkt = fm_pkt_alloc(host->family, 0);
 	fm_buffer_t *bp, *raw;
-	fm_csum_hdr_t *csum_header;
 
 	if ((raw = host->icmp.packet_header) != NULL) {
 		bp = fm_buffer_alloc(16 + fm_buffer_available(raw));
@@ -383,8 +389,6 @@ fm_icmp_request_build_packet(fm_icmp_control_t *icmp, fm_target_control_t *host,
 	} else {
 		bp = fm_buffer_alloc(16);
 	}
-
-	csum_header = host->icmp.csum_header;
 
 	pkt->payload = bp;
 
@@ -410,10 +414,13 @@ fm_icmp_request_build_packet(fm_icmp_control_t *icmp, fm_target_control_t *host,
 		icmph->icmp6_id = htons(send_params->ident);
 		icmph->icmp6_seq = htons(send_params->sequence);
 
-		if (csum_header != NULL
-		 && !fm_raw_packet_csum(csum_header, icmph, 8)) {
-			fm_log_fatal("got my wires crossed in the icmpv6 checksum thing");
-		}
+		/* Add the length field to the IPv6 pseudo header */
+		fm_csum_partial_u16(&host->icmp.csum, 8);
+
+		/* Add the ICMP header for checksumming */
+		fm_csum_partial_update(&host->icmp.csum, icmph, 8);
+
+		icmph->icmp6_cksum = htons(fm_csum_fold(&host->icmp.csum));
         }
 
 	/* Now construct the extant match.
@@ -587,9 +594,7 @@ fm_icmp_multiprobe_add_broadcast(fm_multiprobe_t *multiprobe, fm_host_tasklet_t 
 			IPPROTO_ICMPV6, icmp->params.ttl, icmp->params.tos, 
 			sizeof(struct icmp6_hdr));
 
-	target_control->icmp.csum_header = fm_ipv6_checksum_header(src_network_addr, dst_network_addr, IPPROTO_ICMPV6);
-	target_control->icmp.csum_header->checksum.offset = 2;
-	target_control->icmp.csum_header->checksum.width = 2;
+	fm_ipv6_transport_csum_partial(&target_control->icmp.csum, src_network_addr, dst_network_addr, IPPROTO_ICMPV6);
 
 	/* Normally, extants are destroyed after the first response; we want them to
 	 * stay around so that we see *all* responses */
@@ -616,10 +621,6 @@ fm_icmp_multiprobe_destroy_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t
 	if (target_control->icmp.packet_header != NULL) {
 		fm_buffer_free(target_control->icmp.packet_header);
 		target_control->icmp.packet_header = NULL;
-	}
-	if (target_control->icmp.csum_header != NULL) {
-		free(target_control->icmp.csum_header);
-		target_control->icmp.csum_header = NULL;
 	}
 }
 

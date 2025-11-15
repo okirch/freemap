@@ -21,6 +21,8 @@
 #define FREEMAP_RAWPACKET_H
 
 #include <stdint.h>
+#include <assert.h>
+
 #include "freemap.h"
 #include "packet.h"
 
@@ -137,8 +139,52 @@ extern bool		fm_raw_packet_pull_arp_header(fm_buffer_t *bp, fm_arp_header_info_t
 extern bool		fm_icmp_header_is_host_unreachable(const fm_icmp_header_info_t *icmp_info);
 extern void		fm_raw_packet_map_icmpv6_codes(fm_icmp_header_info_t *icmp_info, unsigned int type, unsigned int code);
 
+extern bool		fm_ipv6_transport_csum_partial(fm_csum_partial_t *, const fm_address_t *, const fm_address_t *, unsigned int next_header);
 extern fm_csum_hdr_t *	fm_ipv6_checksum_header(const fm_address_t *src_addr, const fm_address_t *dst_addr, int next_header);
 extern bool		fm_raw_packet_csum(fm_csum_hdr_t *pseudo_hdr, void *user_data, unsigned int user_len);
+
+static inline void
+fm_csum_partial_update(fm_csum_partial_t *cp, const void *data, size_t noctets)
+{
+        const uint16_t *p = (const uint16_t *) data;
+	unsigned int nwords = noctets / 2;
+
+	assert((noctets % 2) == 0);
+
+        while (nwords--)
+		cp->value += *p++;
+}
+
+static inline void
+fm_csum_partial_u16(fm_csum_partial_t *cp, uint16_t word)
+{
+	word = htons(word);
+	fm_csum_partial_update(cp, &word, 2);
+}
+
+static inline void
+fm_csum_partial_u32(fm_csum_partial_t *cp, uint32_t word)
+{
+	word = htonl(word);
+	fm_csum_partial_update(cp, &word, 4);
+}
+
+static inline uint16_t
+fm_csum_fold(const fm_csum_partial_t *cp)
+{
+	uint32_t csum = cp->value;
+	uint16_t res;
+
+        csum = (csum >> 16) + (csum & 0xffff);
+        csum += (csum >> 16);
+
+        res = ~csum;
+        if (!res)
+		res = ~0;
+
+        return res;
+}
+
 
 static inline uint16_t
 in_csum(const void *data, size_t noctets)

@@ -387,6 +387,31 @@ failed:
 }
 
 /*
+ * Compute the part of the header checksum that we already know.
+ * Since addition is commutative, we can update this partial checksum with the
+ * length value at any time.
+ */
+bool
+fm_ipv6_transport_csum_partial(fm_csum_partial_t *cp, const fm_address_t *src_addr, const fm_address_t *dst_addr, unsigned int next_header)
+{
+	const struct sockaddr_in6 *six;
+
+	cp->value = 0;
+
+	if (!(six = fm_address_to_ipv6_const(src_addr)))
+		return false;
+	fm_csum_partial_update(cp, &six->sin6_addr, 16);
+
+	if (!(six = fm_address_to_ipv6_const(dst_addr)))
+		return false;
+	fm_csum_partial_update(cp, &six->sin6_addr, 16);
+
+	fm_csum_partial_u16(cp, next_header);
+
+	return true;
+}
+
+/*
  * Compute checksum
  */
 bool
