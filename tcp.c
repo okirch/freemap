@@ -41,8 +41,6 @@ typedef struct fm_tcp_extra_params {
 typedef struct fm_tcp_control {
 	fm_protocol_t *		proto;
 
-	fm_csum_hdr_t *		csum_header;
-
 	/* This is used primarily for connected sockets and
 	 * for traceroute */
 	unsigned int		src_port;
@@ -358,7 +356,6 @@ fm_tcp_build_raw_packet(fm_tcp_control_t *tcp, uint16_t dst_port, fm_target_cont
 {
 	fm_tcp_header_info_t hdrinfo;
 	fm_address_t dst_addr;
-	void *tcp_hdr_addr;
 	fm_buffer_t *payload;
 	fm_pkt_t *pkt;
 
@@ -379,35 +376,20 @@ fm_tcp_build_raw_packet(fm_tcp_control_t *tcp, uint16_t dst_port, fm_target_cont
 	if (!fm_raw_packet_add_network_header(payload, &target_control->local_address, &dst_addr,
 					IPPROTO_TCP, params->ttl, params->tos,
 					20 /* standard TCP header length */))
-		return NULL; /* FIXME: free payload */
+		goto failed;
 
-	tcp_hdr_addr = (void *) fm_buffer_head(payload);
 	if (!fm_raw_packet_add_tcp_header(payload, &target_control->local_address, &dst_addr, &hdrinfo, 0))
-		return NULL; /* FIXME: free payload */
-
-	/* Prepare the checksum pseudo header */
-	if (tcp->csum_header == NULL && target_control->family == AF_INET6) {
-		tcp->csum_header = fm_ipv6_checksum_header(&target_control->local_address, &dst_addr, IPPROTO_TCP);
-		if (tcp->csum_header == NULL) {
-			fm_log_error("refusing to create TCP checksum header for %s -> %s",
-					fm_address_format(&target_control->local_address),
-					fm_address_format(&dst_addr));
-			return NULL;
-		}
-		tcp->csum_header->checksum.offset = 16;
-		tcp->csum_header->checksum.width = 2;
-	}
-
-	if (tcp->csum_header != NULL
-	 && !fm_raw_packet_csum(tcp->csum_header, tcp_hdr_addr, fm_buffer_len(payload, tcp_hdr_addr))) {
-		fm_log_fatal("got my wires crossed in the tcp checksum thing");
-	}
+		goto failed;
 
 	pkt = fm_pkt_alloc(target_control->family, 0);
 	pkt->payload = payload;
 	pkt->peer_addr = target_control->address;
 	fm_address_set_port(&pkt->peer_addr, dst_port);
 	return pkt;
+
+failed:
+	fm_buffer_free(payload);
+	return NULL;
 }
 
 static fm_error_t
