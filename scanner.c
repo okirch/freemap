@@ -88,23 +88,6 @@ fm_scan_action_validate(fm_scan_action_t *action, fm_target_t *target)
 	return action->ops->validate(action, target);
 }
 
-fm_probe_t *
-fm_scan_action_get_next_probe(fm_scan_action_t *action, fm_target_t *target, unsigned int index)
-{
-	fm_probe_t *probe;
-
-	probe = action->ops->get_next_probe(action, target, index);
-	if (probe != NULL) {
-		if (action->barrier && index + 1 >= action->nprobes)
-			probe->job.blocking = true;
-
-		fm_log_debug("   %s created next probe for %s index=%d%s\n",
-				fm_target_get_id(target), action->id, index,
-				probe->job.blocking? " (blocking)": "");
-	}
-	return probe;
-}
-
 fm_scanner_t *
 fm_scanner_create(void)
 {
@@ -162,9 +145,6 @@ fm_scanner_ready(fm_scanner_t *scanner)
 	fm_timestamp_update(&scanner->scan_started);
 	fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
 
-	if (scanner->scheduler == NULL)
-		scanner->scheduler = fm_linear_scheduler_create(scanner);
-
 	fm_scanner_start_stage(scanner);
 
 	return true;
@@ -188,7 +168,7 @@ static void
 fm_scanner_queue_action(fm_scanner_t *scanner, fm_scan_action_t *action)
 {
 	fm_scan_action_array_t *stage = fm_scanner_get_current_stage(scanner);
-	fm_multiprobe_t *multiprobe;
+	fm_multiprobe_t *multiprobe = NULL;
 
 	if (action->mode == FM_PROBE_MODE_TOPO)
 		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_TOPO);
@@ -208,6 +188,20 @@ fm_scanner_queue_action(fm_scanner_t *scanner, fm_scan_action_t *action)
 		fm_log_error("%s: failed to configure probe", action->id);
 		fm_multiprobe_free(multiprobe);
 	}
+
+#if 0
+	/* This is the wrong place; this needs to happen in the multiprobe code when
+	 * selecting the next port */
+	if (multiprobe && port && action->service_catalog) {
+		fm_service_probe_t *service_probe;
+
+		service_probe = fm_service_catalog_get_service_probe(action->service_catalog,
+						action->probe_class->proto_id, port);
+		if (service_probe != NULL) {
+			fm_log_error("%s: implement multiprobe set_service");
+		}
+	}
+#endif
 }
 
 double
@@ -273,20 +267,10 @@ void
 fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 {
 	fm_job_group_t *global_queue;
-	hlist_iterator_t iter;
-	fm_target_t *target;
 
 	if (global_stats->job_quota != 0
 	 && (global_queue = fm_scheduler_get_global_queue()) != NULL)
 		fm_scanner_schedule_job_group(scanner, global_queue, global_stats);
-
-	fm_target_manager_begin(scanner->target_manager, &iter);
-	while (global_stats->job_quota) {
-		if ((target = fm_target_manager_next(scanner->target_manager, &iter)) == NULL)
-			break;
-
-		fm_scanner_schedule_job_group(scanner, &target->job_group, global_stats);
-	}
 }
 
 /*
@@ -399,19 +383,6 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 	/* Reap any targets that we're done with, making room in the pool for
 	 * the next batch of targets. */
 	fm_scanner_process_completed(scanner);
-
-	/* This loops over the entire pool and reaps the status of completed probes */
-	{
-		hlist_iterator_t iter;
-		fm_target_t *target;
-
-		fm_target_manager_begin(scanner->target_manager, &iter);
-		while ((target = fm_target_manager_next(scanner->target_manager, &iter)) != NULL) {
-			if (fm_job_group_reap_complete(&target->job_group)
-			 && fm_target_is_done(target))
-				fm_log_debug("%s all outstanding probes collected\n", target->job_group.name);
-		}
-	}
 
 	if (timeout)
 		*timeout = scan_stats.timeout;
@@ -855,39 +826,8 @@ fm_probe_scan_action_validate(fm_scan_action_t *action, fm_target_t *target)
 	return true;
 }
 
-static fm_probe_t *
-fm_probe_scan_action_get_next_probe(const fm_scan_action_t *action, fm_target_t *target, unsigned int index)
-{
-	fm_probe_t *probe;
-	int port = 0;
-
-	if (action->mode == FM_PROBE_MODE_PORT) {
-		if ((port = fm_uint_array_get(&action->numeric_params, index)) < 0)
-			return NULL;
-
-		probe = fm_create_port_probe(action->probe_class, target, port, &action->probe_params);
-	} else {
-		if (index != 0)
-			return NULL;
-
-		probe = fm_create_host_probe(action->probe_class, target, &action->probe_params, action->extra_params);
-	}
-
-	if (probe && port && action->service_catalog) {
-		fm_service_probe_t *service_probe;
-
-		service_probe = fm_service_catalog_get_service_probe(action->service_catalog,
-						action->probe_class->proto_id, port);
-		if (service_probe != NULL)
-			fm_probe_set_service(probe, service_probe);
-	}
-
-	return probe;
-}
-
 static const struct fm_scan_action_ops	fm_probe_scan_action_ops = {
 	.obj_size	= sizeof(fm_scan_action_t),
-	.get_next_probe	= fm_probe_scan_action_get_next_probe,
 	.validate	= fm_probe_scan_action_validate,
 };
 

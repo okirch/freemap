@@ -13,7 +13,6 @@ OBJS	= projects.o \
 	  udp.o \
 	  icmp.o \
 	  arp.o \
-	  ipproto.o \
 	  rawpacket.o \
 	  traceroute.o \
 	  ratelimit.o \

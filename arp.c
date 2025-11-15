@@ -245,9 +245,6 @@ fm_arp_update_cache(const fm_arp_header_info_t *arp_info, fm_extant_t *extant, i
 {
 	struct sockaddr_ll lladdr;
 
-	if (extant->probe == NULL)
-		return;
-
 	if (ifindex <= 0) {
 		fm_log_warning("Can't update ARP cache; no idea what the ifindex is");
 		return;

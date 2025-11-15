@@ -66,8 +66,6 @@ struct fm_target {
 
 	/* This is where we report host/port state to */
 	fm_host_asset_t *	host_asset;
-
-	fm_job_group_t		job_group;
 };
 
 struct fm_target_pool {
@@ -109,7 +107,6 @@ struct fm_target_manager {
 	fm_target_pool_t **	queues;
 };
 
-extern void		fm_target_forget_pending(fm_target_t *target, const fm_probe_t *probe);
 extern void		fm_target_schedule(fm_target_t *, fm_sched_stats_t *);
 
 extern void		fm_target_pool_make_active(fm_target_pool_t *);
@@ -125,7 +122,6 @@ extern void		fm_target_pool_begin(fm_target_pool_t *, fm_target_pool_iterator_t 
 extern fm_target_t *	fm_target_pool_next(fm_target_pool_iterator_t *);
 
 extern void		fm_scheduler_create_new_probes(fm_scheduler_t *, fm_sched_stats_t *);
-extern fm_probe_t *	fm_scheduler_get_next_probe(fm_scheduler_t *, fm_target_t *);
 extern bool		fm_scheduler_attach_target(fm_scheduler_t *, fm_target_t *);
 extern void		fm_scheduler_detach_target(fm_scheduler_t *, fm_target_t *);
 extern fm_scheduler_t *	fm_linear_scheduler_create(fm_scanner_t *);

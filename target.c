@@ -451,16 +451,12 @@ fm_target_create(const fm_address_t *address, fm_network_t *network)
 	tgt->host_asset = fm_host_asset_get(address, true);
 	fm_host_asset_attach(tgt->host_asset);
 
-	fm_job_group_init(&tgt->job_group, fm_address_format(&tgt->address), &tgt->host_rate_limit);
-
 	return tgt;
 }
 
 void
 fm_target_free(fm_target_t *target)
 {
-	fm_job_group_destroy(&target->job_group);
-
 	drop_string(&target->id);
 
 	if (target->tcp_sock) {
@@ -508,13 +504,6 @@ fm_target_release(fm_target_t *target)
 	fm_log_debug("%s is done - reaping what we have sown\n", target->id);
 
 	hlist_remove(&target->link);
-
-	assert(target->job_group.sched_state == NULL);
-#if 0
-	if (target->job_group.sched_state != NULL)
-		fm_scheduler_detach_target(scanner->scheduler, target);
-#endif
-
 	fm_target_free(target);
 }
 
@@ -581,38 +570,9 @@ fm_target_update_port_state(fm_target_t *target, unsigned int proto_id, unsigned
 bool
 fm_target_is_done(const fm_target_t *target)
 {
-	if (!target->scan_done)
-		return false;
-
-	return fm_job_group_is_done(&target->job_group);
+	/* FIXME: do we need to check for pending probes? */
+	return target->scan_done;
 }
-
-/*
- * A new probe has been created. Schedule it.
- */
-fm_error_t
-fm_target_add_new_probe(fm_target_t *target, fm_probe_t *probe)
-{
-	return fm_job_group_add_new(&target->job_group, &probe->job);
-}
-
-/*
- * Management of extant packets awaiting a reply
- */
-void
-fm_target_forget_pending(fm_target_t *target, const fm_probe_t *probe)
-{
-	hlist_iterator_t iter;
-	fm_extant_t *extant;
-
-	for (extant = fm_extant_iterator_first(&iter, &target->expecting);
-	     extant != NULL;
-	     extant = fm_extant_iterator_next(&iter)) {
-		if (extant->probe == probe)
-			fm_extant_free(extant);
-	}
-}
-
 
 /*
  * Deal with network stats

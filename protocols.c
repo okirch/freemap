@@ -253,7 +253,7 @@ fm_protocol_init_rtt_estimator(unsigned int proto_id, fm_rtt_stats_t *rtt)
 
 
 static inline void
-fm_protocol_attach_rtt_estimator(fm_probe_class_t *pclass, fm_target_t *target, fm_probe_t *probe)
+fm_protocol_attach_rtt_estimator(fm_probe_class_t *pclass, fm_target_t *target, void *probe)
 {
 	fm_network_t *net = target->network;
 	unsigned int proto_id = pclass->proto_id;
@@ -269,55 +269,7 @@ fm_protocol_attach_rtt_estimator(fm_probe_class_t *pclass, fm_target_t *target, 
 	if (rtt->nsamples == 0)
 		fm_protocol_init_rtt_estimator(proto_id, rtt);
 
-	fm_probe_set_rtt_estimator(probe, rtt);
-}
-
-/*
- * FIXME: move to probeclass.c
- * Create host/port probes
- */
-fm_probe_t *
-fm_create_port_probe(fm_probe_class_t *pclass, fm_target_t *target, uint16_t port, const fm_probe_params_t *caller_params)
-{
-	fm_probe_t *probe = NULL;
-
-	if (pclass->create_probe != NULL) {
-		fm_probe_params_t params;
-
-		if (caller_params != NULL)
-			params = *caller_params;
-		params.port = port;
-
-		if (!fm_probe_class_supports(pclass, FM_PARAM_TYPE_PORT)) {
-			fm_log_error("%s probe does not support port parameter", pclass->name);
-			return NULL;
-		}
-
-		/* FIXME: pass the extra_params */
-		probe = pclass->create_probe(pclass, target, &params, NULL);
-	} else {
-		fm_log_error("protocol %s cannot create a port probe\n", pclass->name);
-	}
-
-	if (probe != NULL)
-		fm_protocol_attach_rtt_estimator(pclass, target, probe);
-	return probe;
-}
-
-fm_probe_t *
-fm_create_host_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
-{
-	fm_probe_t *probe = NULL;
-
-	if (pclass->create_probe != NULL) {
-		probe = pclass->create_probe(pclass, target, params, extra_params);
-	} else {
-		fm_log_error("Error: protocol %s cannot create a host probe\n", pclass->name);
-	}
-
-	if (probe != NULL)
-		fm_protocol_attach_rtt_estimator(pclass, target, probe);
-	return probe;
+	// fm_probe_set_rtt_estimator(probe, rtt);
 }
 
 fm_socket_t *

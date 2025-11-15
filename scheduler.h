@@ -117,7 +117,6 @@ struct fm_scheduler {
 		bool		(*attach)(fm_scheduler_t *, fm_target_t *);
 		void		(*detach)(fm_scheduler_t *, fm_target_t *);
 		void		(*create_new_probes)(fm_scheduler_t *, fm_sched_stats_t *);
-		fm_probe_t *	(*get_next_probe)(fm_scheduler_t *, fm_target_t *);
 		void		(*destroy)(fm_scheduler_t *);
 	} *ops;
 };

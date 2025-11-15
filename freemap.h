@@ -117,7 +117,6 @@ extern bool		fm_scanner_next_stage(fm_scanner_t *);
 extern double		fm_scanner_elapsed(fm_scanner_t *);
 extern void		fm_scanner_dump_program(fm_scanner_t *);
 extern fm_scan_action_t *fm_scanner_get_action(fm_scanner_t *, unsigned int);
-extern fm_probe_t *	fm_scan_action_get_next_probe(fm_scan_action_t *action, fm_target_t *target, unsigned int index);
 extern bool		fm_scan_action_validate(fm_scan_action_t *, fm_target_t *);
 extern const char *	fm_scan_action_id(const fm_scan_action_t *action);
 
@@ -129,18 +128,10 @@ extern fm_target_t *	fm_target_create(const fm_address_t *, fm_network_t *);
 extern void		fm_target_free(fm_target_t *);
 extern const char *	fm_target_get_id(const fm_target_t *);
 extern bool		fm_target_is_done(const fm_target_t *);
-extern fm_error_t	fm_target_add_new_probe(fm_target_t *, fm_probe_t *);
 extern bool		fm_target_get_local_bind_address(fm_target_t *, fm_address_t *);
 extern void		fm_target_update_port_state(fm_target_t *, unsigned int proto_id, unsigned int port, fm_asset_state_t state);
 extern void		fm_target_update_host_state(fm_target_t *target, unsigned int proto_id, fm_asset_state_t state);
 
-extern fm_error_t	fm_probe_send(fm_probe_t *);
-extern void		fm_probe_free(fm_probe_t *);
-extern void		fm_probe_set_expiry(fm_probe_t *probe, double seconds);
-extern void		fm_probe_run_globally(fm_probe_t *);
-
-extern bool		fm_probe_wait_for_event(fm_probe_t *, fm_event_callback_t *, fm_event_t);
-extern void		fm_probe_finish_waiting(fm_probe_t *);
 extern void		fm_event_post(fm_event_t event);
 extern void		fm_event_process_all(void);
 

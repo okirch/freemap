@@ -25,7 +25,7 @@
  * Tracking of extant requests
  */
 fm_extant_t *
-fm_extant_alloc_list(fm_probe_t *probe, int af, int ipproto, const void *payload, size_t payload_size, fm_extant_list_t *exlist)
+fm_extant_alloc_list(int af, int ipproto, const void *payload, size_t payload_size, fm_extant_list_t *exlist)
 {
 	fm_extant_t *extant;
 
@@ -33,7 +33,6 @@ fm_extant_alloc_list(fm_probe_t *probe, int af, int ipproto, const void *payload
 
 	extant->family = af;
 	extant->ipproto = ipproto;
-	extant->probe = probe;
 
 	/* by default, an extant will be destroyed as soon as we have a reply. */
 	extant->single_shot = true;
@@ -49,23 +48,9 @@ fm_extant_alloc_list(fm_probe_t *probe, int af, int ipproto, const void *payload
 }
 
 void
-fm_extant_list_forget_probe(fm_extant_list_t *list, const fm_probe_t *probe)
-{
-	hlist_iterator_t iter;
-	fm_extant_t *extant;
-
-	fm_extant_iterator_init(&iter, list);
-	while ((extant = fm_extant_iterator_next(&iter)) != NULL) {
-		if (extant->probe == probe)
-			fm_extant_free(extant);
-	}
-}
-
-void
 fm_extant_free(fm_extant_t *extant)
 {
 	fm_extant_unlink(extant);
-	extant->probe = NULL;
 	extant->tasklet = NULL;
 	free(extant);
 }
@@ -90,7 +75,7 @@ fm_extant_set_notifier(fm_extant_t *extant, const fm_extant_notifier_t *notifier
 static inline void
 fm_extant_invoke_notifier(fm_extant_t *extant, const fm_pkt_t *pkt, const double *rtt)
 {
-	fm_extant_notifier_t *notify = extant->notifier;
+	const fm_extant_notifier_t *notify = extant->notifier;
 
 	if (notify != NULL) {
 		double rtt;
@@ -110,19 +95,9 @@ void
 fm_extant_received_reply(fm_extant_t *extant, const fm_pkt_t *pkt)
 {
 	double rtt = fm_pkt_rtt(pkt, &extant->timestamp);
-	fm_probe_t *probe = extant->probe;
 	fm_tasklet_t *tasklet;
 
-	if (probe != NULL) {
-		fm_probe_update_rtt_estimate(probe, &rtt);
-
-		if (fm_probe_invoke_status_callback(probe, pkt, rtt))
-			return; /* whoever is watching this probe wants us to keep going */
-
-		fm_probe_mark_complete(probe);
-	}
-
-	fm_extant_invoke_notifier(extant, pkt, NULL);
+	fm_extant_invoke_notifier(extant, pkt, &rtt);
 
 	if (extant->single_shot && (tasklet = extant->tasklet) != NULL)
 		fm_tasklet_extant_done(tasklet, extant);
@@ -132,19 +107,9 @@ void
 fm_extant_received_error(fm_extant_t *extant, const fm_pkt_t *pkt)
 {
 	double rtt = fm_pkt_rtt(pkt, &extant->timestamp);
-	fm_probe_t *probe = extant->probe;
 	fm_tasklet_t *tasklet;
 
-	if (probe != NULL) {
-		fm_probe_update_rtt_estimate(probe, &rtt);
-
-		if (fm_probe_invoke_status_callback(probe, pkt, rtt))
-			return; /* whoever is watching this probe wants us to keep going */
-
-		fm_probe_mark_complete(probe);
-	}
-
-	fm_extant_invoke_notifier(extant, pkt, NULL);
+	fm_extant_invoke_notifier(extant, pkt, &rtt);
 
 	if (extant->single_shot && (tasklet = extant->tasklet) != NULL)
 		fm_tasklet_extant_done(tasklet, extant);
@@ -171,15 +136,9 @@ fm_extant_map_add(fm_extant_map_t *map, fm_host_asset_t *host, int family, int i
 {
 	fm_extant_t *extant;
 
-	extant = fm_extant_alloc_list(NULL, family, ipproto, data, len, &map->pending);
+	extant = fm_extant_alloc_list(family, ipproto, data, len, &map->pending);
 	extant->host = host;
 	return extant;
-}
-
-void
-fm_extant_map_forget_probe(fm_extant_map_t *map, const fm_probe_t *probe)
-{
-	fm_extant_list_forget_probe(&map->pending, probe);
 }
 
 bool

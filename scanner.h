@@ -58,7 +58,6 @@ struct fm_scan_action {
 
 		void		(*destroy)(fm_scan_action_t *);
 		bool		(*validate)(fm_scan_action_t *, fm_target_t *);
-		fm_probe_t *	(*get_next_probe)(const fm_scan_action_t *, fm_target_t *, unsigned int);
 	} *ops;
 
 	/* FIXME: we should use pclass to create the protocol control struct much earlier */
@@ -92,10 +91,6 @@ struct fm_scanner {
 	 * that we send to an individual host.
 	 */
 	fm_ratelimit_t		send_rate_limit;
-
-	fm_scheduler_t *	scheduler;
-
-	fm_job_group_t *	global_job_group;
 
 	const fm_service_catalog_t *service_catalog;
 

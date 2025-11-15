@@ -25,7 +25,7 @@
 
 #include "scanner.h"
 #include "protocols.h"
-#include "target.h" /* for fm_probe_t */
+#include "target.h"
 #include "socket.h"
 #include "services.h"
 #include "rawpacket.h"
