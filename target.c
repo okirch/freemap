@@ -100,9 +100,9 @@ fm_target_pool_bsearch(fm_target_pool_t *pool, unsigned int target_id)
 			return mid_id;
 
 		if (target_id < mid_id)
-			i1 = mid_id;
+			i1 = mid;
 		else
-			i0 = mid_id;
+			i0 = mid;
 	}
 
 	if (pool->slots[i0]->pool_id == target_id)
