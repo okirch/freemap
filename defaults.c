@@ -39,6 +39,12 @@ fm_config_init_defaults(fm_config_t *conf)
 	conf->scanner.global_packet_rate = 1000;
 	conf->scanner.target_packet_rate = 10;
 
+	conf->ipv4.ttl = 64;
+	conf->ipv4.tos = 0x10;
+
+	conf->ipv6.ttl = 64;
+	conf->ipv6.tos = 0;	/* actually it's called traffic class */
+
 	/* For the time being, assume that any TCP service may take up to .5 sec for the
          * queued TCP connection to be accepted. */
 	conf->tcp.application_delay = 500;

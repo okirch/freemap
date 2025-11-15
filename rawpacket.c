@@ -98,6 +98,11 @@ fm_raw_packet_add_ipv4_header(fm_buffer_t *bp, const fm_address_t *src_addr, con
 		ok = true;
 	}
 
+	if (ttl == 0)
+		ttl = fm_global.ipv4.ttl;
+	if (tos == 0)
+		tos = fm_global.ipv4.tos;
+
 	if (!ok)
 		return false;
 
@@ -141,13 +146,22 @@ fm_raw_packet_add_ipv6_header(fm_buffer_t *bp, const fm_address_t *src_addr, con
 		ok = true;
 	}
 
+	if (ttl == 0)
+		ttl = fm_global.ipv6.ttl;
+	if (tos == 0)
+		tos = fm_global.ipv6.tos; /* well, traffic class */
+
 	if (!ok)
 		return false;
 
 	ip = fm_buffer_push(bp, sizeof(*ip));
 	memset(ip, 0, sizeof(*ip));
 
+#if 0
 	ip->ip6_vfc = 0x60;
+#else
+	ip->ip6_flow = 0x60000000 | ((tos & 0xFF) << 20);
+#endif
 	ip->ip6_nxt = ipproto;
 	ip->ip6_hlim = ttl;
 	ip->ip6_plen = htons(transport_len);
