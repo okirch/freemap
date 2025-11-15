@@ -266,6 +266,7 @@ fm_raw_packet_add_network_header(fm_buffer_t *bp, const fm_address_t *src_addr, 
 
 /*
  * Perform TCP checksum
+ * FIXME: convert to partial checksum handling
  */
 static bool
 fm_raw_packet_tcp_checksum(const fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr, struct tcphdr *th)
@@ -353,39 +354,6 @@ fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, cons
 	return true;
 }
 
-fm_csum_hdr_t *
-fm_ipv6_checksum_header(const fm_address_t *src_addr, const fm_address_t *dst_addr, int next_header)
-{
-	const struct sockaddr_in6 *six;
-	fm_csum_hdr_t *csum_hdr;
-
-	if (src_addr->ss_family != AF_INET6 || dst_addr->ss_family != AF_INET6)
-		return NULL;
-
-	csum_hdr = calloc(1, sizeof(*csum_hdr) + 128);
-	csum_hdr->space = 128;
-	csum_hdr->len = 40;
-
-	if (!(six = fm_address_to_ipv6_const(src_addr)))
-		goto failed;
-	memcpy(csum_hdr->data, &six->sin6_addr, 16);
-
-	if (!(six = fm_address_to_ipv6_const(dst_addr)))
-		goto failed;
-	memcpy(csum_hdr->data + 16, &six->sin6_addr, 16);
-
-	csum_hdr->data[39] = next_header;
-
-	csum_hdr->length.offset = 32;
-	csum_hdr->length.width = 4;
-
-	return csum_hdr;
-
-failed:
-	free(csum_hdr);
-	return NULL;
-}
-
 /*
  * Compute the part of the header checksum that we already know.
  * Since addition is commutative, we can update this partial checksum with the
@@ -407,77 +375,6 @@ fm_ipv6_transport_csum_partial(fm_csum_partial_t *cp, const fm_address_t *src_ad
 	fm_csum_partial_update(cp, &six->sin6_addr, 16);
 
 	fm_csum_partial_u16(cp, next_header);
-
-	return true;
-}
-
-/*
- * Compute checksum
- */
-bool
-fm_raw_packet_csum_apply_field(const struct fm_csum_hdr_param *param, void *data, unsigned int data_len, unsigned int value) 
-{
-	unsigned char *raw_hdr = data;
-
-	if (param->offset + param->width > data_len)
-		return false;
-
-	if (param->width == 1) {
-		raw_hdr[param->offset] = value;
-	} else
-	if (param->width == 2) {
-		uint16_t value16 = htons(value);
-		memcpy(&raw_hdr[param->offset], &value16, 2);
-	} else
-	if (param->width == 4) {
-		uint32_t value32 = htonl(value);
-		memcpy(&raw_hdr[param->offset], &value32, 4);
-	} else {
-		return false;
-	}
-	return true;
-}
-
-bool
-fm_raw_packet_csum(fm_csum_hdr_t *pseudo_hdr, void *user_data, unsigned int user_len)
-{
-	unsigned int total_len = pseudo_hdr->len + user_len;
-	uint16_t csum;
-
-	assert(total_len <= pseudo_hdr->space);
-
-	/* clear the checksum */
-	if (!fm_raw_packet_csum_apply_field(&pseudo_hdr->checksum, user_data, user_len, 0))
-		return false;
-
-	/* Put the payload length into the pseudo header */
-	if (!fm_raw_packet_csum_apply_field(&pseudo_hdr->length, pseudo_hdr->data, pseudo_hdr->len, user_len))
-		return false;
-
-	memcpy(pseudo_hdr->data + pseudo_hdr->len, user_data, user_len);
-
-	if (false) {
-		fm_log_notice("*** csum header (%u+%u bytes) ***", pseudo_hdr->len, user_len);
-		fm_print_hexdump(pseudo_hdr->data, total_len);
-	}
-
-	/* compute the checksum */
-	csum = in_csum(pseudo_hdr->data, total_len);
-
-	/* and stick the checksum into the proper place */
-	if (!fm_raw_packet_csum_apply_field(&pseudo_hdr->checksum, user_data, user_len, ntohs(csum)))
-		return false;
-
-	/* Verify that the checksum we did actually works */
-	if (true) {
-		memcpy(pseudo_hdr->data + pseudo_hdr->len, user_data, user_len);
-
-		csum = in_csum(pseudo_hdr->data, total_len);
-
-		csum = in_csum(pseudo_hdr->data, total_len);
-		if (csum != 0 && csum != 0xffff)
-			fm_log_warning("Something is broken in our checksum code");
-	}
 
 	return true;
 }

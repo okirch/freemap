@@ -103,17 +103,6 @@ typedef struct fm_parsed_pkt {
 	fm_parsed_hdr_t *	headers[FM_PARSED_PACKET_MAX_PROTOS];
 } fm_parsed_pkt_t;
 
-typedef struct fm_csum_hdr fm_csum_hdr_t;
-struct fm_csum_hdr {
-	struct fm_csum_hdr_param {
-		unsigned int	offset;
-		unsigned int	width;
-	} length, checksum;
-
-	unsigned int		len;
-	unsigned int		space;
-	unsigned char		data[];
-};
 
 extern fm_parsed_hdr_t *fm_parsed_packet_find_next(fm_parsed_pkt_t *, unsigned int proto_id);
 
@@ -140,8 +129,6 @@ extern bool		fm_icmp_header_is_host_unreachable(const fm_icmp_header_info_t *icm
 extern void		fm_raw_packet_map_icmpv6_codes(fm_icmp_header_info_t *icmp_info, unsigned int type, unsigned int code);
 
 extern bool		fm_ipv6_transport_csum_partial(fm_csum_partial_t *, const fm_address_t *, const fm_address_t *, unsigned int next_header);
-extern fm_csum_hdr_t *	fm_ipv6_checksum_header(const fm_address_t *src_addr, const fm_address_t *dst_addr, int next_header);
-extern bool		fm_raw_packet_csum(fm_csum_hdr_t *pseudo_hdr, void *user_data, unsigned int user_len);
 
 static inline void
 fm_csum_partial_update(fm_csum_partial_t *cp, const void *data, size_t noctets)
