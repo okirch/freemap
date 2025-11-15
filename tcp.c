@@ -40,7 +40,6 @@ typedef struct fm_tcp_extra_params {
 
 typedef struct fm_tcp_control {
 	fm_protocol_t *		proto;
-	fm_socket_t *		sock;
 
 	fm_csum_hdr_t *		csum_header;
 
@@ -162,10 +161,6 @@ failed:
 static void
 fm_tcp_control_free(fm_tcp_control_t *tcp)
 {
-	if (tcp->sock != NULL) {
-		fm_socket_free(tcp->sock);
-		tcp->sock = NULL;
-	}
 	free(tcp);
 }
 
