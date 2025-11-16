@@ -93,6 +93,7 @@ fm_command_perform_scan(fm_command_t *cmd)
 	fm_assets_attach(fm_project_get_asset_path(project));
 
 	scanner = fm_scanner_create();
+	program = fm_config_program_alloc();
 
 	if (cmd->nvalues != 0) {
 		if (project->targets.count > 0)
@@ -121,31 +122,22 @@ fm_command_perform_scan(fm_command_t *cmd)
 	}
 
 	if (cmd->cmdid == FM_CMDID_TOPO_SCAN) {
-		program = fm_config_program_build("scan",
-				project->topology_probe?: "traceroute",
-				NULL,
-				NULL);
+		if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_TOPO, project->topology_probe?: "traceroute"))
+			fm_log_fatal("cannot set requested topology scan stage");
 	} else
 	if (cmd->cmdid == FM_CMDID_HOST_SCAN) {
-		program = fm_config_program_build("scan",
-				NULL,
-				project->reachability_probe?: "default",
-				NULL);
+		if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_HOST, project->reachability_probe?: "default"))
+			fm_log_fatal("cannot set requested topology scan stage");
 	} else
 	if (cmd->cmdid == FM_CMDID_PORT_SCAN) {
-		program = fm_config_program_build("scan",
-				NULL,
-				NULL,
-				project->service_probe?: "default");
+		if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_PORT, project->service_probe?: "default"))
+			fm_log_fatal("cannot set requested topology scan stage");
 	} else
 	if (scan_options.program != NULL) {
 		fm_log_fatal("the entire program mess is gone.");
 	} else {
-		program = fm_config_program_build("scan",
-				NULL,
-				project->reachability_probe?: "default",
-				project->service_probe?: "default");
-		if (program == NULL)
+		if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_HOST, project->reachability_probe?: "default")
+		 || !fm_config_program_set_stage(program, FM_SCAN_STAGE_PORT, project->service_probe?: "default"))
 			fm_log_fatal("Could not build scan program");
 	}
 
