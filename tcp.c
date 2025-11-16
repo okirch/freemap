@@ -503,7 +503,7 @@ static fm_multiprobe_ops_t	fm_tcp_multiprobe_ops = {
 };
 
 static bool
-fm_tcp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const void *extra_params)
+fm_tcp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const fm_string_array_t *extra_args)
 {
 	fm_tcp_control_t *tcp;
 
@@ -512,13 +512,17 @@ fm_tcp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipro
 		return false;
 	}
 
+	/* TODO: process extra_args if given */
+	if (extra_args->count) {
+	}
+
 	/* Set the default timings and retries */
 	multiprobe->timings.packet_spacing = fm_global.tcp.packet_spacing * 1e-3;
 	multiprobe->timings.timeout = fm_global.tcp.timeout * 1e-3;
 	if (multiprobe->params.retries == 0)
 		multiprobe->params.retries = fm_global.tcp.retries;
 
-	tcp = fm_tcp_control_alloc(pclass->proto, &multiprobe->params, extra_params);
+	tcp = fm_tcp_control_alloc(pclass->proto, &multiprobe->params, NULL);
 	if (tcp == NULL)
 		return false;
 

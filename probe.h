@@ -43,9 +43,7 @@ struct fm_probe_class {
 	unsigned int		proto_id;
 	fm_protocol_t *		proto;
 
-	void *			(*process_extra_parameters)(const fm_probe_class_t *, const fm_string_array_t *extra_args);
-
-	bool			(*configure)(const fm_probe_class_t *, fm_multiprobe_t *, const void *extra_params);
+	bool			(*configure)(const fm_probe_class_t *, fm_multiprobe_t *, const fm_string_array_t *extra_args);
 };
 
 #define FM_PROBE_CLASS_REGISTER(ops) \

@@ -245,7 +245,6 @@ fm_multiprobe_from_config(fm_probe_class_t *pclass, const fm_config_probe_t *con
 {
 	fm_multiprobe_t *multiprobe;
 	int param_type;
-	void *extra_params = NULL;
 
 	if (pclass->configure == NULL)
 		fm_log_fatal("probe class %s does not support multiprobe", pclass->name);
@@ -269,19 +268,7 @@ fm_multiprobe_from_config(fm_probe_class_t *pclass, const fm_config_probe_t *con
 		multiprobe->bucket_list.count = multiprobe->bucket_list.array.count;
 	}
 
-	/* This is ugly */
-	if (config->extra_args.count != 0) {
-		if (pclass->process_extra_parameters != NULL) {
-			extra_params = pclass->process_extra_parameters(pclass, &config->extra_args);
-			if (extra_params == NULL)
-				goto failed;
-		} else {
-			fm_log_error("%s: found %u unrecognized parameters", multiprobe->name, config->extra_args.count);
-			goto failed;
-		}
-	}
-
-	if (!pclass->configure(pclass, multiprobe, extra_params))
+	if (!pclass->configure(pclass, multiprobe, &config->extra_args))
 		return false;
 
 	if (multiprobe->timings.packet_spacing == 0)

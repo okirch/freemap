@@ -353,7 +353,7 @@ static fm_multiprobe_ops_t	fm_arp_multiprobe_ops = {
 };
 
 static bool
-fm_arp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const void *extra_params)
+fm_arp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const fm_string_array_t *extra_string_args)
 {
 	fm_arp_control_t *arp;
 
@@ -368,7 +368,12 @@ fm_arp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipro
 	if (multiprobe->params.retries == 0)
 		multiprobe->params.retries = fm_global.arp.retries;
 
-	arp = fm_arp_control_alloc(pclass->proto, &multiprobe->params, extra_params);
+	if (extra_string_args && extra_string_args->count != 0) {
+		fm_log_error("%s: found unsupported extra parameters", multiprobe->name);
+		return false;
+	}
+
+	arp = fm_arp_control_alloc(pclass->proto, &multiprobe->params, NULL);
 	if (arp == NULL)
 		return false;
 

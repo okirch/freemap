@@ -46,6 +46,7 @@ static int		fm_icmp_protocol_for_family(int af);
 static void		fm_icmp_request_build_extant_info(fm_icmp_extant_info_t *info, int v4_request_type, int v4_response_type, int id, int seq);
 static fm_extant_t *	fm_icmp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_icmp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
+static bool		fm_icmp_process_extra_parameters(const fm_string_array_t *extra_args, fm_icmp_extra_params_t *extra_params);
 
 /* Global extant map for all ICMP related stuff */
 static fm_extant_map_t	fm_icmp_extant_map = FM_EXTANT_MAP_INIT;
@@ -525,10 +526,9 @@ fm_icmp_request_send(fm_icmp_control_t *icmp, fm_target_control_t *host,
 	return 0;
 }
 
-static void *
-fm_icmp_process_extra_parameters(const fm_probe_class_t *pclass, const fm_string_array_t *extra_args)
+static bool
+fm_icmp_process_extra_parameters(const fm_string_array_t *extra_args, fm_icmp_extra_params_t *extra_params)
 {
-	fm_icmp_extra_params_t *extra_params;
 	const char *type_name = NULL;
 	unsigned int i;
 
@@ -550,11 +550,10 @@ fm_icmp_process_extra_parameters(const fm_probe_class_t *pclass, const fm_string
 
 	if (!fm_icmp_extra_params_set_type(extra_params, type_name)) {
 		fm_log_error("ICMP type %s not supported\n", type_name);
-		free(extra_params);
-		return NULL;
+		return false;
 	}
 
-	return extra_params;
+	return true;
 
 }
 
@@ -642,8 +641,9 @@ static fm_multiprobe_ops_t	fm_icmp_multiprobe_ops = {
 };
 
 static bool
-fm_icmp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const void *extra_params)
+fm_icmp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const fm_string_array_t *extra_string_args)
 {
+	fm_icmp_extra_params_t parsed_extra_params, *extra_params = NULL;
 	fm_icmp_control_t *icmp;
 
 	if (multiprobe->control != NULL) {
@@ -656,6 +656,16 @@ fm_icmp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipr
 	multiprobe->timings.timeout = fm_global.icmp.timeout * 1e-3;
 	if (multiprobe->params.retries == 0)
 		multiprobe->params.retries = fm_global.icmp.retries;
+
+	if (extra_string_args && extra_string_args->count != 0) {
+		memset(&parsed_extra_params, 0, sizeof(parsed_extra_params));
+		if (fm_icmp_process_extra_parameters(extra_string_args, &parsed_extra_params)) {
+			fm_log_warning("ICMP: failed to parse all protocol-specific parameters");
+			return false;
+		}
+
+		extra_params = &parsed_extra_params;
+	}
 
 	icmp = fm_icmp_control_alloc(pclass->proto, &multiprobe->params, extra_params);
 	if (icmp == NULL)
@@ -670,7 +680,6 @@ static struct fm_probe_class fm_icmp_host_probe_class = {
 	.name		= "icmp",
 	.proto_id	= FM_PROTO_ICMP,
 	.modes		= FM_PROBE_MODE_TOPO|FM_PROBE_MODE_HOST,
-	.process_extra_parameters = fm_icmp_process_extra_parameters,
 	.configure	= fm_icmp_configure_probe,
 };
 

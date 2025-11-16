@@ -472,7 +472,7 @@ static fm_multiprobe_ops_t	fm_udp_multiprobe_ops = {
 };
 
 static bool
-fm_udp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const void *extra_params)
+fm_udp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const fm_string_array_t *extra_string_args)
 {
 	fm_udp_control_t *udp;
 
@@ -487,7 +487,12 @@ fm_udp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipro
 	if (multiprobe->params.retries == 0)
 		multiprobe->params.retries = fm_global.udp.retries;
 
-	udp = fm_udp_control_alloc(pclass->proto, &multiprobe->params, extra_params);
+	if (extra_string_args && extra_string_args->count != 0) {
+		fm_log_error("%s: found unsupported extra parameters", multiprobe->name);
+		return false;
+	}
+
+	udp = fm_udp_control_alloc(pclass->proto, &multiprobe->params, NULL);
 	if (udp == NULL)
 		return false;
 

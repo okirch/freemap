@@ -926,17 +926,14 @@ fm_topo_shared_sockets_release(fm_topo_shared_sockets_t *shared)
 	}
 }
 
-static void *
-fm_topo_process_extra_parameters(fm_probe_class_t *pclass, const fm_string_array_t *extra_args)
+static bool
+fm_topo_process_extra_parameters(const fm_string_array_t *extra_args, fm_topo_extra_params_t *extra_params)
 {
-	fm_topo_extra_params_t *extra_params;
-	fm_string_array_t proto_args;
 	unsigned int i;
 
 	extra_params = calloc(1, sizeof(*extra_params));
 	extra_params->packet_proto = "udp"; /* default */
 
-	memset(&proto_args, 0, sizeof(proto_args));
 	for (i = 0; i < extra_args->count; ++i) {
 		const char *arg = extra_args->entries[i];
 		const char *proto_name;
@@ -945,8 +942,8 @@ fm_topo_process_extra_parameters(fm_probe_class_t *pclass, const fm_string_array
 		if (fm_parse_string_argument(arg, "packet-proto", &proto_name)) {
 			proto_id = fm_protocol_string_to_id(proto_name);
 			if (proto_id == FM_PROTO_NONE) {
-				fm_log_error("%s: Unknown protocol in %s", pclass->name,  arg);
-				goto failed;
+				fm_log_error("traceroute: Unknown protocol in %s", arg);
+				return false;
 			}
 			extra_params->packet_proto = fm_protocol_id_to_string(proto_id);
 		} else
@@ -954,35 +951,12 @@ fm_topo_process_extra_parameters(fm_probe_class_t *pclass, const fm_string_array
 		 || fm_parse_numeric_argument(arg, "max-hole-size", &extra_params->max_hole_size)) {
 			/* good to go */
 		} else {
-			fm_string_array_append(&proto_args, arg);
+			fm_log_error("traceroute: unknown option %s", arg);
+			return false;
 		}
 	}
 
-	if (proto_args.count != 0) {
-		fm_probe_class_t *packet_probe_class = fm_topo_get_packet_probe_class(extra_params->packet_proto);
-
-		if (packet_probe_class == NULL)
-			goto failed;
-
-		if (packet_probe_class->process_extra_parameters != NULL)
-			extra_params->packet_proto_params = packet_probe_class->process_extra_parameters(packet_probe_class, &proto_args);
-
-		if (extra_params->packet_proto_params == NULL) {
-			fm_log_error("traceroute/%s: cannot process extra parameters", extra_params->packet_proto);
-			for (i = 0; i < proto_args.count; ++i)
-				fm_log_error("  unknown option %s", proto_args.entries[i]);
-
-			goto failed;
-		}
-
-	}
-
-	fm_string_array_destroy(&proto_args);
-	return extra_params;
-
-failed:
-	free(extra_params);
-	return NULL;
+	return true;
 }
 
 /*
@@ -1109,8 +1083,9 @@ static fm_multiprobe_ops_t	fm_topo_multiprobe_ops = {
 };
 
 static bool
-fm_topo_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const void *extra_params)
+fm_topo_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const fm_string_array_t *extra_string_args)
 {
+	fm_topo_extra_params_t parsed_extra_params, *extra_params = NULL;
 	fm_topo_state_t *topo;
 
 	if (multiprobe->control != NULL) {
@@ -1125,6 +1100,14 @@ fm_topo_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipr
 	if (multiprobe->params.retries == 0)
 		multiprobe->params.retries = fm_global.traceroute.retries;
 #endif
+
+	if (extra_string_args && extra_string_args->count) {
+		memset(&parsed_extra_params, 0, sizeof(parsed_extra_params));
+		if (!fm_topo_process_extra_parameters(extra_string_args, &parsed_extra_params))
+			return false;
+
+		extra_params = &parsed_extra_params;
+	}
 
 	topo = fm_topo_state_alloc(pclass->proto, &multiprobe->params, extra_params);
 	if (topo == NULL)
@@ -1148,7 +1131,6 @@ static struct fm_probe_class fm_traceroute_host_probe_class = {
 			  FM_PARAM_TYPE_TOS_MASK |
 			  FM_PARAM_TYPE_RETRIES_MASK,
 
-	.process_extra_parameters = fm_topo_process_extra_parameters,
 	.configure	= fm_topo_configure_probe,
 };
 
