@@ -134,6 +134,7 @@ fm_raw_packet_add_ipv6_header(fm_buffer_t *bp, const fm_address_t *src_addr, con
 				unsigned int transport_len)
 {
 	const struct sockaddr_in6 *src_inaddr, *dst_inaddr;
+	uint32_t flow_label = random() & 0xFFFFF;
 	struct ip6_hdr *ip;
 	bool ok = false;
 
@@ -157,11 +158,7 @@ fm_raw_packet_add_ipv6_header(fm_buffer_t *bp, const fm_address_t *src_addr, con
 	ip = fm_buffer_push(bp, sizeof(*ip));
 	memset(ip, 0, sizeof(*ip));
 
-#if 0
-	ip->ip6_vfc = 0x60;
-#else
-	ip->ip6_flow = 0x60000000 | ((tos & 0xFF) << 20);
-#endif
+	ip->ip6_flow = htonl(0x60000000 | ((tos & 0xFF) << 20) | flow_label);
 	ip->ip6_nxt = ipproto;
 	ip->ip6_hlim = ttl;
 	ip->ip6_plen = htons(transport_len);
