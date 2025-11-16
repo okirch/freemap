@@ -149,9 +149,10 @@ typedef const struct fm_multiprobe_ops {
 struct fm_multiprobe {
 	fm_job_t		job;
 
-	fm_scan_action_t *	action;
+	fm_probe_class_t *	probe_class;
 	const char *		name;
 	int			probe_mode;
+	int			action_flags;
 
 	struct {
 		double		packet_spacing;

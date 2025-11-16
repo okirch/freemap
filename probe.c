@@ -244,7 +244,8 @@ fm_multiprobe_alloc_action(fm_scan_action_t *action)
 	fm_multiprobe_t *multiprobe;
 
 	multiprobe = fm_multiprobe_alloc(action->mode, action->id);
-	multiprobe->action = action;
+	multiprobe->probe_class = action->probe_class;
+	multiprobe->action_flags = action->probe_class->action_flags | action->flags;
 
 	if (action->mode == FM_PROBE_MODE_PORT) {
 		multiprobe->bucket_list.array = &action->numeric_params;
@@ -304,6 +305,29 @@ fm_multiprobe_configure(fm_multiprobe_t *multiprobe, fm_probe_class_t *pclass, c
 }
 
 /*
+ * Check whether a target could be added to the probe
+ */
+bool
+fm_multiprobe_validate_target(fm_multiprobe_t *multiprobe, fm_target_t *target)
+{
+	fm_probe_class_t *pclass = multiprobe->probe_class;
+	int action_flags = multiprobe->action_flags;
+
+	if ((action_flags & FM_SCAN_ACTION_FLAG_LOCAL_ONLY) && target->local_device == NULL) {
+                if (!(action_flags & FM_SCAN_ACTION_FLAG_OPTIONAL))
+                        fm_log_error("%s: probe %s only supported with local targets", target->id, pclass->name);
+                return false;
+        }
+
+	if (pclass->family != AF_UNSPEC && pclass->family != target->address.ss_family) {
+                fm_log_debug("%s: skipping incompatible probe %s", target->id, pclass->name);
+                return false;
+        }
+
+	return true;
+}
+
+/*
  * Add another target to the probe
  */
 bool
@@ -313,9 +337,9 @@ fm_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_target_t *target)
 
 	/* This action may not be applicable for the target, eg an ARP probe
 	 * makes no sense for IPv6 (well, unless there's a v6 stack out there broken
-	 * enough to response to such queries....)
+	 * enough to respond to such queries....)
 	 */
-	if (multiprobe->action && !fm_scan_action_validate(multiprobe->action, target))
+	if (!fm_multiprobe_validate_target(multiprobe, target))
 		return false;
 
 	host_task = fm_host_tasklet_alloc(target, 1);
