@@ -334,6 +334,13 @@ fm_multiprobe_configure(fm_multiprobe_t *multiprobe, fm_probe_class_t *pclass, c
 	return true;
 }
 
+bool
+fm_multiprobe_set_service_catalog(fm_multiprobe_t *multiprobe, const fm_service_catalog_t *catalog)
+{
+	fm_log_notice("%s: ignoring service catalog for now", multiprobe->name);
+	return true;
+}
+
 /*
  * Check whether a target could be added to the probe
  */

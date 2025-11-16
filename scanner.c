@@ -514,7 +514,7 @@ fm_scanner_add_probe(fm_scanner_t *scanner, const fm_config_probe_t *parsed_prob
 	fm_scanner_queue_action(scanner, action);
 
 	if (pclass->features & FM_FEATURE_SERVICE_PROBES_MASK)
-		action->service_catalog = scanner->service_catalog;
+		fm_multiprobe_set_service_catalog(action->multiprobe, scanner->service_catalog);
 
 	return action;
 
