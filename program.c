@@ -73,7 +73,7 @@ struct fm_config_module {
 
 struct fm_config_routine {
 	const char *		name;
-	int			mode;
+	int			stage;		/* FM_SCAN_STAGE_xxx */
 	bool			optional;
 	fm_config_probe_array_t	probes;
 };
@@ -108,7 +108,7 @@ fm_config_load_library(void)
 }
 
 fm_config_routine_t *
-fm_config_load_routine(int mode, const char *name)
+fm_config_load_routine(int stage, const char *name)
 {
 	fm_config_library_t *lib;
 
@@ -118,7 +118,7 @@ fm_config_load_routine(int mode, const char *name)
 	if ((lib = fm_config_load_library()) == NULL)
 		return NULL;
 
-	return fm_config_library_resolve_routine(lib, mode, name);
+	return fm_config_library_resolve_routine(lib, stage, name);
 }
 
 fm_config_catalog_t *
@@ -146,13 +146,13 @@ fm_config_routine_array_append(fm_config_routine_array_t *array, fm_config_routi
 }
 
 static fm_config_routine_t *
-fm_config_routine_array_find(const fm_config_routine_array_t *array, int mode, const char *name)
+fm_config_routine_array_find(const fm_config_routine_array_t *array, int stage, const char *name)
 {
 	unsigned int i;
 
 	for (i = 0; i < array->count; ++i) {
 		fm_config_routine_t *routine = array->entries[i];
-		if (routine->mode == mode && !strcmp(routine->name, name))
+		if (routine->stage == stage && !strcmp(routine->name, name))
 			return routine;
 	}
 	return NULL;
@@ -239,12 +239,12 @@ fm_config_module_alloc(const char *name)
  * Look up a routine gives its name
  */
 static fm_config_routine_t *
-fm_config_module_find_routine(fm_config_module_t *module, int mode, const char *name)
+fm_config_module_find_routine(fm_config_module_t *module, int stage, const char *name)
 {
 	if (module->state != LOADED)
 		return NULL;
 
-	return fm_config_routine_array_find(&module->routines, mode, name);
+	return fm_config_routine_array_find(&module->routines, stage, name);
 }
 
 /*
@@ -332,12 +332,12 @@ fm_config_library_find_module(fm_config_library_t *lib, const char *name, bool l
  * Handling of routine objects
  */
 static fm_config_routine_t *
-fm_config_routine_alloc(int mode, const char *name, fm_config_routine_array_t *array)
+fm_config_routine_alloc(int stage, const char *name, fm_config_routine_array_t *array)
 {
 	fm_config_routine_t *routine;
 
 	routine = calloc(1, sizeof(*routine));
-	routine->mode = mode;
+	routine->stage = stage;
 	routine->name = strdup(name);
 
 	if (array)
@@ -418,7 +418,7 @@ fm_config_library_parse_catalog_reference(const char **name_p)
 }
 
 extern fm_config_routine_t *
-fm_config_library_resolve_routine(fm_config_library_t *lib, int mode, const char *name)
+fm_config_library_resolve_routine(fm_config_library_t *lib, int stage, const char *name)
 {
 	fm_config_routine_t *routine = NULL;
 	char *module_name;
@@ -432,7 +432,7 @@ fm_config_library_resolve_routine(fm_config_library_t *lib, int mode, const char
 		if (module == NULL || module->state != LOADED)
 			return NULL;
 
-		routine = fm_config_module_find_routine(module, mode, name);
+		routine = fm_config_module_find_routine(module, stage, name);
 	} else {
 		unsigned int i;
 
@@ -441,7 +441,7 @@ fm_config_library_resolve_routine(fm_config_library_t *lib, int mode, const char
 		for (i = 0; i < lib->modules.count && routine == NULL; ++i) {
 			fm_config_module_t *module = lib->modules.entries[i];
 
-			routine = fm_config_module_find_routine(module, mode, name);
+			routine = fm_config_module_find_routine(module, stage, name);
 		}
 	}
 
@@ -636,29 +636,29 @@ fm_config_probe_process_params(const fm_config_probe_t *parsed_probe, fm_uint_ar
  *   host-scan blah { ... }
  */
 static void *
-fm_config_module_create_routine(curly_node_t *node, fm_config_routine_array_t *array, int mode)
+fm_config_module_create_routine(curly_node_t *node, fm_config_routine_array_t *array, int stage)
 {
 	const char *name = curly_node_name(node);
 
-	return fm_config_routine_alloc(mode, name, array);
+	return fm_config_routine_alloc(stage, name, array);
 }
 
 static void *
 fm_config_module_create_topo_routine(curly_node_t *node, void *data)
 {
-	return fm_config_module_create_routine(node, data, FM_PROBE_MODE_TOPO);
+	return fm_config_module_create_routine(node, data, FM_SCAN_STAGE_TOPO);
 }
 
 static void *
 fm_config_module_create_host_routine(curly_node_t *node, void *data)
 {
-	return fm_config_module_create_routine(node, data, FM_PROBE_MODE_HOST);
+	return fm_config_module_create_routine(node, data, FM_SCAN_STAGE_HOST);
 }
 
 static void *
 fm_config_module_create_port_routine(curly_node_t *node, void *data)
 {
-	return fm_config_module_create_routine(node, data, FM_PROBE_MODE_PORT);
+	return fm_config_module_create_routine(node, data, FM_SCAN_STAGE_PORT);
 }
 
 /*
@@ -985,15 +985,15 @@ fm_config_program_build(const char *name, const char *topology_scan, const char 
 
 	program = calloc(1, sizeof(*program));
 	if (topology_scan != NULL
-	 && !(program->topo_scan = fm_config_load_routine(FM_PROBE_MODE_TOPO, topology_scan)))
+	 && !(program->topo_scan = fm_config_load_routine(FM_SCAN_STAGE_TOPO, topology_scan)))
 		goto fail;
 
 	if (host_scan != NULL
-	 && !(program->host_scan = fm_config_load_routine(FM_PROBE_MODE_HOST, host_scan)))
+	 && !(program->host_scan = fm_config_load_routine(FM_SCAN_STAGE_HOST, host_scan)))
 		goto fail;
 
 	if (port_scan != NULL
-	 && !(program->port_scan = fm_config_load_routine(FM_PROBE_MODE_PORT, port_scan)))
+	 && !(program->port_scan = fm_config_load_routine(FM_SCAN_STAGE_PORT, port_scan)))
 		goto fail;
 
 	program->service_catalog = fm_service_catalog_alloc();
@@ -1061,7 +1061,7 @@ fm_config_routine_compile(const fm_config_routine_t *routine, fm_scanner_t *scan
 	for (i = 0; ok && i < routine->probes.count; ++i) {
 		fm_config_probe_t *probe = routine->probes.entries[i];
 
-		ok = fm_scanner_add_probe(scanner, probe) && ok;
+		ok = fm_scanner_add_probe(scanner, routine->stage, probe) && ok;
 	}
 
 	return ok;

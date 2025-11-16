@@ -124,15 +124,12 @@ fm_scanner_get_report(fm_scanner_t *scanner)
 }
 
 static void
-fm_scanner_queue_probe(fm_scanner_t *scanner, int mode, fm_multiprobe_t *multiprobe)
+fm_scanner_queue_probe(fm_scanner_t *scanner, int stage_id, fm_multiprobe_t *multiprobe)
 {
 	fm_scan_action_array_t *stage;
 	fm_scan_action_t *action;
 
-	if (mode == FM_PROBE_MODE_TOPO)
-		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_TOPO);
-	else
-		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_GENERAL);
+	stage = fm_scanner_get_stage(scanner, stage_id);
 
 	action = fm_scan_action_create(multiprobe);
 	fm_scan_action_array_append(stage, action);
@@ -373,7 +370,7 @@ fm_scanner_dump_program(fm_scanner_t *scanner)
  * Create a topo, host or port scan action
  */
 bool
-fm_scanner_add_probe(fm_scanner_t *scanner, const fm_config_probe_t *parsed_probe)
+fm_scanner_add_probe(fm_scanner_t *scanner, int stage, const fm_config_probe_t *parsed_probe)
 {
 	const char *probe_name = parsed_probe->name;
 	int mode = parsed_probe->mode;
@@ -397,7 +394,7 @@ fm_scanner_add_probe(fm_scanner_t *scanner, const fm_config_probe_t *parsed_prob
 	if (pclass->features & FM_FEATURE_SERVICE_PROBES_MASK)
 		fm_multiprobe_set_service_catalog(multiprobe, scanner->service_catalog);
 
-	fm_scanner_queue_probe(scanner, mode, multiprobe);
+	fm_scanner_queue_probe(scanner, stage, multiprobe);
 
 	return true;
 }

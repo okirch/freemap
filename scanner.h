@@ -73,7 +73,7 @@ struct fm_scanner {
 struct fm_scan_action_ops;
 
 extern fm_scan_action_t *	fm_scan_action_create(fm_multiprobe_t *multiprobe);
-extern bool			fm_scanner_add_probe(fm_scanner_t *, const fm_config_probe_t *);
+extern bool			fm_scanner_add_probe(fm_scanner_t *, int stage, const fm_config_probe_t *);
 extern void			fm_scanner_set_service_catalog(fm_scanner_t *, const fm_service_catalog_t *);
 
 extern void			fm_scanner_add_global_job(fm_scanner_t *scanner, fm_job_t *job);

@@ -32,7 +32,7 @@ typedef struct fm_config_packet fm_config_packet_t;
 
 struct fm_config_probe {
 	const char *		name;
-	int			mode;
+	int			mode;		/* FM_PROBE_MODE_xxx */
 
 	bool			optional;
 	bool			random;
