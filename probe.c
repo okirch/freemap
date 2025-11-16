@@ -24,6 +24,7 @@
 #include "protocols.h"
 #include "events.h"
 #include "scanner.h"
+#include "program.h"
 
 #undef FM_PROBE_DEBUG
 #ifdef FM_PROBE_DEBUG
@@ -229,7 +230,8 @@ fm_multiprobe_alloc(int probe_mode, const char *name)
 	fm_multiprobe_t *multiprobe;
 
 	multiprobe = calloc(1, sizeof(*multiprobe));
-	multiprobe->name = name;
+
+	asprintf(&multiprobe->name, "%sscan/%s", fm_probe_mode_to_string(probe_mode), name);
 
 	multiprobe->bucket_list.count = 1;
 	multiprobe->bucket_list.param_type = FM_PARAM_TYPE_NONE;
@@ -239,21 +241,61 @@ fm_multiprobe_alloc(int probe_mode, const char *name)
 }
 
 fm_multiprobe_t *
-fm_multiprobe_alloc_action(fm_scan_action_t *action)
+fm_multiprobe_from_config(fm_probe_class_t *pclass, const fm_config_probe_t *config)
 {
 	fm_multiprobe_t *multiprobe;
+	int param_type;
+	void *extra_params = NULL;
 
-	multiprobe = fm_multiprobe_alloc(action->mode, action->id);
-	multiprobe->probe_class = action->probe_class;
-	multiprobe->action_flags = action->probe_class->action_flags | action->flags;
+	if (pclass->configure == NULL)
+		fm_log_fatal("probe class %s does not support multiprobe", pclass->name);
 
-	if (action->mode == FM_PROBE_MODE_PORT) {
-		multiprobe->bucket_list.array = &action->numeric_params;
-		multiprobe->bucket_list.count = action->numeric_params.count;
-		multiprobe->bucket_list.param_type = FM_PARAM_TYPE_PORT;
+	multiprobe = fm_multiprobe_alloc(config->mode, pclass->name);
+	multiprobe->probe_class = pclass;
+	multiprobe->action_flags = pclass->action_flags;
+
+	/* copy the standard parameters (ttl, tos, ...) */
+	multiprobe->params = config->probe_params;
+
+	if (config->optional)
+		multiprobe->action_flags |= FM_SCAN_ACTION_FLAG_OPTIONAL;
+
+	param_type = fm_config_probe_process_params(config, &multiprobe->bucket_list.array);
+	if (param_type < 0)
+		goto failed;
+
+	if (param_type != FM_PARAM_TYPE_NONE) {
+		multiprobe->bucket_list.param_type = param_type;
+		multiprobe->bucket_list.count = multiprobe->bucket_list.array.count;
 	}
 
+	/* This is ugly */
+	if (config->extra_args.count != 0) {
+		if (pclass->process_extra_parameters != NULL) {
+			extra_params = pclass->process_extra_parameters(pclass, &config->extra_args);
+			if (extra_params == NULL)
+				goto failed;
+		} else {
+			fm_log_error("%s: found %u unrecognized parameters", multiprobe->name, config->extra_args.count);
+			goto failed;
+		}
+	}
+
+	if (!pclass->configure(pclass, multiprobe, extra_params))
+		return false;
+
+	if (multiprobe->timings.packet_spacing == 0)
+		multiprobe->timings.packet_spacing = 0.5;
+	if (multiprobe->timings.timeout == 0)
+		multiprobe->timings.timeout = 0.5;
+	if (multiprobe->params.retries == 0)
+		multiprobe->params.retries = 3;
+
 	return multiprobe;
+
+failed:
+	fm_multiprobe_free(multiprobe);
+	return NULL;
 }
 
 
@@ -261,6 +303,7 @@ void
 fm_multiprobe_free(fm_multiprobe_t *multiprobe)
 {
 	assert(multiprobe->job.group == NULL);
+	drop_string(&multiprobe->name);
 	free(multiprobe);
 }
 
@@ -427,11 +470,8 @@ fm_multiprobe_create_tasklet(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *hos
 
 	param_type = multiprobe->bucket_list.param_type;
 	if (param_type != FM_PARAM_TYPE_NONE) {
-		if (multiprobe->bucket_list.array == NULL)
-			return false;
-
 		tasklet->param_type = param_type;
-		tasklet->param_value = fm_uint_array_get(multiprobe->bucket_list.array, tasklet->probe_index);
+		tasklet->param_value = fm_uint_array_get(&multiprobe->bucket_list.array, tasklet->probe_index);
 
 		switch (param_type) {
 		case FM_PARAM_TYPE_PORT:

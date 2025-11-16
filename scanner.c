@@ -168,7 +168,6 @@ static void
 fm_scanner_queue_action(fm_scanner_t *scanner, fm_scan_action_t *action)
 {
 	fm_scan_action_array_t *stage = fm_scanner_get_current_stage(scanner);
-	fm_multiprobe_t *multiprobe = NULL;
 
 	if (action->mode == FM_PROBE_MODE_TOPO)
 		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_TOPO);
@@ -176,18 +175,9 @@ fm_scanner_queue_action(fm_scanner_t *scanner, fm_scan_action_t *action)
 		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_GENERAL);
 	fm_scan_action_array_append(stage, action);
 
-	/* Not sure if it's really good to attach the multiprobe at this point already... */
-	multiprobe = fm_multiprobe_alloc_action(action);
-	if (fm_multiprobe_configure(multiprobe, action->probe_class, &action->probe_params, action->extra_params)) {
-		action->multiprobe = multiprobe;
-
-		/* Create a separate target queue through which we'll feed new
-		 * scan targets to the probe. */
-		action->target_queue = fm_target_manager_create_queue(scanner->target_manager);
-	} else {
-		fm_log_error("%s: failed to configure probe", action->id);
-		fm_multiprobe_free(multiprobe);
-	}
+	/* Create a separate target queue through which we'll feed new
+	 * scan targets to the probe. */
+	action->target_queue = fm_target_manager_create_queue(scanner->target_manager);
 
 #if 0
 	/* This is the wrong place; this needs to happen in the multiprobe code when
@@ -546,8 +536,9 @@ fm_scanner_add_probe(fm_scanner_t *scanner, const fm_config_probe_t *parsed_prob
 	assert(action->nprobes >= 1);
 	action->flags |= flags;
 
-	if (action != NULL)
-		fm_scanner_queue_action(scanner, action);
+	action->multiprobe = fm_multiprobe_from_config(pclass, parsed_probe);
+
+	fm_scanner_queue_action(scanner, action);
 
 	if (pclass->features & FM_FEATURE_SERVICE_PROBES_MASK)
 		action->service_catalog = scanner->service_catalog;

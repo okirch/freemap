@@ -150,7 +150,7 @@ struct fm_multiprobe {
 	fm_job_t		job;
 
 	fm_probe_class_t *	probe_class;
-	const char *		name;
+	char *			name;
 	int			probe_mode;
 	int			action_flags;
 
@@ -175,7 +175,7 @@ struct fm_multiprobe {
 	struct {
 		unsigned int	param_type;
 		unsigned int	count;
-		const fm_uint_array_t *array;
+		fm_uint_array_t	array;
 	} bucket_list;
 
 	struct hlist_head	ready;
@@ -187,7 +187,7 @@ extern void		fm_probe_class_register(struct fm_probe_class *);
 extern fm_probe_class_t *fm_probe_class_find(const char *name, int mode);
 extern fm_probe_class_t *fm_probe_class_by_proto_id(unsigned int proto_id, int mode);
 
-extern fm_multiprobe_t *fm_multiprobe_alloc_action(fm_scan_action_t *action);
+extern fm_multiprobe_t *fm_multiprobe_from_config(fm_probe_class_t *pclass, const fm_config_probe_t *config);
 extern fm_multiprobe_t *fm_multiprobe_alloc(int probe_mode, const char *name);
 extern bool		fm_multiprobe_add_target(fm_multiprobe_t *, fm_target_t *);
 extern bool		fm_multiprobe_add_link_level_broadcast(fm_multiprobe_t *multiprobe, int af,
