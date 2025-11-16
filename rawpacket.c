@@ -240,6 +240,52 @@ fm_raw_packet_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_header_info_t *info)
 }
 
 /*
+ * Compute the part of the header checksum that we already know.
+ * Since addition is commutative, we can update this partial checksum with the
+ * length value at any time.
+ */
+bool
+fm_ipv6_transport_csum_partial(fm_csum_partial_t *cp, const fm_address_t *src_addr, const fm_address_t *dst_addr, unsigned int next_header)
+{
+	const struct sockaddr_in6 *six;
+
+	cp->value = 0;
+
+	if (!(six = fm_address_to_ipv6_const(src_addr)))
+		return false;
+	fm_csum_partial_update(cp, &six->sin6_addr, 16);
+
+	if (!(six = fm_address_to_ipv6_const(dst_addr)))
+		return false;
+	fm_csum_partial_update(cp, &six->sin6_addr, 16);
+
+	fm_csum_partial_u16(cp, next_header);
+
+	return true;
+}
+
+bool
+fm_ipv4_transport_csum_partial(fm_csum_partial_t *cp, const fm_address_t *src_addr, const fm_address_t *dst_addr, unsigned int next_header)
+{
+	const struct sockaddr_in *sin;
+
+	cp->value = 0;
+
+	if (!(sin = fm_address_to_ipv4_const(src_addr)))
+		return false;
+	fm_csum_partial_update(cp, &sin->sin_addr, 4);
+
+	if (!(sin = fm_address_to_ipv4_const(dst_addr)))
+		return false;
+	fm_csum_partial_update(cp, &sin->sin_addr, 4);
+
+	fm_csum_partial_u16(cp, next_header);
+
+	return true;
+}
+
+
+/*
  * Add network header to packet
  */
 bool
@@ -266,38 +312,30 @@ fm_raw_packet_add_network_header(fm_buffer_t *bp, const fm_address_t *src_addr, 
 
 /*
  * Perform TCP checksum
- * FIXME: convert to partial checksum handling
  */
 static bool
 fm_raw_packet_tcp_checksum(const fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr, struct tcphdr *th)
 {
-	fm_buffer_t *csum = fm_buffer_alloc(128);
+	fm_csum_partial_t csum = { 0 };
 	unsigned int len = th->th_off << 2;
 
-	if (src_addr->ss_family == AF_INET && dst_addr->ss_family == AF_INET) {
-		if (!fm_buffer_append(csum, &((struct sockaddr_in *) src_addr)->sin_addr, 4)
-		 || !fm_buffer_append(csum, &((struct sockaddr_in *) dst_addr)->sin_addr, 4))
-			goto failed;
-	} else
-	if (src_addr->ss_family == AF_INET6 && dst_addr->ss_family == AF_INET6) {
-		if (!fm_buffer_append(csum, &((struct sockaddr_in6 *) src_addr)->sin6_addr, 16)
-		 || !fm_buffer_append(csum, &((struct sockaddr_in6 *) dst_addr)->sin6_addr, 16))
-			goto failed;
-	}
+	th->th_sum = 0;
 
-	if (!fm_buffer_put16(csum, htons(len))
-	 || !fm_buffer_put16(csum, htons(IPPROTO_TCP))
-	 || !fm_buffer_append(csum, th, len))
-		goto failed;
+	if (dst_addr->ss_family == AF_INET) {
+		if (!fm_ipv4_transport_csum_partial(&csum, src_addr, dst_addr, IPPROTO_TCP))
+			return false;
+	} else 
+	if (dst_addr->ss_family == AF_INET6) {
+		if (!fm_ipv6_transport_csum_partial(&csum, src_addr, dst_addr, IPPROTO_TCP))
+			return false;
+	} else 
+		return false;
 
-	th->th_sum = in_csum(fm_buffer_head(csum), fm_buffer_available(csum));
-	fm_buffer_free(csum);
+	fm_csum_partial_u16(&csum, len);
+	fm_csum_partial_update(&csum, th, len);
 
+	th->th_sum = fm_csum_fold(&csum);
 	return true;
-
-failed:
-	fm_buffer_free(csum);
-	return false;
 }
 
 /*
@@ -350,31 +388,6 @@ fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, cons
 
 	/* Then do the checksum */
 	fm_raw_packet_tcp_checksum(bp, src_addr, dst_addr, th);
-
-	return true;
-}
-
-/*
- * Compute the part of the header checksum that we already know.
- * Since addition is commutative, we can update this partial checksum with the
- * length value at any time.
- */
-bool
-fm_ipv6_transport_csum_partial(fm_csum_partial_t *cp, const fm_address_t *src_addr, const fm_address_t *dst_addr, unsigned int next_header)
-{
-	const struct sockaddr_in6 *six;
-
-	cp->value = 0;
-
-	if (!(six = fm_address_to_ipv6_const(src_addr)))
-		return false;
-	fm_csum_partial_update(cp, &six->sin6_addr, 16);
-
-	if (!(six = fm_address_to_ipv6_const(dst_addr)))
-		return false;
-	fm_csum_partial_update(cp, &six->sin6_addr, 16);
-
-	fm_csum_partial_u16(cp, next_header);
 
 	return true;
 }
