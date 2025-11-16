@@ -97,7 +97,7 @@ fm_target_pool_bsearch(fm_target_pool_t *pool, unsigned int target_id)
 		mid_id = pool->slots[mid]->pool_id;
 
 		if (mid_id == target_id)
-			return mid_id;
+			return mid;
 
 		if (target_id < mid_id)
 			i1 = mid;
@@ -444,6 +444,7 @@ fm_target_create(const fm_address_t *address, fm_network_t *network)
 	/* The initial packet rate is very restricted */
 	fm_ratelimit_init(&tgt->host_rate_limit, 1, 1);
 
+	/* FIXME: this is worse than useless: */
 	tgt->local_device = fm_interface_by_address(address);
 	if (tgt->local_device != NULL)
 		fm_interface_get_network_address(tgt->local_device, address->ss_family, &tgt->local_bind_address);
