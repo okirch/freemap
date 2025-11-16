@@ -550,113 +550,8 @@ fm_scanner_process_proto_args(fm_probe_class_t *pclass, fm_scan_action_t *action
 }
 
 /*
- * Process probe arguments
- */
-static bool
-fm_scanner_process_arguments(fm_probe_class_t *pclass, int mode, const fm_string_array_t *args,
-			fm_probe_params_t *params, fm_string_array_t *proto_args, fm_uint_array_t *ports)
-{
-	bool randomize = false;
-	unsigned int i;
-
-	if (mode == FM_PROBE_MODE_PORT && !ports) {
-		fm_log_error("%s: trying to parse port scan arguments, but ports argument is NULL", __func__);
-		return false;
-	}
-
-	for (i = 0; i < args->count; ++i) {
-		const char *arg = args->entries[i];
-		fm_param_type_t param_type = FM_PARAM_TYPE_NONE;
-
-		if (isdigit(*arg) && mode == FM_PROBE_MODE_PORT) {
-			if (!fm_scanner_process_port(pclass, arg, ports))
-				return false;
-		} else
-		if (fm_parse_numeric_argument(arg, "retries", &params->retries)) {
-			param_type = FM_PARAM_TYPE_RETRIES;
-		} else if (fm_parse_numeric_argument(arg, "ttl", &params->ttl)) {
-			param_type = FM_PARAM_TYPE_TTL;
-		} else if (fm_parse_numeric_argument(arg, "tos", &params->tos)) {
-			param_type = FM_PARAM_TYPE_TOS;
-		} else if (!strcmp(arg, "random")) {
-			randomize = true;
-		} else {
-			fm_string_array_append(proto_args, arg);
-		}
-
-		if (param_type != FM_PARAM_TYPE_NONE
-		 && !fm_probe_class_supports(pclass, param_type)) {
-			fm_log_error("probe %s does not support parameter %s", pclass->name, arg);
-			return false;
-		}
-	}
-
-	if (mode == FM_PROBE_MODE_PORT) {
-		if (ports->count == 0) {
-			fm_log_error("%s: port scan request does not specify any ports to scan", pclass->name);
-			return false;
-		}
-
-		if (randomize)
-			fm_uint_array_randomize(ports);
-	}
-
-	return true;
-}
-
-/*
  * Create a topo, host or port scan action
  */
-static fm_scan_action_t *
-fm_scanner_create_probe_action(const char *probe_name, int mode, int flags, const fm_string_array_t *args)
-{
-	fm_probe_class_t *pclass;
-	fm_scan_action_t *action;
-	fm_probe_params_t params;
-	fm_string_array_t proto_args;
-	fm_uint_array_t ports;
-
-	memset(&proto_args, 0, sizeof(proto_args));
-	memset(&params, 0, sizeof(params));
-	memset(&ports, 0, sizeof(ports));
-
-	pclass = fm_probe_class_find(probe_name, mode);
-	if (pclass == NULL) {
-		if (!(flags & FM_SCAN_ACTION_FLAG_OPTIONAL)) {
-			fm_log_error("Unknown host %s class %s\n",
-					fm_probe_mode_to_string(mode),
-					probe_name);
-			goto failed;
-		}
-
-		fm_log_debug("Ignoring optional %s %s probe - creating dummy action",
-				fm_probe_mode_to_string(mode), probe_name);
-		action = fm_scanner_add_dummy_probe();
-		return action;
-	}
-
-	if (!fm_scanner_process_arguments(pclass, mode, args, &params, &proto_args, &ports))
-		return NULL;
-
-	action = fm_probe_scan_create(pclass, mode, &params, &ports);
-
-	if (!fm_scanner_process_proto_args(pclass, action, mode, &proto_args))
-		goto failed;
-
-	assert(action->nprobes >= 1);
-	action->flags |= flags;
-
-	return action;
-
-failed:
-	if (action) {
-		/* no fm_action_free() yet, leak */
-	}
-
-	fm_uint_array_destroy(&ports);
-	return NULL;
-}
-
 fm_scan_action_t *
 fm_scanner_add_probe(fm_scanner_t *scanner, const fm_config_probe_t *parsed_probe)
 {
@@ -714,45 +609,6 @@ failed:
 
 	fm_uint_array_destroy(&ports);
 	return NULL;
-}
-
-fm_scan_action_t *
-fm_scanner_add_topo_probe(fm_scanner_t *scanner, const char *probe_name, int flags, const fm_string_array_t *args)
-{
-	fm_scan_action_t *action;
-
-	action = fm_scanner_create_probe_action(probe_name, FM_PROBE_MODE_TOPO, flags, args);
-	if (action != NULL)
-		fm_scanner_queue_action(scanner, action);
-
-	/* FIXME: for a topo probe, we do not want to scan each and every address in the scan range,
-	 * but usually just 1-2 per assumed target network size */
-
-	return action;
-}
-
-fm_scan_action_t *
-fm_scanner_add_host_probe(fm_scanner_t *scanner, const char *probe_name, int flags, const fm_string_array_t *args)
-{
-	fm_scan_action_t *action;
-
-	action = fm_scanner_create_probe_action(probe_name, FM_PROBE_MODE_HOST, flags, args);
-	if (action != NULL)
-		fm_scanner_queue_action(scanner, action);
-
-	return action;
-}
-
-fm_scan_action_t *
-fm_scanner_add_port_probe(fm_scanner_t *scanner, const char *probe_name, int flags, const fm_string_array_t *args)
-{
-	fm_scan_action_t *action;
-
-	action = fm_scanner_create_probe_action(probe_name, FM_PROBE_MODE_PORT, flags, args);
-	if (action != NULL)
-		fm_scanner_queue_action(scanner, action);
-
-	return action;
 }
 
 /*
