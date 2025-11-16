@@ -101,6 +101,8 @@ extern fm_config_program_t *	fm_config_program_build(const char *name,
 extern bool			fm_config_program_set_service_catalog(fm_config_program_t *, const char *);
 extern void			fm_config_program_free(fm_config_program_t *);
 
+extern int			fm_config_probe_process_params(const fm_config_probe_t *, fm_uint_array_t *values);
+
 extern fm_config_library_t *	fm_config_library_alloc(const char * const *search_paths);
 extern fm_config_module_t *	fm_config_library_load_module(fm_config_library_t *, const char *name);
 extern fm_config_routine_t *	fm_config_library_resolve_routine(fm_config_library_t *, int, const char *name);

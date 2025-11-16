@@ -568,6 +568,70 @@ fm_config_probe_array_append(fm_config_probe_array_t *array, fm_config_probe_t *
 }
 
 /*
+ * Process a port or port range
+ */
+static bool
+fm_scanner_process_port(const char *arg, fm_uint_array_t *array)
+{
+	fm_port_range_t range;
+	unsigned int low_port, high_port;
+
+	/* TODO: if the argument is an alpha string, try getportbyname() */
+
+	if (!fm_parse_port_range(arg, &range))
+		return false;
+
+	low_port = range.first;
+	high_port = range.last;
+
+	if (low_port == 0 || low_port > high_port || high_port > 65535)
+		return false;
+
+	while (low_port <= high_port)
+		fm_uint_array_append(array, low_port++);
+
+	return true;
+}
+
+/*
+ * Process the list of ports or port ranges, convert to an int array of ports.
+ * Returns -1 on error, or FM_PARAM_TYPE_* to indicate the type of parameter.
+ */
+int
+fm_config_probe_process_params(const fm_config_probe_t *parsed_probe, fm_uint_array_t *values)
+{
+	const char *mode_string = fm_probe_mode_to_string(parsed_probe->mode);
+	const char *probe_name = parsed_probe->name;
+	const fm_string_array_t *strings = &parsed_probe->string_ports;
+	unsigned int i;
+
+	if (strings->count == 0) {
+		if (parsed_probe->mode == FM_PROBE_MODE_PORT) {
+			fm_log_error("%s: %s scan cannot handle port range", probe_name, mode_string);
+			return -1;
+		}
+		return FM_PARAM_TYPE_NONE;
+	}
+
+	if (parsed_probe->mode != FM_PROBE_MODE_PORT) {
+		fm_log_error("%s: %s scan requires ports", probe_name, mode_string);
+		return -1;
+	}
+
+	for (i = 0; i < strings->count; ++i) {
+		const char *arg = strings->entries[i];
+
+		if (!fm_scanner_process_port(arg, values)) {
+			fm_log_error("%s: unable to parse port or port range \"%s\"", probe_name, arg);
+			fm_uint_array_destroy(values);
+			return -1;
+		}
+	}
+
+	return FM_PARAM_TYPE_PORT;
+}
+
+/*
  * Handle nodes like
  *   host-scan blah { ... }
  */

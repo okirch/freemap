@@ -477,54 +477,6 @@ fm_scanner_add_dummy_probe(void)
 	return action;
 }
 
-/*
- * Process a port or port range
- */
-static bool
-fm_scanner_process_port(fm_probe_class_t *pclass, const char *arg, fm_uint_array_t *array)
-{
-	fm_port_range_t range;
-	unsigned int low_port, high_port;
-
-	if (!fm_parse_port_range(arg, &range)) {
-		fm_log_error("%s: unable to parse port range \"%s\"", pclass->name, arg);
-		return false;
-	}
-
-	low_port = range.first;
-	high_port = range.last;
-
-	if (low_port == 0 || low_port > high_port || high_port > 65535) {
-		fm_log_error("%s: invalid port range %u-%u", pclass->name, low_port, high_port);
-		return false;
-	}
-
-	while (low_port <= high_port)
-		fm_uint_array_append(array, low_port++);
-
-	return true;
-}
-
-static bool
-fm_scanner_process_port_array(fm_probe_class_t *pclass, const fm_string_array_t *strings,  fm_uint_array_t *port_array)
-{
-	unsigned int i;
-
-	for (i = 0; i < strings->count; ++i) {
-		const char *arg = strings->entries[i];
-
-		if (!fm_scanner_process_port(pclass, arg, port_array))
-			return false;
-	}
-
-	if (port_array->count == 0) {
-		fm_log_error("%s: requires one or more ports, but none were specified", pclass->name);
-		return false;
-	}
-
-	return true;
-}
-
 static bool
 fm_scanner_process_proto_args(fm_probe_class_t *pclass, fm_scan_action_t *action, int mode, const fm_string_array_t *extra_args)
 {
@@ -560,7 +512,7 @@ fm_scanner_add_probe(fm_scanner_t *scanner, const fm_config_probe_t *parsed_prob
 	fm_probe_class_t *pclass;
 	fm_scan_action_t *action = NULL;
 	fm_uint_array_t ports;
-	int flags = 0;
+	int flags = 0, param_type;
 
 	memset(&ports, 0, sizeof(ports));
 
@@ -582,8 +534,8 @@ fm_scanner_add_probe(fm_scanner_t *scanner, const fm_config_probe_t *parsed_prob
 		return action;
 	}
 
-	if (mode == FM_PROBE_MODE_PORT
-	 && !fm_scanner_process_port_array(pclass, &parsed_probe->string_ports, &ports))
+	param_type = fm_config_probe_process_params(parsed_probe, &ports);
+	if (param_type < 0)
 		goto failed;
 
 	action = fm_probe_scan_create(pclass, mode, &parsed_probe->probe_params, &ports);
