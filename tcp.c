@@ -206,7 +206,7 @@ fm_tcp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, cons
 }
 
 static bool
-fm_tcp_control_init_target(fm_tcp_control_t *tcp, fm_target_control_t *target_control, fm_target_t *target)
+fm_tcp_control_init_target(const fm_tcp_control_t *tcp, fm_target_control_t *target_control, fm_target_t *target)
 {
 	const fm_address_t *addr = &target->address;
 	fm_socket_t *sock = NULL;
@@ -236,7 +236,7 @@ fm_tcp_control_init_target(fm_tcp_control_t *tcp, fm_target_control_t *target_co
  * We do not even distinguish by the source port used on our end.
  */
 static void
-fm_tcp_extant_info_build(fm_tcp_control_t *tcp, uint16_t src_port, uint16_t dst_port, fm_tcp_extant_info_t *extant_info)
+fm_tcp_extant_info_build(const fm_tcp_control_t *tcp, uint16_t src_port, uint16_t dst_port, fm_tcp_extant_info_t *extant_info)
 {
 	extant_info->src_port = src_port;
 	extant_info->dst_port = dst_port;
@@ -356,7 +356,7 @@ fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *pkt)
 }
 
 static fm_pkt_t *
-fm_tcp_build_raw_packet(fm_tcp_control_t *tcp, uint16_t dst_port, fm_target_control_t *target_control,
+fm_tcp_build_raw_packet(const fm_tcp_control_t *tcp, uint16_t dst_port, fm_target_control_t *target_control,
 		const fm_probe_params_t *params)
 {
 	fm_tcp_header_info_t hdrinfo;
@@ -403,7 +403,7 @@ failed:
 }
 
 static fm_error_t
-fm_tcp_request_send(fm_tcp_control_t *tcp, fm_target_control_t *target_control, int param_type, int param_value, fm_extant_t **extant_ret)
+fm_tcp_request_send(const fm_tcp_control_t *tcp, fm_target_control_t *target_control, int param_type, int param_value, fm_extant_t **extant_ret)
 {
 	fm_tcp_extant_info_t extant_info;
 	fm_probe_params_t param_copy;
@@ -460,8 +460,6 @@ fm_tcp_request_send(fm_tcp_control_t *tcp, fm_target_control_t *target_control, 
 	/* update the asset state */
 	fm_target_update_port_state(target_control->target, FM_PROTO_TCP, dst_port, FM_ASSET_STATE_PROBE_SENT);
 
-	tcp->params.retries -= 1;
-
 	return 0;
 }
 
@@ -471,7 +469,7 @@ fm_tcp_request_send(fm_tcp_control_t *tcp, fm_target_control_t *target_control, 
 static bool
 fm_tcp_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task, fm_target_t *target)
 {
-	fm_tcp_control_t *tcp = multiprobe->control;
+	const fm_tcp_control_t *tcp = multiprobe->control;
 
 	return fm_tcp_control_init_target(tcp, &host_task->control, target);
 }
@@ -481,7 +479,7 @@ fm_tcp_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_
 		int param_type, int param_value,
 		fm_extant_t **extant_ret, double *timeout_ret)
 {
-	fm_tcp_control_t *tcp = multiprobe->control;
+	const fm_tcp_control_t *tcp = multiprobe->control;
 
 	return fm_tcp_request_send(tcp, &host_task->control,
 			param_type, param_value, extant_ret);

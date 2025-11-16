@@ -98,7 +98,7 @@ fm_arp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, cons
 }
 
 static bool
-fm_arp_control_init_target(fm_arp_control_t *arp, fm_target_control_t *target_control, fm_target_t *target)
+fm_arp_control_init_target(const fm_arp_control_t *arp, fm_target_control_t *target_control, fm_target_t *target)
 {
 	uint32_t src_ipaddr, dst_ipaddr;
 	struct sockaddr_ll src_lladdr;
@@ -262,7 +262,7 @@ fm_arp_update_cache(const fm_arp_header_info_t *arp_info, fm_extant_t *extant, i
 }
 
 static fm_error_t
-fm_arp_control_send(fm_arp_control_t *arp, fm_target_control_t *target_control, fm_extant_t **extant_ret)
+fm_arp_control_send(const fm_arp_control_t *arp, fm_target_control_t *target_control, fm_extant_t **extant_ret)
 {
 	fm_arp_extant_info_t extant_info;
 	fm_target_t *target = target_control->target;
@@ -309,9 +309,6 @@ fm_arp_control_send(fm_arp_control_t *arp, fm_target_control_t *target_control, 
 	/* Update the asset state */
 	fm_target_update_host_state(target, FM_PROTO_ARP, FM_ASSET_STATE_PROBE_SENT);
 
-	if (arp->params.retries > 0)
-		arp->params.retries -= 1;
-
 	return 0;
 }
 
@@ -321,7 +318,7 @@ fm_arp_control_send(fm_arp_control_t *arp, fm_target_control_t *target_control, 
 static bool
 fm_arp_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task, fm_target_t *target)
 {
-	fm_arp_control_t *arp = multiprobe->control;
+	const fm_arp_control_t *arp = multiprobe->control;
 
 	return fm_arp_control_init_target(arp, &host_task->control, target);
 }
@@ -331,7 +328,7 @@ fm_arp_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_
 			int param_type, int param_value,
 			fm_extant_t **extant_ret, double *timeout_ret)
 {
-	fm_arp_control_t *arp = multiprobe->control;
+	const fm_arp_control_t *arp = multiprobe->control;
 	fm_target_control_t *target_control = &host_task->control;
 
 	return fm_arp_control_send(arp, target_control, extant_ret);

@@ -330,7 +330,7 @@ fm_icmp_control_free(fm_icmp_control_t *icmp)
 }
 
 static bool
-fm_icmp_request_init_target(fm_icmp_control_t *icmp, fm_target_control_t *target_control, fm_target_t *target)
+fm_icmp_request_init_target(const fm_icmp_control_t *icmp, fm_target_control_t *target_control, fm_target_t *target)
 {
 	const fm_address_t *addr = &target->address;
 	fm_socket_t *sock = NULL;
@@ -377,7 +377,7 @@ fm_icmp_protocol_for_family(int af)
  * raw icmp6
  */
 static fm_pkt_t *
-fm_icmp_request_build_packet(fm_icmp_control_t *icmp, fm_target_control_t *host,
+fm_icmp_request_build_packet(const fm_icmp_control_t *icmp, fm_target_control_t *host,
 				const fm_icmp_extra_params_t *send_params,
 				fm_icmp_extant_info_t *extant_info)
 {
@@ -458,7 +458,7 @@ fm_icmp_request_build_extant_info(fm_icmp_extant_info_t *info, int v4_request_ty
  * The probe argument is only here because we need to notify it when done.
  */
 static fm_error_t
-fm_icmp_request_send(fm_icmp_control_t *icmp, fm_target_control_t *host,
+fm_icmp_request_send(const fm_icmp_control_t *icmp, fm_target_control_t *host,
 				int param_type, unsigned int param_value,
 				fm_extant_t **extant_ret)
 {
@@ -482,7 +482,7 @@ fm_icmp_request_send(fm_icmp_control_t *icmp, fm_target_control_t *host,
 
 	/* If the TTL parameter is set, this is probably traceroute, and we need to
 	 * have a way to match error packets against the actual request.
-	 * With SOCK_PACKET, we can actually choose the icmp_id, but with SOCK_RAW,
+	 * With PF_PACKET sockets, we can actually choose the icmp_id, but with SOCK_RAW,
 	 * the kernel will overwrite what we try to send.
 	 * Fudge a sequence number that is a combination of retry and ttl.
 	 */
@@ -515,9 +515,6 @@ fm_icmp_request_send(fm_icmp_control_t *icmp, fm_target_control_t *host,
 
 	if (*extant_ret && icmp->extants_are_multi_shot)
 		(*extant_ret)->single_shot = false;
-
-	/* FIXME: this is wrong */
-	icmp->params.retries -= 1;
 
 	/* update the asset state */
 	if (host->target != NULL)
@@ -563,7 +560,7 @@ fm_icmp_process_extra_parameters(const fm_string_array_t *extra_args, fm_icmp_ex
 static bool
 fm_icmp_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task, fm_target_t *target)
 {
-	fm_icmp_control_t *icmp = multiprobe->control;
+	const fm_icmp_control_t *icmp = multiprobe->control;
 
 	return fm_icmp_request_init_target(icmp, &host_task->control, target);
 }
@@ -607,7 +604,7 @@ fm_icmp_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host
 		int param_type, int param_value,
 		fm_extant_t **extant_ret, double *timeout_ret)
 {
-	fm_icmp_control_t *icmp = multiprobe->control;
+	const fm_icmp_control_t *icmp = multiprobe->control;
 
 	return fm_icmp_request_send(icmp, &host_task->control, param_type, param_value, extant_ret);
 }

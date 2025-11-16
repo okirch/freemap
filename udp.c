@@ -231,7 +231,7 @@ fm_udp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, cons
 }
 
 static bool
-fm_udp_control_init_target(fm_udp_control_t *udp, fm_target_control_t *target_control, fm_target_t *target)
+fm_udp_control_init_target(const fm_udp_control_t *udp, fm_target_control_t *target_control, fm_target_t *target)
 {
 	const fm_address_t *addr = &target->address;
 
@@ -336,8 +336,9 @@ fm_udp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *it
  * See if we have a probe packet
  */
 static const fm_buffer_t *
-fm_udp_request_next_service_probe(fm_udp_control_t *udp)
+fm_udp_request_next_service_probe(const fm_udp_control_t *udp)
 {
+#if 0 /* This needs to happen at the multiprobe level */
 	unsigned int index = udp->service_index;
 	const fm_buffer_t *payload;
 
@@ -352,6 +353,9 @@ fm_udp_request_next_service_probe(fm_udp_control_t *udp)
 
 	udp->service_index = index % udp->service_probe->npackets;
 	return payload;
+#else
+	return NULL;
+#endif
 }
 
 static fm_pkt_t *
@@ -384,7 +388,7 @@ fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port, const fm_buffer_t 
  * The probe argument is only here because we need to notify it when done.
  */
 static fm_error_t
-fm_udp_request_send(fm_udp_control_t *udp, fm_target_control_t *target_control, int param_type, int param_value, fm_extant_t **extant_ret)
+fm_udp_request_send(const fm_udp_control_t *udp, fm_target_control_t *target_control, int param_type, int param_value, fm_extant_t **extant_ret)
 {
 	fm_udp_extant_info_t extant_info;
 	fm_target_t *target = target_control->target;
@@ -426,8 +430,6 @@ fm_udp_request_send(fm_udp_control_t *udp, fm_target_control_t *target_control, 
 
 	assert(*extant_ret);
 
-	udp->total_retries -= 1;
-
 	/* update the asset state */
 	fm_target_update_port_state(target, FM_PROTO_UDP, dst_port, FM_ASSET_STATE_PROBE_SENT);
 
@@ -440,7 +442,7 @@ fm_udp_request_send(fm_udp_control_t *udp, fm_target_control_t *target_control, 
 static bool
 fm_udp_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task, fm_target_t *target)
 {
-	fm_udp_control_t *udp = multiprobe->control;
+	const fm_udp_control_t *udp = multiprobe->control;
 
 	return fm_udp_control_init_target(udp, &host_task->control, target);
 }
@@ -450,7 +452,7 @@ fm_udp_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_
 		int param_type, int param_value,
 		fm_extant_t **extant_ret, double *timeout_ret)
 {
-	fm_udp_control_t *udp = multiprobe->control;
+	const fm_udp_control_t *udp = multiprobe->control;
 
 	return fm_udp_request_send(udp, &host_task->control,
 			param_type, param_value, extant_ret);
