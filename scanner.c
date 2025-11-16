@@ -467,30 +467,6 @@ fm_scanner_add_dummy_probe(void)
 	return action;
 }
 
-static bool
-fm_scanner_process_proto_args(fm_probe_class_t *pclass, fm_scan_action_t *action, int mode, const fm_string_array_t *extra_args)
-{
-	if (extra_args->count == 0)
-		return true;
-
-	if (pclass->process_extra_parameters != NULL) {
-		void *extra_params;
-
-		extra_params = pclass->process_extra_parameters(pclass, extra_args);
-		if (extra_params == NULL)
-			return false;
-
-		action->extra_params = extra_params;
-	} else
-	if (extra_args->count != 0) {
-		fm_log_error("found %u unrecognized parameters in %s probe for %s", extra_args->count,
-				fm_probe_mode_to_string(mode), pclass->name);
-		return false;
-	}
-
-	return true;
-}
-
 /*
  * Create a topo, host or port scan action
  */
@@ -529,9 +505,6 @@ fm_scanner_add_probe(fm_scanner_t *scanner, const fm_config_probe_t *parsed_prob
 		goto failed;
 
 	action = fm_probe_scan_create(pclass, mode, &parsed_probe->probe_params, &ports);
-
-	if (!fm_scanner_process_proto_args(pclass, action, mode, &parsed_probe->extra_args))
-		goto failed;
 
 	assert(action->nprobes >= 1);
 	action->flags |= flags;
