@@ -29,8 +29,6 @@
 
 
 static bool			fm_scanner_start_stage(fm_scanner_t *scanner);
-static fm_scan_action_t *	fm_probe_scan_create(const fm_probe_class_t *, int, const fm_probe_params_t *, const fm_uint_array_t *);
-static fm_scan_action_t *	fm_scan_action_reachability_check(void);
 
 static inline void
 fm_scan_action_array_append(struct fm_scan_action_array *array, fm_scan_action_t *action)
@@ -48,44 +46,13 @@ fm_scan_action_array_get(const struct fm_scan_action_array *array, unsigned int 
 }
 
 fm_scan_action_t *
-fm_scan_action_create(int mode, const struct fm_scan_action_ops *ops, const char *id, fm_probe_class_t *pclass)
+fm_scan_action_create(fm_multiprobe_t *multiprobe)
 {
 	fm_scan_action_t *action;
 
-	action = calloc(1, ops->obj_size);
-	action->mode = mode; /* FM_PROBE_MODE_ or 0 */
-	action->id = strdup(id);
-	action->ops = ops;
-
-	action->probe_class = pclass;
-	if (pclass != NULL)
-		action->flags = pclass->action_flags;
-
+	action = calloc(1, sizeof(*action));
+	action->multiprobe = multiprobe;
 	return action;
-}
-
-const char *
-fm_scan_action_id(const fm_scan_action_t *action)
-{
-	return action->id;
-}
-
-bool
-fm_scan_action_validate(fm_scan_action_t *action, fm_target_t *target)
-{
-	if ((action->flags & FM_SCAN_ACTION_FLAG_LOCAL_ONLY) && target->local_device == NULL) {
-		if (!(action->flags & FM_SCAN_ACTION_FLAG_OPTIONAL))
-			fm_log_error("%s: action %s only supported with local targets",
-					fm_address_format(&target->address),
-					fm_scan_action_id(action));
-		return false;
-
-	}
-
-	if (action->ops->validate == NULL)
-		return true;
-
-	return action->ops->validate(action, target);
 }
 
 fm_scanner_t *
@@ -156,23 +123,18 @@ fm_scanner_get_report(fm_scanner_t *scanner)
 	return scanner->report;
 }
 
-fm_scan_action_t *
-fm_scanner_get_action(fm_scanner_t *scanner, unsigned int index)
-{
-	const fm_scan_action_array_t *stage = fm_scanner_get_current_stage(scanner);
-
-	return fm_scan_action_array_get(stage, index);
-}
-
 static void
-fm_scanner_queue_action(fm_scanner_t *scanner, fm_scan_action_t *action)
+fm_scanner_queue_probe(fm_scanner_t *scanner, int mode, fm_multiprobe_t *multiprobe)
 {
-	fm_scan_action_array_t *stage = fm_scanner_get_current_stage(scanner);
+	fm_scan_action_array_t *stage;
+	fm_scan_action_t *action;
 
-	if (action->mode == FM_PROBE_MODE_TOPO)
+	if (mode == FM_PROBE_MODE_TOPO)
 		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_TOPO);
 	else
 		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_GENERAL);
+
+	action = fm_scan_action_create(multiprobe);
 	fm_scan_action_array_append(stage, action);
 
 	/* Create a separate target queue through which we'll feed new
@@ -205,22 +167,6 @@ fm_scanner_abort_target(fm_target_t *target)
 {
 	/* fm_scheduler_detach_target(scanner->scheduler, target); */
 	target->scan_done = true;
-}
-
-void
-fm_scanner_insert_barrier(fm_scanner_t *scanner, int probe_mode)
-{
-	fm_scan_action_array_t *stage = fm_scanner_get_current_stage(scanner);
-
-	if (probe_mode == FM_PROBE_MODE_TOPO)
-		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_TOPO);
-	else
-		stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_GENERAL);
-
-        if (stage->count) {
-                fm_scan_action_t *action = stage->entries[stage->count - 1];
-                action->barrier = true;
-        }
 }
 
 /*
@@ -290,7 +236,7 @@ fm_scanner_create_new_probes(fm_scanner_t *scanner, fm_sched_stats_t *sched_stat
 			while ((target = fm_target_pool_next(&iter)) != NULL) {
 				if (!fm_multiprobe_add_target(multiprobe, target)) {
 					fm_target_pool_remove(action->target_queue, target);
-					fm_log_debug("%s: could not add %s", action->id, target->id);
+					fm_log_debug("%s: could not add %s", multiprobe->name, target->id);
 				}
 			}
 			fm_job_continue(&multiprobe->job);
@@ -299,7 +245,6 @@ fm_scanner_create_new_probes(fm_scanner_t *scanner, fm_sched_stats_t *sched_stat
 		if (multiprobe == NULL) {
 			if (scanner->current_stage.num_done == k) {
 				scanner->current_stage.num_done = k +1;
-				fm_log_debug("num_done=%u", scanner->current_stage.num_done);
 			}
 			continue;
 		}
@@ -309,7 +254,7 @@ fm_scanner_create_new_probes(fm_scanner_t *scanner, fm_sched_stats_t *sched_stat
 		if (multiprobe != NULL) {
 			/* inform the pool about targets that we're done with */
 			while ((target = fm_multiprobe_get_completed(multiprobe)) != NULL) {
-				fm_log_debug("target %s done with scan %s", target->id, action->id);
+				fm_log_debug("%s: done with target %s", multiprobe->name, target->id);
 				fm_target_pool_remove(action->target_queue, target);
 			}
 		}
@@ -421,110 +366,40 @@ fm_scanner_get_protocol_engine(fm_scanner_t *scanner, const char *protocol_name)
 void
 fm_scanner_dump_program(fm_scanner_t *scanner)
 {
-	unsigned int i, j;
-
-	printf("compiled program:\n");
-	for (j = 0; j < __FM_SCAN_STAGE_MAX; ++j) {
-		fm_scan_action_array_t *array = fm_scanner_get_stage(scanner, j);
-
-		if (array->count == 0)
-			continue;
-
-		printf("scan stage %d\n", j);
-
-		for (i = 0; i < array->count; ++i) {
-			fm_scan_action_t *action = array->entries[i];
-
-			printf(" %2u: %s", i, action->id);
-			if (action->barrier)
-				printf("; barrier");
-			printf("\n");
-		}
-	}
-}
-
-/*
- * Dummy probe that does nothing
- */
-static bool
-fm_dummy_probe_validate(fm_scan_action_t *action, fm_target_t *target)
-{
-	return false;
-}
-
-static const struct fm_scan_action_ops	fm_dummy_host_scan_ops = {
-	.obj_size	= sizeof(fm_scan_action_t),
-	.validate	= fm_dummy_probe_validate,
-};
-
-fm_scan_action_t *
-fm_scanner_add_dummy_probe(void)
-{
-	fm_scan_action_t *action;
-
-	action = fm_scan_action_create(0, &fm_dummy_host_scan_ops, "dummy", NULL);
-	action->nprobes = 0;
-	return action;
+	fm_log_notice("%s: does nothing right now");
 }
 
 /*
  * Create a topo, host or port scan action
  */
-fm_scan_action_t *
+bool
 fm_scanner_add_probe(fm_scanner_t *scanner, const fm_config_probe_t *parsed_probe)
 {
 	const char *probe_name = parsed_probe->name;
 	int mode = parsed_probe->mode;
 	fm_probe_class_t *pclass;
-	fm_scan_action_t *action = NULL;
-	fm_uint_array_t ports;
-	int flags = 0, param_type;
-
-	memset(&ports, 0, sizeof(ports));
-
-	if (parsed_probe->optional)
-		flags = FM_SCAN_ACTION_FLAG_OPTIONAL;
+	fm_multiprobe_t *multiprobe;
 
 	pclass = fm_probe_class_find(probe_name, mode);
 	if (pclass == NULL) {
-		if (!(flags & FM_SCAN_ACTION_FLAG_OPTIONAL)) {
+		if (!parsed_probe->optional) {
 			fm_log_error("Unknown host %s class %s\n",
 					fm_probe_mode_to_string(mode),
 					probe_name);
-			goto failed;
+			return false;
 		}
 
-		fm_log_debug("Ignoring optional %s %s probe - creating dummy action",
-				fm_probe_mode_to_string(mode), probe_name);
-		action = fm_scanner_add_dummy_probe();
-		return action;
+		fm_log_debug("Ignoring optional %s %s probe", fm_probe_mode_to_string(mode));
+		return true;
 	}
 
-	param_type = fm_config_probe_process_params(parsed_probe, &ports);
-	if (param_type < 0)
-		goto failed;
-
-	action = fm_probe_scan_create(pclass, mode, &parsed_probe->probe_params, &ports);
-
-	assert(action->nprobes >= 1);
-	action->flags |= flags;
-
-	action->multiprobe = fm_multiprobe_from_config(pclass, parsed_probe);
-
-	fm_scanner_queue_action(scanner, action);
-
+	multiprobe = fm_multiprobe_from_config(pclass, parsed_probe);
 	if (pclass->features & FM_FEATURE_SERVICE_PROBES_MASK)
-		fm_multiprobe_set_service_catalog(action->multiprobe, scanner->service_catalog);
+		fm_multiprobe_set_service_catalog(multiprobe, scanner->service_catalog);
 
-	return action;
+	fm_scanner_queue_probe(scanner, mode, multiprobe);
 
-failed:
-	if (action) {
-		/* no fm_action_free() yet, leak */
-	}
-
-	fm_uint_array_destroy(&ports);
-	return NULL;
+	return true;
 }
 
 /*
@@ -535,107 +410,4 @@ void
 fm_scanner_set_service_catalog(fm_scanner_t *scanner, const fm_service_catalog_t *service_catalog)
 {
 	scanner->service_catalog = service_catalog;
-}
-
-fm_scan_action_t *
-fm_scanner_add_reachability_check(fm_scanner_t *scanner)
-{
-#if 0
-	fm_scan_action_t *action;
-
-	if ((action = fm_scan_action_reachability_check()) != NULL) {
-		fm_scanner_queue_action(scanner, action);
-		action->barrier = true;
-	}
-	return action;
-#else
-	return NULL;
-#endif
-}
-
-/*
- * After executing a number of probes, chech whether at least one has reached the target host
- */
-static bool
-fm_host_reachability_check_validate(fm_scan_action_t *action, fm_target_t *target)
-{
-	fm_host_asset_t *host = target->host_asset;
-
-	if (host == NULL || fm_host_asset_get_state(host) != FM_ASSET_STATE_OPEN) {
-		fm_log_debug("%s does not respond to any probe, skipping all other scan actions\n", fm_address_format(&target->address));
-		fm_scanner_abort_target(target);
-	}
-
-	return false;
-}
-
-static const struct fm_scan_action_ops	fm_host_reachability_check_ops = {
-	.obj_size	= sizeof(fm_scan_action_t),
-	.validate	= fm_host_reachability_check_validate,
-};
-
-
-fm_scan_action_t *
-fm_scan_action_reachability_check(void)
-{
-	return fm_scan_action_create(0, &fm_host_reachability_check_ops, "reachability-check", NULL);
-}
-
-/*
- * Generic scan action representing a probe.
- */
-static bool
-fm_probe_scan_action_validate(fm_scan_action_t *action, fm_target_t *target)
-{
-	if (action->probe_class->family != AF_UNSPEC
-	 && action->probe_class->family != target->address.ss_family) {
-		fm_log_debug("%s: skipping incompatible probe %s",
-				fm_address_format(&target->address),
-				action->probe_class->name);
-		return false;
-	}
-
-	return true;
-}
-
-static const struct fm_scan_action_ops	fm_probe_scan_action_ops = {
-	.obj_size	= sizeof(fm_scan_action_t),
-	.validate	= fm_probe_scan_action_validate,
-};
-
-fm_scan_action_t *
-fm_probe_scan_create(const fm_probe_class_t *pclass, int mode, const fm_probe_params_t *params, const fm_uint_array_t *ports)
-{
-	const char *mode_string = fm_probe_mode_to_string(mode);
-	fm_scan_action_t *action;
-	char idbuf[128];
-
-	if (mode == FM_PROBE_MODE_PORT) {
-		if (ports == NULL || ports->count == 0) {
-			fm_log_error("%s: %s scan requires ports", pclass->name, mode_string);
-			return NULL;
-		}
-	} else {
-		if (ports != NULL && ports->count != 0) {
-			fm_log_error("%s: %s scan cannot handle port range", pclass->name, mode_string);
-			return NULL;
-		}
-	}
-
-
-	snprintf(idbuf, sizeof(idbuf), "%sscan/%s", mode_string, pclass->name);
-
-	action = fm_scan_action_create(mode, &fm_probe_scan_action_ops, idbuf, pclass);
-	action->probe_params = *params;
-
-	if (mode == FM_PROBE_MODE_PORT) {
-		/* simply assign the port array. The caller better not free their copy */
-		action->numeric_params = *ports;
-		action->nprobes = action->numeric_params.count;
-	} else {
-		action->nprobes = 1;
-	}
-
-
-	return action;
 }
