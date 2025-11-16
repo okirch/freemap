@@ -93,10 +93,6 @@ struct fm_config_program {
 
 extern fm_config_program_t *	fm_config_program_alloc(void);
 extern bool			fm_config_program_set_stage(fm_config_program_t *, unsigned int, const char *);
-extern fm_config_program_t *	fm_config_program_build(const char *name,
-					const char *topology_scan,
-					const char *reachability_scan,
-					const char *service_scan);
 extern bool			fm_config_program_set_service_catalog(fm_config_program_t *, const char *);
 extern void			fm_config_program_free(fm_config_program_t *);
 

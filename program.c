@@ -1009,25 +1009,6 @@ fm_config_program_set_stage(fm_config_program_t *program, unsigned int index, co
 	return true;
 }
 
-fm_config_program_t *
-fm_config_program_build(const char *name, const char *topology_scan, const char *host_scan, const char *port_scan)
-{
-	fm_config_program_t *program;
-
-	program = fm_config_program_alloc();
-
-	if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_TOPO, topology_scan)
-	 || !fm_config_program_set_stage(program, FM_SCAN_STAGE_HOST, host_scan)
-	 || !fm_config_program_set_stage(program, FM_SCAN_STAGE_PORT, port_scan))
-		goto fail;
-
-	return program;
-
-fail:
-	fm_config_program_free(program);
-	return NULL;
-}
-
 void
 fm_config_program_free(fm_config_program_t *program)
 {
