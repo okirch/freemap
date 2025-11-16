@@ -298,10 +298,8 @@ fm_raw_packet_add_network_header(fm_buffer_t *bp, const fm_address_t *src_addr, 
 	if (dst_addr->ss_family == AF_INET)
 		return fm_raw_packet_add_ipv4_header(bp, src_addr, dst_addr, ipproto, ttl, tos, transport_len);
 
-#ifdef notyet
 	if (dst_addr->ss_family == AF_INET6)
 		return fm_raw_packet_add_ipv6_header(bp, src_addr, dst_addr, ipproto, ttl, tos, transport_len);
-#endif
 
 	fm_log_error("%s: unsupported network protocol %u", __func__, dst_addr->ss_family);
 	return false;

@@ -95,7 +95,9 @@ fm_tcp_create_socket(fm_protocol_t *proto, int af)
 		fm_socket_enable_recverr(sock);
 		fm_socket_enable_hdrincl(sock);
 
-		fm_socket_install_data_parser(sock, FM_PROTO_IP);
+		/* Duh, raw tcp6 sockets do not include the IP header in incoming packets :-( */
+		if (af == AF_INET)
+			fm_socket_install_data_parser(sock, FM_PROTO_IP);
 		fm_socket_install_data_parser(sock, FM_PROTO_TCP);
 
 #if 0
@@ -103,7 +105,10 @@ fm_tcp_create_socket(fm_protocol_t *proto, int af)
 		fm_socket_install_error_parser(sock, FM_PROTO_IP);
 		fm_socket_install_error_parser(sock, FM_PROTO_ICMP);
 #endif
-		fm_socket_install_error_parser(sock, FM_PROTO_IP);
+
+		/* Duh, raw tcp6 sockets do not include the IP header in incoming packets :-( */
+		if (af == AF_INET)
+			fm_socket_install_error_parser(sock, FM_PROTO_IP);
 		fm_socket_install_error_parser(sock, FM_PROTO_TCP);
 
 		fm_socket_attach_extant_map(sock, &fm_tcp_extant_map);
@@ -384,7 +389,12 @@ fm_tcp_build_raw_packet(fm_tcp_control_t *tcp, uint16_t dst_port, fm_target_cont
 	pkt = fm_pkt_alloc(target_control->family, 0);
 	pkt->payload = payload;
 	pkt->peer_addr = target_control->address;
-	fm_address_set_port(&pkt->peer_addr, dst_port);
+
+	/* On raw sockets, the port field is supposed to be either 0 or contain the transport
+	 * protocol (IPPROTO_TCP in our case). Note, it seems that this is only enforced for
+	 * IPv6; the manpages say that this behavior "got lost" for IPv4 some time in Linux 2.2. */
+	fm_address_set_port(&pkt->peer_addr, IPPROTO_TCP);
+
 	return pkt;
 
 failed:
