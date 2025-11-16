@@ -86,14 +86,12 @@ struct fm_config_service {
 
 
 struct fm_config_program {
-	fm_config_routine_t *	topo_scan;
-	fm_config_routine_t *	host_scan;
-	fm_config_routine_t *	port_scan;
+	fm_config_routine_t *	stage[__FM_SCAN_STAGE_MAX];
 	fm_service_catalog_t *	service_catalog;
 };
 
 
-extern fm_config_program_t *	fm_config_program_alloc(const char *name);
+extern fm_config_program_t *	fm_config_program_alloc(void);
 extern fm_config_program_t *	fm_config_program_build(const char *name,
 					const char *topology_scan,
 					const char *reachability_scan,

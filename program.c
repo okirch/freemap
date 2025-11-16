@@ -978,25 +978,48 @@ fm_config_catalog_resolve_services(fm_config_catalog_t *catalog, fm_service_cata
 	return true;
 }
 
+/*
+ * program objects
+ */
+fm_config_program_t *
+fm_config_program_alloc(void)
+{
+	fm_config_program_t *program;
+
+	program = calloc(1, sizeof(*program));
+	program->service_catalog = fm_service_catalog_alloc();
+	return program;
+}
+
+bool
+fm_config_program_set_stage(fm_config_program_t *program, unsigned int index, const char *name)
+{
+	if (index >= __FM_SCAN_STAGE_MAX)
+		return false;
+
+	program->stage[index] = NULL;
+	if (name != NULL) {
+		program->stage[index] = fm_config_load_routine(index, name);
+		if (program->stage[index] == NULL) {
+			fm_log_error("Unable to load routine %s for scan stage %u", name, index);
+			return false;
+		}
+	}
+
+	return true;
+}
+
 fm_config_program_t *
 fm_config_program_build(const char *name, const char *topology_scan, const char *host_scan, const char *port_scan)
 {
 	fm_config_program_t *program;
 
-	program = calloc(1, sizeof(*program));
-	if (topology_scan != NULL
-	 && !(program->topo_scan = fm_config_load_routine(FM_SCAN_STAGE_TOPO, topology_scan)))
-		goto fail;
+	program = fm_config_program_alloc();
 
-	if (host_scan != NULL
-	 && !(program->host_scan = fm_config_load_routine(FM_SCAN_STAGE_HOST, host_scan)))
+	if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_TOPO, topology_scan)
+	 || !fm_config_program_set_stage(program, FM_SCAN_STAGE_HOST, host_scan)
+	 || !fm_config_program_set_stage(program, FM_SCAN_STAGE_PORT, port_scan))
 		goto fail;
-
-	if (port_scan != NULL
-	 && !(program->port_scan = fm_config_load_routine(FM_SCAN_STAGE_PORT, port_scan)))
-		goto fail;
-
-	program->service_catalog = fm_service_catalog_alloc();
 
 	return program;
 
@@ -1070,9 +1093,14 @@ fm_config_routine_compile(const fm_config_routine_t *routine, fm_scanner_t *scan
 bool
 fm_config_program_compile(const fm_config_program_t *program, fm_scanner_t *scanner)
 {
+	unsigned int i;
+
 	fm_scanner_set_service_catalog(scanner, program->service_catalog);
 
-	return fm_config_routine_compile(program->topo_scan, scanner)
-	    && fm_config_routine_compile(program->host_scan, scanner)
-	    && fm_config_routine_compile(program->port_scan, scanner);
+	for (i = 0; i < __FM_SCAN_STAGE_MAX; ++i) {
+		if (!fm_config_routine_compile(program->stage[i], scanner))
+			return false;
+	}
+
+	return true;
 }
