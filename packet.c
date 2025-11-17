@@ -40,6 +40,7 @@
 #define COMMON_SIZE		offsetof(fm_parsed_hdr_t, data)
 #define INFO_SIZE(member)	INFO_ALIGN(COMMON_SIZE + sizeof(((fm_parsed_hdr_t *) 0)->member))
 
+static bool			fm_proto_eth_dissect(fm_pkt_t *, fm_parsed_hdr_t *, unsigned int *);
 static bool			fm_proto_ip_dissect(fm_pkt_t *, fm_parsed_hdr_t *, unsigned int *);
 static bool			fm_proto_arp_dissect(fm_pkt_t *, fm_parsed_hdr_t *, unsigned int *);
 static bool			fm_proto_icmp_dissect(fm_pkt_t *, fm_parsed_hdr_t *, unsigned int *);
@@ -53,6 +54,7 @@ static fm_protocol_handler_t	fm_protocol_handlers[] = {
 	{ FM_PROTO_TCP,		INFO_SIZE(tcp),		NULL,	fm_proto_tcp_dissect	},
 	{ FM_PROTO_UDP,		INFO_SIZE(udp),		NULL,	fm_proto_udp_dissect	},
 	{ FM_PROTO_ICMP,	INFO_SIZE(icmp),	NULL,	fm_proto_icmp_dissect	},
+	{ FM_LINK_PROTO_ETHER,	INFO_SIZE(eth),		NULL,	fm_proto_eth_dissect	},
 	{ FM_PROTO_NONE }
 };
 
@@ -209,6 +211,17 @@ fm_parsed_packet_find_next(fm_parsed_pkt_t *cooked, unsigned int proto_id)
 	}
 
 	return NULL;
+}
+
+bool
+fm_proto_eth_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_proto)
+{
+	if (!fm_raw_packet_pull_eth_hdr(pkt, &hdr->eth))
+		return false;
+
+	fm_log_debug("%s: next_proto=%u", __func__, hdr->eth.next_proto);
+	*next_proto = hdr->eth.next_proto;
+	return true;
 }
 
 bool

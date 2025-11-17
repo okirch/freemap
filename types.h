@@ -93,6 +93,12 @@ enum {
 	__FM_PROTO_MAX
 };
 
+/* Link layer protocols are enumerated separately. */
+enum {
+	FM_LINK_PROTO_NONE = 1024,
+	FM_LINK_PROTO_ETHER,
+};
+
 /*
  * Scanning happens in stages.
  * This is primarily because topo stage is very different - to begin with,

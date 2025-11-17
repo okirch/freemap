@@ -172,6 +172,41 @@ fm_raw_packet_add_ipv6_header(fm_buffer_t *bp, const fm_address_t *src_addr, con
 /*
  * IP header analysis
  */
+bool
+fm_raw_packet_pull_eth_hdr(fm_pkt_t *pkt, fm_eth_header_info_t *info)
+{
+	fm_buffer_t *bp = pkt->payload;
+	const struct ether_header *eth;
+
+	eth = (const struct ether_header *) fm_buffer_peek(bp, sizeof(struct ether_header));
+	if (eth == NULL)
+		return false;
+
+	memcpy(&info->dst_addr, &eth->ether_dhost, ETH_ALEN);
+	memcpy(&info->src_addr, &eth->ether_shost, ETH_ALEN);
+	info->eth_proto = ntohs(eth->ether_type);
+
+	switch (info->eth_proto) {
+	case ETHERTYPE_IP:
+		info->next_proto = FM_PROTO_IP;
+		break;
+
+	case ETHERTYPE_IPV6:
+		info->next_proto = FM_PROTO_IPV6;
+		break;
+
+	case ETHERTYPE_ARP:
+		info->next_proto = FM_PROTO_ARP;
+		break;
+
+	default:
+		info->next_proto = FM_PROTO_NONE;
+		break;
+	}
+
+	return true;
+}
+
 static bool
 fm_raw_packet_pull_ipv4_hdr(fm_buffer_t *bp, fm_ip_header_info_t *info)
 {

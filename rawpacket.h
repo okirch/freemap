@@ -27,6 +27,16 @@
 #include "packet.h"
 
 /*
+ * Ethernet header information
+ */
+typedef struct fm_eth_header_info {
+	uint16_t		eth_proto;
+	unsigned char		src_addr[6];
+	unsigned char		dst_addr[6];
+	unsigned int		next_proto;
+} fm_eth_header_info_t;
+
+/*
  * IP header information
  */
 typedef struct fm_ip_header_info {
@@ -88,6 +98,7 @@ typedef struct fm_parsed_hdr {
 	unsigned int		proto_id;
 	union {
 		unsigned char	data[1];
+		fm_eth_header_info_t eth;
 		fm_ip_header_info_t ip;
 		fm_arp_header_info_t arp;
 		fm_icmp_header_info_t icmp;
@@ -116,6 +127,7 @@ extern bool		fm_raw_packet_add_ipv6_header(fm_buffer_t *bp, const fm_address_t *
 extern bool		fm_raw_packet_add_network_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
 					int ipproto, unsigned int ttl, unsigned int tos,
 					unsigned int transport_len);
+extern bool		fm_raw_packet_pull_eth_hdr(fm_pkt_t *pkt, fm_eth_header_info_t *info);
 extern bool		fm_raw_packet_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_header_info_t *info);
 extern bool		fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
 					fm_tcp_header_info_t *, unsigned int payload_len);
