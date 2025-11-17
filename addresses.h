@@ -93,6 +93,7 @@ extern void			fm_address_enumerator_array_destroy_shallow(fm_address_enumerator_
 extern const unsigned char *	fm_address_get_raw_addr(const fm_address_t *, unsigned int *nbits);
 extern bool			fm_address_set_raw_addr(fm_address_t *,int family,  const unsigned char *raw_data, size_t len);
 extern bool			fm_address_generator_address_eligible(const fm_address_t *address);
+extern bool			fm_address_generator_address_eligible_any_state(const fm_address_t *address);
 extern void			fm_interface_add(const char *name, const struct sockaddr_ll *);
 extern const fm_address_prefix_t *fm_local_prefix_for_address(const fm_address_t *addr);
 extern bool			fm_address_mask_from_prefixlen(int af, unsigned int pfxlen, unsigned char *mask, unsigned int size);

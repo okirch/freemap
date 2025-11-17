@@ -32,6 +32,7 @@
 #include "network.h"
 #include "protocols.h"
 #include "probe.h"
+#include "assets.h"
 
 extern const fm_address_prefix_t *	fm_local_prefix_for_address(const fm_address_t *);
 
@@ -139,8 +140,12 @@ fm_address_enumerator_array_destroy_shallow(fm_address_enumerator_array_t *array
  * constraints given by the user.
  */
 bool
-fm_address_generator_address_eligible(const fm_address_t *address)
+fm_address_generator_address_eligible_state(const fm_address_t *address, int asset_state)
 {
+	if (asset_state > FM_ASSET_STATE_UNDEF
+	 && !fm_host_asset_get_state_by_address(address, FM_PROTO_NONE))
+		return false;
+	 
 	if (fm_global.address_generation.only_family == AF_UNSPEC)
 		return true;	/* no restrictions */
 
@@ -148,6 +153,21 @@ fm_address_generator_address_eligible(const fm_address_t *address)
 		return true;	/* it's a match */
 
 	return false;
+}
+
+bool
+fm_address_generator_address_eligible(const fm_address_t *address)
+{
+	if (fm_global.address_generation.try_all)
+		return fm_address_generator_address_eligible_state(address, FM_ASSET_STATE_UNDEF);
+
+	return fm_address_generator_address_eligible_state(address, FM_ASSET_STATE_OPEN);
+}
+
+bool
+fm_address_generator_address_eligible_any_state(const fm_address_t *address)
+{
+	return fm_address_generator_address_eligible_state(address, FM_ASSET_STATE_UNDEF);
 }
 
 /*
@@ -359,7 +379,7 @@ fm_create_cidr_address_enumerator(const char *addr_string, fm_target_manager_t *
 		return false;
 	}
 
-	if (!fm_address_generator_address_eligible(&ss))
+	if (!fm_address_generator_address_eligible_any_state(&ss))
 		return false;
 
 	host_bits = fm_addrfamily_max_addrbits(ss.ss_family);
@@ -465,7 +485,7 @@ fm_local_discovery_info_callback(const fm_pkt_t *pkt, void *user_data)
 		return;
 
 	new_addr = &pkt->peer_addr;
-	if (fm_address_generator_address_eligible(new_addr))
+	if (fm_address_generator_address_eligible_any_state(new_addr))
 		fm_address_array_append_unique(&disco->found, new_addr);
 }
 
@@ -474,7 +494,7 @@ fm_local_discovery_enumerator_add_address(fm_address_enumerator_t *agen, const f
 {
 	struct fm_local_discovery_enumerator *disco = (struct fm_local_discovery_enumerator *) agen;
 
-	if (fm_address_generator_address_eligible(new_addr)) {
+	if (fm_address_generator_address_eligible_any_state(new_addr)) {
 		fm_address_array_append_unique(&disco->found, new_addr);
 
 		/* Record in the asset database that this address is reachable.
