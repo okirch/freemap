@@ -210,6 +210,9 @@ fm_scanner_create_new_probes(fm_scanner_t *scanner, fm_sched_stats_t *sched_stat
 	bool have_new_targets = false;
 	unsigned int k;
 
+	if (scanner->current_stage.index == FM_SCAN_STAGE_DISCOVERY)
+		return;
+
 	if (scanner->current_stage.next_pool_id != scanner->target_manager->next_free_pool_id)
 		have_new_targets = true;
 
@@ -280,17 +283,19 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 {
 	fm_sched_stats_t scan_stats;
 
-	/* This should probably also be a job... */
-	if (fm_timestamp_older(&scanner->next_pool_resize, NULL)) {
-		fm_log_debug("Trying to resize target pool\n");
-		fm_target_manager_resize_pool(scanner->target_manager, FM_TARGET_POOL_MAX_SIZE);
-		fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
-	}
+	if (scanner->current_stage.index != FM_SCAN_STAGE_DISCOVERY) {
+		/* This should probably also be a job... */
+		if (fm_timestamp_older(&scanner->next_pool_resize, NULL)) {
+			fm_log_debug("Trying to resize target pool\n");
+			fm_target_manager_resize_pool(scanner->target_manager, FM_TARGET_POOL_MAX_SIZE);
+			fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
+		}
 
-	if (!fm_target_manager_replenish_pools(scanner->target_manager)) {
-		fm_log_debug("Looks like we're done\n");
-		fm_report_flush(scanner->report);
-		return false;
+		if (!fm_target_manager_replenish_pools(scanner->target_manager)) {
+			fm_log_debug("Looks like we're done\n");
+			fm_report_flush(scanner->report);
+			return false;
+		}
 	}
 
 	fm_ratelimit_update(&scanner->send_rate_limit);
@@ -440,7 +445,7 @@ fm_scanner_discovery_select_prefixes(const fm_interface_t *nic, fm_address_prefi
                 const fm_address_prefix_t *prefix = &prefix_array.elements[i];
 		int family;
 
-                if (!fm_address_generator_address_eligible(&prefix->address))
+                if (!fm_address_generator_address_eligible_any_state(&prefix->address))
                         continue;
 
 		family = prefix->address.ss_family;
