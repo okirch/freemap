@@ -226,6 +226,21 @@ fm_simple_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t
 }
 
 static void
+fm_simple_address_enumerator_add_address(fm_address_enumerator_t *agen, const fm_address_t *new_addr)
+{
+	struct fm_simple_address_enumerator *simple = (struct fm_simple_address_enumerator *) agen;
+
+	if (fm_address_generator_address_eligible_any_state(new_addr)) {
+		fm_address_array_append_unique(&simple->addrs, new_addr);
+
+		/* Record in the asset database that this address is reachable.
+		 * This may fail, eg if there's a problem mapping the asset file into memory.
+		 * Silently ignore those kinds of failure */
+		fm_host_asset_update_state_by_address(new_addr, FM_PROTO_NONE, FM_ASSET_STATE_OPEN);
+	}
+}
+
+static void
 fm_simple_address_enumerator_restart(fm_address_enumerator_t *agen, int stage)
 {
 	struct fm_simple_address_enumerator *simple = (struct fm_simple_address_enumerator *) agen;
@@ -238,6 +253,7 @@ static const struct fm_address_enumerator_ops fm_simple_address_enumerator_ops =
 	.name		= "simple",
 	.destroy	= NULL,
 	.get_one_address= fm_simple_address_enumerator_get_one,
+	.add_address	= fm_simple_address_enumerator_add_address,
 	.restart	= fm_simple_address_enumerator_restart,
 };
 
@@ -483,175 +499,16 @@ fm_create_cidr_address_enumerator(const char *addr_string, fm_target_manager_t *
 }
 
 /*
- * Address generator that tries to discover hosts on a local network, typically using
- * something like icmp broadcasts
+ * Address enumerator into which a discovery scan can feed its results
  */
-struct fm_local_discovery_enumerator {
-	fm_address_enumerator_t base;
-
-	fm_job_t *		pending;
-	fm_completion_t *	completion;
-
-	unsigned int		index;
-	fm_address_array_t	found;
-};
-
-static fm_error_t
-fm_local_discovery_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
-{
-	struct fm_local_discovery_enumerator *disco = (struct fm_local_discovery_enumerator *) agen;
-
-	if (disco->index < disco->found.count) {
-		*ret = disco->found.elements[disco->index++];
-		return 0;
-	}
-
-	/* The discovery job is done; no more new addresses. */
-	if (disco->pending == 0)
-		return FM_SEND_ERROR;
-
-	return FM_TRY_AGAIN;
-}
-
-static void
-fm_local_discovery_enumerator_restart(fm_address_enumerator_t *agen, int stage)
-{
-	struct fm_local_discovery_enumerator *disco = (struct fm_local_discovery_enumerator *) agen;
-
-	disco->index = 0;
-}
-
-static void
-fm_local_discovery_job_callback(const fm_job_t *job, void *user_data)
-{
-	struct fm_local_discovery_enumerator *disco = user_data;
-
-	if (disco->pending != job)
-		return;
-
-	fm_log_debug("local address discovery job is complete");
-
-	fm_completion_free(disco->completion);
-	disco->pending = NULL;
-	disco->completion = NULL;
-}
-
-static void
-fm_local_discovery_info_callback(const fm_pkt_t *pkt, void *user_data)
-{
-	struct fm_local_discovery_enumerator *disco = user_data;
-	const fm_address_t *new_addr;
-
-	if (pkt->info.ee != NULL)
-		return;
-
-	new_addr = &pkt->peer_addr;
-	if (fm_address_generator_address_eligible_any_state(new_addr))
-		fm_address_array_append_unique(&disco->found, new_addr);
-}
-
-static void
-fm_local_discovery_enumerator_add_address(fm_address_enumerator_t *agen, const fm_address_t *new_addr)
-{
-	struct fm_local_discovery_enumerator *disco = (struct fm_local_discovery_enumerator *) agen;
-
-	if (fm_address_generator_address_eligible_any_state(new_addr)) {
-		fm_address_array_append_unique(&disco->found, new_addr);
-
-		/* Record in the asset database that this address is reachable.
-		 * This may fail, eg if there's a problem mapping the asset file into memory.
-		 * Silently ignore those kinds of failure */
-		fm_host_asset_update_state_by_address(new_addr, FM_PROTO_NONE, FM_ASSET_STATE_OPEN);
-	}
-}
-
-static const struct fm_address_enumerator_ops fm_local_discovery_enumerator_ops = {
-	.obj_size	= sizeof(struct fm_local_discovery_enumerator),
-	.name		= "icmp-discovery",
-	.destroy	= NULL,
-	.get_one_address= fm_local_discovery_enumerator_get_one,
-	.add_address	= fm_local_discovery_enumerator_add_address,
-	.restart	= fm_local_discovery_enumerator_restart,
-};
-
 fm_address_enumerator_t *
 fm_address_enumerator_new_discovery(void)
 {
-	struct fm_local_discovery_enumerator *disco;
+	struct fm_simple_address_enumerator *simple;
 
-	disco = NEW_ADDRESS_ENUMERATOR(fm_local_discovery_enumerator);
+	simple = fm_create_simple_address_enumerator_empty();
 
-	return &disco->base;
-}
-
-static fm_address_enumerator_t *
-fm_local_discovery_enumerator_create(const fm_interface_t *nic, int family, const fm_address_t *src_addr)
-{
-	struct fm_local_discovery_enumerator *disco;
-	fm_probe_params_t probe_params = { 0 };
-	fm_protocol_t *proto;
-	fm_multiprobe_t *multiprobe;
-
-	disco = NEW_ADDRESS_ENUMERATOR(fm_local_discovery_enumerator);
-
-	proto = fm_protocol_by_id(FM_PROTO_ICMP);
-	probe_params.retries = 3;
-	probe_params.ttl = 1;
-
-	multiprobe = fm_icmp_create_broadcast_probe(proto, family, nic, src_addr,
-					fm_local_discovery_info_callback, disco,
-					&probe_params, NULL);
-	if (multiprobe == NULL) {
-		free(disco);
-		return NULL;
-	}
-
-	disco->pending = &multiprobe->job;
-	disco->completion = fm_job_wait_for_completion(&multiprobe->job, fm_local_discovery_job_callback, disco);
-
-	fm_job_run(&multiprobe->job, NULL);
-
-	return &disco->base;
-}
-
-
-/*
- * Local address enumerator
- */
-static void
-fm_local_address_enumerator_add_single_address(struct fm_simple_address_enumerator **simple_p, const fm_address_t *addr, fm_target_manager_t *target_manager)
-{
-	struct fm_simple_address_enumerator *simple = *simple_p;
-
-	if (simple == NULL) {
-		*simple_p = simple = fm_create_simple_address_enumerator_empty();
-		fm_target_manager_add_address_generator(target_manager, &simple->base);
-	}
-
-	fm_address_array_append(&simple->addrs, addr);
-}
-
-static bool
-fm_local_address_enumerator_add_discovery(const fm_interface_t *nic, const fm_address_prefix_t *prefix, fm_target_manager_t *target_manager)
-{
-	static bool complained = false;
-	fm_address_enumerator_t *child = NULL;
-	int family;
-
-	family = prefix->address.ss_family;
-
-	child = fm_local_discovery_enumerator_create(nic, family, &prefix->source_addr);
-	if (child == NULL) {
-		if (!complained) {
-			fm_log_error("%s: trying to perform address discovery, but I lack privileges", 
-					fm_interface_get_name(nic));
-			complained = true;
-		}
-		return false;
-	}
-
-	fm_target_manager_add_address_generator(target_manager, child);
-	return true;
+	return &simple->base;
 }
 
 /*
@@ -685,7 +542,7 @@ fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *targ
 	old_count = fm_target_manager_get_generator_count(target_manager);
 	for (i = 0; i < prefix_array.count; ++i) {
 		const fm_address_prefix_t *prefix = &prefix_array.elements[i];
-		const fm_address_t *tgt_addr = &prefix->address;
+		const fm_address_t *tgt_addr = NULL;
 		fm_address_enumerator_t *child = NULL;
 
 		/* The prefix address may not have a host asset, and we
@@ -695,20 +552,18 @@ fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *targ
 
 		if (fm_interface_is_loopback(nic)) {
 			/* Bravely talking to myself. Hullo, self... */
-			fm_local_address_enumerator_add_single_address(&simple, &prefix->source_addr, target_manager);
-			continue;
-		}
-
+			tgt_addr = &prefix->source_addr;
+		} else
 		if (prefix->address.ss_family == AF_INET) {
 			if (prefix->pfxlen == 32) {
-				fm_local_address_enumerator_add_single_address(&simple, tgt_addr, target_manager);
+				tgt_addr = &prefix->address;
 			} else {
-				child = fm_ipv4_network_enumerator(tgt_addr, prefix->pfxlen);
+				child = fm_ipv4_network_enumerator(&prefix->address, prefix->pfxlen);
 			}
 		} else
 		if (prefix->address.ss_family == AF_INET6) {
 			if (prefix->pfxlen == 128) {
-				fm_local_address_enumerator_add_single_address(&simple, tgt_addr, target_manager);
+				tgt_addr = &prefix->address;
 			} else if (fm_global.address_generation.try_all) {
 				warn_ipv6_no_discovery = true;
 			} else {
@@ -717,6 +572,15 @@ fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *targ
 			}
 		} else {
 			/* silently ignore anything else (for those of you still on Netware IPX, I pity you) */
+		}
+
+		if (tgt_addr != NULL) {
+			if (simple == NULL) {
+				simple = fm_create_simple_address_enumerator_empty();
+				fm_target_manager_add_address_generator(target_manager, &simple->base);
+			}
+
+			fm_address_array_append(&simple->addrs, tgt_addr);
 		}
 
 		if (child != NULL)
