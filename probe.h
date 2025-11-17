@@ -133,6 +133,7 @@ struct fm_host_tasklet {
 typedef const struct fm_multiprobe_ops {
 	bool			(*add_target)(fm_multiprobe_t *, fm_host_tasklet_t *, fm_target_t *);
 	bool			(*add_broadcast)(fm_multiprobe_t *, fm_host_tasklet_t *,
+						const fm_interface_t *nic,
 						const fm_address_t *src_link_addr,
 						const fm_address_t *dst_link_addr,
 						const fm_address_t *src_network_addr,

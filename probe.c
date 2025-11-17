@@ -456,7 +456,7 @@ fm_multiprobe_add_link_level_broadcast(fm_multiprobe_t *multiprobe, int af,
 
 	hlist_insert(&multiprobe->ready, &host_task->link);
 
-	if (!multiprobe->ops->add_broadcast(multiprobe, host_task, &lladdr, &llbcast, net_src_addr, &network_broadcast)) {
+	if (!multiprobe->ops->add_broadcast(multiprobe, host_task, nic, &lladdr, &llbcast, net_src_addr, &network_broadcast)) {
 		fm_log_error("%s: unable to add brodcast via %s", multiprobe->name, ifname);
 		fm_host_tasklet_free(host_task);
 		return false;

@@ -567,10 +567,11 @@ fm_icmp_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *ho
 
 static bool
 fm_icmp_multiprobe_add_broadcast(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task,
-                                                const fm_address_t *src_link_addr,
-                                                const fm_address_t *dst_link_addr,
-                                                const fm_address_t *src_network_addr,
-                                                const fm_address_t *dst_network_addr)
+						const fm_interface_t *nic,
+						const fm_address_t *src_link_addr,
+						const fm_address_t *dst_link_addr,
+						const fm_address_t *src_network_addr,
+						const fm_address_t *dst_network_addr)
 
 {
 	fm_target_control_t *target_control = &host_task->control;
