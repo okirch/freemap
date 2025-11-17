@@ -120,6 +120,7 @@ struct fm_host_tasklet {
 	char *			name;
 	fm_target_t *		target;
 	fm_host_asset_t *	host_asset;
+	fm_ratelimit_t *	ratelimit;
 
 	fm_target_control_t	control;
 

@@ -193,8 +193,10 @@ fm_host_tasklet_alloc(fm_target_t *target, unsigned int num_tasks)
 	host_task = calloc(1, sizeof(*host_task));
 
 	host_task->target = target;
-	if (target != NULL)
+	if (target != NULL) {
 		host_task->host_asset = target->host_asset;
+		host_task->ratelimit = &target->host_rate_limit;
+	}
 
 	host_task->num_tasks = num_tasks;
 	host_task->tasklets = calloc(num_tasks, sizeof(host_task->tasklets[0]));
@@ -435,6 +437,16 @@ fm_multiprobe_add_link_level_broadcast(fm_multiprobe_t *multiprobe, int af,
 
 	host_task = fm_host_tasklet_alloc(NULL, 17);
 	asprintf(&host_task->name, "%s/%s/broadcast", multiprobe->name, ifname);
+	host_task->control.family = net_src_addr->ss_family;
+
+	/* Dummy rate limit - we may want to define this per device */
+	{
+		static fm_ratelimit_t dummy;
+
+		if (dummy.rate == 0)
+			fm_ratelimit_init(&dummy, 1, 1);
+		host_task->ratelimit = &dummy;
+	}
 
 	hlist_insert(&multiprobe->ready, &host_task->link);
 
@@ -651,10 +663,10 @@ fm_multiprobe_transmit_tasklets(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *
 			}
 
 			/* FIXME why not a loop? */
-			if (fm_ratelimit_available(&host_task->target->host_rate_limit)) {
+			if (fm_ratelimit_available(host_task->ratelimit)) {
 				error = fm_multiprobe_transmit_tasklet(multiprobe, host_task, tasklet, sched_stats);
 				if (error == 0) {
-					fm_ratelimit_consume(&host_task->target->host_rate_limit, 1);
+					fm_ratelimit_consume(host_task->ratelimit, 1);
 				}
 			}
 		}
@@ -663,7 +675,7 @@ fm_multiprobe_transmit_tasklets(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *
 			timeout = tasklet->timeout;
 	}
 
-	throttle_timeout = now + fm_ratelimit_wait_until(&host_task->target->host_rate_limit, 1);
+	throttle_timeout = now + fm_ratelimit_wait_until(host_task->ratelimit, 1);
 	if (timeout == 0 || throttle_timeout > timeout)
 		timeout = throttle_timeout;
 
@@ -713,7 +725,7 @@ fm_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_sched_stats_t *sched_stat
 	while ((host_task = hlist_head_get_first(&multiprobe->ready)) != NULL) {
 		bool done;
 
-		fm_ratelimit_update(&host_task->target->host_rate_limit);
+		fm_ratelimit_update(host_task->ratelimit);
 
 		done = fm_multiprobe_transmit_tasklets(multiprobe, host_task, sched_stats);
 
