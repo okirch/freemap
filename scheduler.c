@@ -135,6 +135,12 @@ fm_job_continue(fm_job_t *job)
 		fm_log_debug("%s: moved to ready", job->fullname);
 }
 
+bool
+fm_job_is_active(const fm_job_t *job)
+{
+	return job->group != NULL;
+}
+
 /*
  * completions are a way to notify someone when a subordinate job exits
  */

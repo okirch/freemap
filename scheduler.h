@@ -137,6 +137,7 @@ extern void		fm_job_group_destroy(fm_job_group_t *);
 extern bool		fm_job_group_is_done(const fm_job_group_t *);
 
 extern void		fm_job_init(fm_job_t *, const fm_job_ops_t *, const char *);
+extern bool		fm_job_is_active(const fm_job_t *);
 extern void		fm_job_run(fm_job_t *, fm_job_group_t *);
 extern void		fm_job_postpone(fm_job_t *);
 extern void		fm_job_continue(fm_job_t *);
