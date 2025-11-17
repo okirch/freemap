@@ -120,6 +120,7 @@ enum {
 #define FM_PROBE_MODE_TOPO	0x0001
 #define FM_PROBE_MODE_HOST	0x0002
 #define FM_PROBE_MODE_PORT	0x0004
+#define FM_PROBE_MODE_BCAST	0x0008
 
 /*
  * Parameters that can be passed to a protocol when creating probes.

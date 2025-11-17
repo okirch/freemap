@@ -701,6 +701,8 @@ fm_config_probe_root_create(curly_node_t *node, void *data)
 		mode = FM_PROBE_MODE_HOST;
 	else if (!strcmp(type, "port-probe"))
 		mode = FM_PROBE_MODE_PORT;
+	else if (!strcmp(type, "broadcast-probe"))
+		mode = FM_PROBE_MODE_BCAST;
 	else
 		fm_log_fatal("BUG: don't know about %s", type);
 
@@ -852,6 +854,7 @@ static fm_config_proc_t	fm_config_routine_root = {
 		{ "topo-probe",		offsetof(fm_config_routine_t, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
 		{ "host-probe",		offsetof(fm_config_routine_t, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
 		{ "port-probe",		offsetof(fm_config_routine_t, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
+		{ "broadcast-probe",	offsetof(fm_config_routine_t, probes),	&fm_config_probe_root, .alloc_child = fm_config_probe_root_create },
 	},
 };
 

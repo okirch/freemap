@@ -135,6 +135,8 @@ fm_probe_mode_to_string(int mode)
 		return "host";
 	case FM_PROBE_MODE_PORT:
 		return "port";
+	case FM_PROBE_MODE_BCAST:
+		return "bcast";
 	}
 	return "bad";
 }
