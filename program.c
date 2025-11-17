@@ -75,6 +75,7 @@ struct fm_config_routine {
 	const char *		name;
 	int			stage;		/* FM_SCAN_STAGE_xxx */
 	bool			optional;
+	bool			compiled;
 	fm_config_probe_array_t	probes;
 };
 
@@ -1064,12 +1065,12 @@ fm_config_program_set_service_catalog(fm_config_program_t *program, const char *
  * Convert a program into a sequence of scan actions
  */
 static bool
-fm_config_routine_compile(const fm_config_routine_t *routine, fm_scanner_t *scanner)
+fm_config_routine_compile(fm_config_routine_t *routine, fm_scanner_t *scanner)
 {
 	unsigned int i;
 	bool ok = true;
 
-	if (routine == NULL)
+	if (routine == NULL || routine->compiled)
 		return true;
 
 	for (i = 0; ok && i < routine->probes.count; ++i) {
@@ -1078,6 +1079,7 @@ fm_config_routine_compile(const fm_config_routine_t *routine, fm_scanner_t *scan
 		ok = fm_scanner_add_probe(scanner, routine->stage, probe) && ok;
 	}
 
+	routine->compiled = true;
 	return ok;
 }
 
