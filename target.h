@@ -118,6 +118,7 @@ extern void		fm_target_pool_purge(fm_target_pool_t *, unsigned int oldest_pendin
 typedef struct fm_target_pool_iterator {
 	fm_target_pool_t *queue;
 	unsigned int	index;
+	unsigned int	next_pool_id;
 } fm_target_pool_iterator_t;
 
 extern void		fm_target_pool_begin(fm_target_pool_t *, fm_target_pool_iterator_t *);

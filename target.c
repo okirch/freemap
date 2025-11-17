@@ -117,7 +117,7 @@ fm_target_pool_bsearch(fm_target_pool_t *pool, unsigned int target_id)
 
 	if (pool->slots[i0]->pool_id == target_id)
 		return i0;
-	if (pool->slots[i1]->pool_id == target_id)
+	if (i1 < pool->count && pool->slots[i1]->pool_id == target_id)
 		return i1;
 	return -1;
 }
@@ -207,51 +207,47 @@ void
 fm_target_pool_begin(fm_target_pool_t *queue, fm_target_pool_iterator_t *iter)
 {
 	iter->queue = queue;
-	iter->index = fm_target_pool_bsearch(queue, queue->next_pool_id);
+	iter->next_pool_id = queue->next_pool_id;
+	iter->index = 0;
 }
 
 fm_target_t *
 fm_target_pool_next(fm_target_pool_iterator_t *iter)
 {
+	static const unsigned int INVALID_INDEX = ~(unsigned int) 0;
 	fm_target_pool_t *queue = iter->queue;
-	fm_target_t *target;
+	fm_target_t *target = NULL;
 	int index;
 
-	if (iter->index < 0)
+	if (iter->index == INVALID_INDEX)
 		return NULL;
 
-	/* Things are a bit complicated because someone may drop
-	 * a target while we're iterating over the pool (for instance,
-	 * if a probe rejects an incompatible target - think ARP vs IPv6).
+	if (iter->index < queue->count)
+		target = queue->slots[iter->index++];
+
+	/* Things are a bit complicated because a target may be dropped from
+	 * the pool while we're iterating over it (for instance, if a probe
+	 * rejects an incompatible target - think ARP vs IPv6).
 	 *
-	 * Maybe this should become a list instead of an array?
+	 * Things could be easier if we really pop() the first entry
+	 * from the queue, and forget about it. However, then it would
+	 * be up to the multiprobe to call fm_target_release() when it's
+	 * done with it.
 	 */
-	if ((index = iter->index) >= queue->count)
-		index = queue->count - 1;
-
-	while (index >= 0) {
-		target = queue->slots[index];
-		if (target->pool_id == queue->next_pool_id)
-			break;
-
-		if (target->pool_id < queue->next_pool_id) {
-			fm_log_warning("fm_target_pool_next: bad index/id - should never happen");
+	if (target == NULL || target->pool_id != iter->next_pool_id) {
+		index = fm_target_pool_bsearch(queue, iter->next_pool_id);
+		if (index < 0) {
+			iter->index = INVALID_INDEX;
 			return NULL;
 		}
 
-		index -= 1;
+		target = queue->slots[index++];
+		iter->index = index;
 	}
 
-	if (index < 0)
-		return NULL;
+	assert(target->pool_id == iter->next_pool_id);
+	iter->next_pool_id += 1;
 
-	if (iter->index >= queue->count)
-		return NULL;
-
-	iter->index = index + 1;
-
-	assert(target->pool_id == queue->next_pool_id);
-	queue->next_pool_id += 1;
 	return target;
 }
 
@@ -349,17 +345,18 @@ fm_target_manager_begin(fm_target_manager_t *mgr, hlist_iterator_t *iter)
 fm_target_t *
 fm_target_manager_next(fm_target_manager_t *mgr, hlist_iterator_t *iter)
 {
-	fm_target_t *target;
+	fm_target_t *target, *found = NULL;
 
 	while ((target = hlist_iterator_next(iter)) != NULL) {
-		if (target->refcount > 1)
-			return target;
-
-		/* This target is done. */
-		fm_target_release(target);
+		if (target->refcount == 1) {
+			/* This target is done. The following call with free it. */
+			fm_target_release(target);
+		} else if (found == NULL) {
+			found = target;
+		}
 	}
 
-	return NULL;
+	return found;
 }
 
 fm_target_t *
