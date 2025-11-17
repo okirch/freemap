@@ -226,4 +226,14 @@ fm_probe_class_supports(const fm_probe_class_t *pclass, fm_param_type_t type)
 	return !!(pclass->features & (1 << type));
 }
 
+/*
+ * This is probably just temporary
+ */
+typedef struct fm_multiprobe_array {
+	unsigned int		count;
+	fm_multiprobe_t **	entries;
+} fm_multiprobe_array_t;
+
+extern void		fm_multiprobe_array_append(fm_multiprobe_array_t *array, fm_multiprobe_t *);
+
 #endif /* FREEMAP_PROBE_H */

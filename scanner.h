@@ -41,6 +41,8 @@ typedef struct fm_scan_action_array {
 	fm_scan_action_t **	entries;
 } fm_scan_action_array_t;
 
+typedef struct fm_scan_stage fm_scan_stage_t;
+
 struct fm_scanner {
 	fm_target_manager_t *	target_manager;
 	fm_report_t *		report;
@@ -67,7 +69,8 @@ struct fm_scanner {
 		unsigned int		num_done;
 		fm_scan_action_array_t *actions;
 	}			current_stage;
-	fm_scan_action_array_t	stage_requests[__FM_SCAN_STAGE_MAX];
+
+	fm_scan_stage_t *	 stages[__FM_SCAN_STAGE_MAX];
 
 	const fm_protocol_engine_t *proto;
 };
@@ -81,11 +84,11 @@ extern bool			fm_scanner_initiate_discovery(fm_scanner_t *, const char *addrspec
 
 extern void			fm_scanner_add_global_job(fm_scanner_t *scanner, fm_job_t *job);
 
-static inline fm_scan_action_array_t *
+static inline fm_scan_stage_t *
 fm_scanner_get_stage(fm_scanner_t *scanner, unsigned int stage)
 {
 	assert(stage < __FM_SCAN_STAGE_MAX);
-	return &scanner->stage_requests[stage];
+	return scanner->stages[stage];
 }
 
 static inline fm_scan_action_array_t *

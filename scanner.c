@@ -28,6 +28,10 @@
 #include "logging.h"
 #include "utils.h"
 
+struct fm_scan_stage {
+	fm_multiprobe_array_t	probes;
+	fm_scan_action_array_t	actions;
+};
 
 static bool			fm_scanner_start_stage(fm_scanner_t *scanner);
 
@@ -118,16 +122,30 @@ fm_scanner_get_report(fm_scanner_t *scanner)
 	return scanner->report;
 }
 
+static fm_scan_stage_t *
+fm_scanner_create_stage(fm_scanner_t *scanner, unsigned int stage_id)
+{
+	fm_scan_stage_t *stage;
+
+	assert(stage_id < __FM_SCAN_STAGE_MAX);
+	if ((stage = scanner->stages[stage_id]) == NULL) {
+		stage = calloc(1, sizeof(*stage));
+		scanner->stages[stage_id] = stage;
+	}
+
+	return stage;
+}
+
 static void
 fm_scanner_queue_probe(fm_scanner_t *scanner, int stage_id, fm_multiprobe_t *multiprobe)
 {
-	fm_scan_action_array_t *stage;
+	fm_scan_stage_t *stage;
 	fm_scan_action_t *action;
 
-	stage = fm_scanner_get_stage(scanner, stage_id);
+	stage = fm_scanner_create_stage(scanner, stage_id);
 
 	action = fm_scan_action_create(multiprobe);
-	fm_scan_action_array_append(stage, action);
+	fm_scan_action_array_append(&stage->actions, action);
 
 	/* Create a separate target queue through which we'll feed new
 	 * scan targets to the probe. */
@@ -326,17 +344,17 @@ static bool
 fm_scanner_start_stage(fm_scanner_t *scanner)
 {
 	unsigned int index = scanner->current_stage.index;
-	fm_scan_action_array_t *array;
 
 	scanner->current_stage.actions = NULL;
 	scanner->current_stage.num_done = 0;
 
 	while (index <  __FM_SCAN_STAGE_MAX) {
-		array = &scanner->stage_requests[index];
-		if (array->count > 0) {
+		fm_scan_stage_t *stage = scanner->stages[index];
+
+		if (stage && stage->actions.count > 0) {
 			fm_target_manager_restart(scanner->target_manager, index);
 			scanner->current_stage.index = index;
-			scanner->current_stage.actions = array;
+			scanner->current_stage.actions = &stage->actions;
 			return true;
 		}
 		index++;
@@ -482,7 +500,7 @@ fm_scanner_discovery_select_prefixes(const fm_interface_t *nic, fm_address_prefi
 bool
 fm_scanner_initiate_discovery(fm_scanner_t *scanner, const char *addrspec)
 {
-	fm_scan_action_array_t *stage;
+	fm_scan_stage_t *stage;
 	const fm_interface_t *nic;
 	fm_address_prefix_array_t selected_prefixes = { 0 };
 	unsigned int i;
@@ -515,8 +533,8 @@ fm_scanner_initiate_discovery(fm_scanner_t *scanner, const char *addrspec)
 	if (scanner->addr_discovery == NULL)
 		scanner->addr_discovery = fm_address_enumerator_new_discovery();
 
-	for (i = 0; i < scanner->stage_requests[FM_SCAN_STAGE_DISCOVERY].count; ++i) {
-		fm_scan_action_t *action = scanner->stage_requests[FM_SCAN_STAGE_DISCOVERY].entries[i];
+	for (i = 0; i < stage->actions.count; ++i) {
+		fm_scan_action_t *action = stage->actions.entries[i];
 		fm_multiprobe_t *multiprobe = action->multiprobe;
 
 		/* First time around, install the data tap. This needs to happen before we
