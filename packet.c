@@ -32,6 +32,8 @@
 
 #include "packet.h"
 #include "rawpacket.h"
+#include "addresses.h"
+#include "logging.h"
 #include "buffer.h"
 
 #undef FM_DEBUG_PACKET_PARSER

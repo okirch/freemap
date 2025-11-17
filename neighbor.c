@@ -27,6 +27,7 @@
 #include "neighbor.h"
 #include "protocols.h"
 #include "target.h" /* for fm_target_pool_find */
+#include "logging.h"
 #include "utils.h"
 
 typedef struct fm_completion	fm_completion_t;

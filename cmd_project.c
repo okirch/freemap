@@ -24,6 +24,7 @@
 #include "commands.h"
 #include "projects.h"
 #include "program.h"
+#include "logging.h"
 
 static fm_long_option_t project_long_options[] = {
 	{ "force",	FM_ARG_NONE,		OPT_FORCE },

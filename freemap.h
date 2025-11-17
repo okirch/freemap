@@ -205,19 +205,6 @@ extern fm_multiprobe_t *fm_icmp_create_broadcast_probe(fm_protocol_t *, int, con
 extern const char *	fm_protocol_id_to_string(unsigned int id);
 extern unsigned int	fm_protocol_string_to_id(const char *name);
 
-extern void		fm_set_logfile(FILE *fp);
-extern void		fm_trace(const char *fmt, ...);
-extern void		fm_log_fatal(const char *fmt, ...);
-extern void		fm_log_error(const char *fmt, ...);
-extern void		fm_log_warning(const char *fmt, ...);
-extern void		fm_log_notice(const char *fmt, ...);
-
-extern unsigned int	fm_debug_level;
-
-#define fm_log_debug(fmt ...) do { \
-		if (fm_debug_level > 0) fm_trace(fmt); \
-	} while (0)
-
 extern fm_wellknown_service_t *fm_wellknown_service_for_port(const char *protool_id, unsigned int port);
 
 #endif /* FREEMAP_FREEMAP_H */

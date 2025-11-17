@@ -27,6 +27,7 @@
 #include "config.h"
 #include "projects.h"
 #include "filefmt.h"
+#include "logging.h"
 
 static fm_config_proc_t		fm_config_root;
 static fm_config_proc_t		fm_project_root;

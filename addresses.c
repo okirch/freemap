@@ -31,6 +31,7 @@
 
 #include "addresses.h"
 #include "network.h"
+#include "logging.h"
 
 #if AF_UNSPEC >= 32
 # error "AF_UNSPEC is too large, fix this code"

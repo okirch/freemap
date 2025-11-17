@@ -32,6 +32,7 @@
 #include "routing.h"
 #include "neighbor.h"
 #include "buffer.h"
+#include "logging.h"
 #include "utils.h"
 
 static fm_routing_cache_t *fm_routing_cache_ipv4;

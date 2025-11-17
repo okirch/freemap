@@ -20,6 +20,7 @@
 #include "extant.h"
 #include "probe.h"
 #include "protocols.h"
+#include "logging.h"
 
 /*
  * Tracking of extant requests

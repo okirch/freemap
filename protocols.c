@@ -22,6 +22,7 @@
 #include "target.h"
 #include "socket.h"
 #include "network.h"
+#include "logging.h"
 #include "buffer.h"
 
 static unsigned int	fm_protocol_directory_count;

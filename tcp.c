@@ -30,6 +30,7 @@
 #include "target.h"
 #include "socket.h"
 #include "rawpacket.h"
+#include "logging.h"
 #include "buffer.h"
 
 typedef struct fm_tcp_extra_params {

@@ -21,6 +21,7 @@
 
 #include "freemap.h"
 #include "buffer.h"
+#include "logging.h"
 
 fm_buffer_t *
 fm_buffer_alloc(size_t payload)

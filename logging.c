@@ -24,6 +24,7 @@
 #include <stdlib.h>
 
 #include "freemap.h"
+#include "logging.h"
 
 static FILE *	fm_log_file = NULL;
 

@@ -26,6 +26,7 @@
 #include "commands.h"
 #include "projects.h"
 #include "program.h"
+#include "logging.h"
 
 static fm_long_option_t scan_long_options[] = {
 	{ "logfile",		FM_ARG_REQUIRED,	'L',	},

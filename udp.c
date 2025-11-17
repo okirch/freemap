@@ -29,6 +29,7 @@
 #include "socket.h"
 #include "services.h"
 #include "rawpacket.h"
+#include "logging.h"
 #include "buffer.h"
 
 typedef struct fm_udp_control {

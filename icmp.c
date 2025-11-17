@@ -37,6 +37,7 @@
 #include "icmp.h"
 #include "rawpacket.h"
 #include "socket.h"
+#include "logging.h"
 
 static fm_socket_t *	fm_icmp_create_socket(fm_protocol_t *proto, int ipproto);
 static fm_socket_t *	fm_icmp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);

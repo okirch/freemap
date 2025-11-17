@@ -22,6 +22,7 @@
 #include <assert.h>
 #include "freemap.h"
 #include "subcommand.h"
+#include "logging.h"
 #include "utils.h"
 
 /*

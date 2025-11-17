@@ -35,6 +35,7 @@
 #include "rawpacket.h"
 #include "addresses.h"
 #include "buffer.h"
+#include "logging.h"
 #include "utils.h"
 
 

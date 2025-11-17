@@ -29,6 +29,7 @@
 
 #include "assets.h"
 #include "addresses.h"
+#include "logging.h"
 
 typedef struct fm_asset_pos {
 	unsigned int	offset;

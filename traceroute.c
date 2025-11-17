@@ -31,6 +31,7 @@
 #include "target.h"
 #include "socket.h"
 #include "utils.h"
+#include "logging.h"
 
 
 static void			fm_topo_state_free(fm_topo_state_t *topo);

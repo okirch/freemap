@@ -28,6 +28,7 @@
 #include "program.h"
 #include "assets.h"
 #include "addresses.h"
+#include "logging.h"
 
 static fm_long_option_t report_long_options[] = {
 	{ "skip-noresponse",	FM_ARG_NONE,		OPT_SKIP_NORESPONSE },

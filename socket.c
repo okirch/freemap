@@ -36,6 +36,7 @@
 #include "utils.h"
 #include "rawpacket.h"
 #include "extant.h"
+#include "logging.h"
 #include "buffer.h"
 
 static struct fm_socket_list	socket_list;

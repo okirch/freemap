@@ -25,6 +25,7 @@
 #include "protocols.h"
 #include "program.h"
 #include "services.h"
+#include "logging.h"
 #include "utils.h"
 
 

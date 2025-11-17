@@ -23,7 +23,6 @@
 #include <assert.h>
 #include <errno.h>
 #include <ctype.h>
-
 #include <limits.h>
 #include <unistd.h>
 
@@ -37,6 +36,7 @@
 #include "utils.h"
 #include "filefmt.h"
 #include "buffer.h"
+#include "logging.h"
 #include "services.h"
 
 enum {

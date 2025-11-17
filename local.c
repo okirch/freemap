@@ -28,6 +28,7 @@
 #include "routing.h"
 #include "socket.h"
 #include "protocols.h"
+#include "logging.h"
 #include "lists.h"
 
 static struct hlist_head	fm_interface_list = { .first = NULL, };

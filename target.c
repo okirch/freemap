@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include "target.h"
 #include "network.h"
+#include "logging.h"
 #include "utils.h"
 
 static void		fm_target_pool_check(fm_target_pool_t *pool);

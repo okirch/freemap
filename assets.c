@@ -24,6 +24,7 @@
 #include "freemap.h"
 #include "addresses.h"
 #include "protocols.h"
+#include "logging.h"
 
 #define FM_HOST_ASSET_ATTACHED	0x0001
 #define FM_HOST_ASSET_MAPPED	0x0002

@@ -21,6 +21,7 @@
 #include <assert.h>
 
 #include "freemap.h"
+#include "logging.h"
 #include "target.h"
 #include "scheduler.h"
 #include "scanner.h"

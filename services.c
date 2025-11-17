@@ -18,6 +18,7 @@
 #include "services.h"
 #include "program.h"
 #include "protocols.h"
+#include "logging.h"
 
 fm_service_catalog_t *
 fm_service_catalog_alloc(void)
@@ -72,7 +73,7 @@ fm_service_catalog_add_service(fm_service_catalog_t *catalog, fm_config_service_
 			return true;
 	}
 
-	fm_log_debug("Service %ss added to service catalog", service->fullname);
+	fm_log_debug("Service %s added to service catalog", service->fullname);
 	fm_config_service_array_append(catalog->services, service);
 	return true;
 }

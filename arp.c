@@ -27,6 +27,7 @@
 #include "scanner.h"
 #include "rawpacket.h"
 #include "socket.h"
+#include "logging.h"
 #include "utils.h"
 
 typedef struct fm_arp_control {

@@ -25,6 +25,7 @@
 #include "events.h"
 #include "scanner.h"
 #include "program.h"
+#include "logging.h"
 
 #undef FM_PROBE_DEBUG
 #ifdef FM_PROBE_DEBUG

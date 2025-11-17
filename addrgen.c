@@ -33,6 +33,7 @@
 #include "protocols.h"
 #include "probe.h"
 #include "assets.h"
+#include "logging.h"
 
 extern const fm_address_prefix_t *	fm_local_prefix_for_address(const fm_address_t *);
 

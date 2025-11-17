@@ -17,6 +17,7 @@
 
 #include <unistd.h>
 #include "projects.h"
+#include "logging.h"
 
 #define DEFAULT_PROJECT_CONF	"project.conf"
 
