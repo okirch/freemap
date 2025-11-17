@@ -71,9 +71,87 @@ void
 fm_command_register_scan(fm_cmdparser_t *parser)
 {
 	fm_cmdparser_add_subcommand(parser, "scan", FM_CMDID_SCAN, NULL, scan_long_options, handle_scan_options);
+	fm_cmdparser_add_subcommand(parser, "discovery-scan", FM_CMDID_DISCOVERY_SCAN, NULL, scan_long_options, handle_scan_options);
 	fm_cmdparser_add_subcommand(parser, "topology-scan", FM_CMDID_TOPO_SCAN, NULL, scan_long_options, handle_scan_options);
 	fm_cmdparser_add_subcommand(parser, "host-scan", FM_CMDID_HOST_SCAN, NULL, scan_long_options, handle_scan_options);
 	fm_cmdparser_add_subcommand(parser, "port-scan", FM_CMDID_PORT_SCAN, NULL, scan_long_options, handle_scan_options);
+}
+
+int
+fm_command_perform_discovery(fm_command_t *cmd)
+{
+	fm_project_t *project;
+	fm_config_program_t *program = NULL;
+	fm_scanner_t *scanner;
+	unsigned int k;
+
+	project = fm_project_load();
+	if (project == NULL) {
+		fm_log_error("could not detect scan project, please initialize first\n");
+		return 1;
+	}
+
+	fm_assets_attach(fm_project_get_asset_path(project));
+
+	scanner = fm_scanner_create();
+	program = fm_config_program_alloc();
+
+	/* Set a discovery routine and compile it right away */
+	if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_DISCOVERY, "default")
+	 || !fm_config_program_compile(program, scanner))
+		fm_log_fatal("cannot set requested discovery scan stage");
+
+	if (cmd->nvalues != 0) {
+		if (project->targets.count > 0)
+			printf("Command line overrides scan targets from the project config\n");
+		for (k = 0; k < cmd->nvalues; ++k) {
+			const char *spec = cmd->values[k];
+
+			if (!fm_scanner_initiate_discovery(scanner, spec))
+				fm_log_fatal("Cannot parse address or network \"%s\"\n", spec);
+		}
+	} else
+	if (project->targets.count > 0) {
+		for (k = 0; k < project->targets.count; ++k) {
+			const char *spec = project->targets.entries[k];
+
+			if (!fm_scanner_initiate_discovery(scanner, spec))
+				fm_log_fatal("Cannot parse address or network \"%s\"\n", spec);
+		}
+	}
+
+	if (scan_options.logfile != NULL) {
+		fm_report_t *report;
+
+		report = fm_scanner_get_report(scanner);
+		fm_report_add_logfile(report, scan_options.logfile);
+	}
+
+	if (scan_options.dump)
+		fm_scanner_dump_program(scanner);
+
+	if (!fm_scanner_ready(scanner)) {
+		fprintf(stderr, "scanner is not fully configured\n");
+		return 1;
+	}
+
+	while (true) {
+		fm_time_t timeout;
+
+		if (fm_scanner_transmit(scanner, &timeout)) {
+			fm_socket_poll_all(timeout);
+		} else
+		if (fm_scanner_next_stage(scanner)) {
+			fm_log_notice("Proceeding to stage %d\n", scanner->current_stage);
+		} else {
+			fm_log_notice("All probes completed (%.2f msec)\n",
+					fm_scanner_elapsed(scanner));
+			break;
+		}
+
+	}
+
+	return 0;
 }
 
 int

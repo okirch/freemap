@@ -84,6 +84,7 @@ struct fm_address_enumerator_list {
 };
 
 extern fm_address_enumerator_t *fm_address_enumerator_alloc(const struct fm_address_enumerator_ops *);
+extern fm_address_enumerator_t *fm_address_enumerator_new_discovery(void);
 extern void			fm_address_enumerator_array_append(fm_address_enumerator_array_t *,
 						fm_address_enumerator_t *);
 extern void			fm_address_enumerator_array_remove_shallow(fm_address_enumerator_array_t *,

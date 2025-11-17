@@ -130,6 +130,9 @@ main(int argc, char **argv)
 	case FM_CMDID_PORT_SCAN:
 		return fm_command_perform_scan(cmd);
 
+	case FM_CMDID_DISCOVERY_SCAN:
+		return fm_command_perform_discovery(cmd);
+
 	case FM_CMDID_INIT:
 		return fm_command_perform_init(cmd);
 

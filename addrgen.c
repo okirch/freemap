@@ -474,6 +474,16 @@ static const struct fm_address_enumerator_ops fm_local_discovery_enumerator_ops 
 	.restart	= fm_local_discovery_enumerator_restart,
 };
 
+fm_address_enumerator_t *
+fm_address_enumerator_new_discovery(void)
+{
+	struct fm_local_discovery_enumerator *disco;
+
+	disco = NEW_ADDRESS_ENUMERATOR(fm_local_discovery_enumerator);
+
+	return &disco->base;
+}
+
 static fm_address_enumerator_t *
 fm_local_discovery_enumerator_create(const fm_interface_t *nic, int family, const fm_address_t *src_addr)
 {

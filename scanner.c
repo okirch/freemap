@@ -400,6 +400,143 @@ fm_scanner_add_probe(fm_scanner_t *scanner, int stage, const fm_config_probe_t *
 }
 
 /*
+ * Discovery scans
+ */
+static void
+fm_scanner_discovery_callback(const fm_pkt_t *pkt, void *user_data)
+{
+	fm_address_enumerator_t *agen = user_data;
+
+	/* extract the sender address and feed it to the addrgen */
+	fm_address_enumerator_add(agen, &pkt->peer_addr);
+}
+
+static void
+fm_scanner_discovery_complete(void *user_data)
+{
+	fm_address_enumerator_t *agen = user_data;
+	fm_address_t null = { 0 };
+
+	/* send a NULL address down the pipe to indicate EOF */
+	fm_address_enumerator_add(agen, &null);
+}
+
+/* Maybe this wants to live in addrgen.c */
+static bool
+fm_scanner_discovery_select_prefixes(const fm_interface_t *nic, fm_address_prefix_array_t *selected)
+{
+	fm_address_prefix_array_t prefix_array = { 0 };
+	const fm_address_prefix_t *ipv6_prefix = NULL;
+	const fm_address_prefix_t *ipv4_prefix = NULL;
+	unsigned int i;
+
+	fm_interface_get_local_prefixes(nic, &prefix_array);
+	for (i = 0; i < prefix_array.count; ++i) {
+                const fm_address_prefix_t *prefix = &prefix_array.elements[i];
+		int family;
+
+                if (!fm_address_generator_address_eligible(&prefix->address))
+                        continue;
+
+		family = prefix->address.ss_family;
+		if (fm_global.address_generation.try_all
+		 && (family == AF_INET || family == AF_INET6)) {
+			fm_address_prefix_array_append(selected, prefix);
+			continue;
+		}
+
+		if (family == AF_INET) {
+			if (ipv4_prefix)
+				continue;
+			ipv4_prefix = prefix;
+		} else
+		if (family == AF_INET6) {
+			if (!fm_global.address_generation.try_all && ipv6_prefix
+			 && !fm_address_is_ipv6_link_local(&ipv6_prefix->address))
+				continue;
+			ipv6_prefix = prefix;
+		} else {
+			continue;
+		}
+	}
+
+	if (ipv4_prefix)
+		fm_address_prefix_array_append(selected, ipv4_prefix);
+	if (ipv6_prefix)
+		fm_address_prefix_array_append(selected, ipv6_prefix);
+
+	fm_address_prefix_array_destroy(&prefix_array);
+	return selected->count != 0;
+}
+
+bool
+fm_scanner_initiate_discovery(fm_scanner_t *scanner, const char *addrspec)
+{
+	fm_scan_action_array_t *stage;
+	const fm_interface_t *nic;
+	fm_address_prefix_array_t selected_prefixes = { 0 };
+	unsigned int i;
+
+	/* For now, we support %ifname discovery only */
+	if (addrspec[0] == '%') {
+		const char *ifname = addrspec + 1;
+
+		nic = fm_interface_by_name(ifname);
+		if (nic == NULL) {
+			fm_log_error("Cannot initiate discovery scan: unknown interface %s", ifname);
+			return false;
+		}
+
+		if (!fm_scanner_discovery_select_prefixes(nic, &selected_prefixes)) {
+			fm_log_error("No discovery for interface %s: no suitable prefixes", ifname);
+			return false;
+		}
+	} else {
+		fm_log_error("Cannot perform discovery for argument %s", addrspec);
+		return false;
+	}
+
+	stage = fm_scanner_get_stage(scanner, FM_SCAN_STAGE_DISCOVERY);
+	if (stage == NULL) {
+		fm_log_error("%s: you need to attach a discovery probe first", __func__);
+		return false;
+	}
+
+	if (scanner->addr_discovery == NULL)
+		scanner->addr_discovery = fm_address_enumerator_new_discovery();
+
+	for (i = 0; i < scanner->stage_requests[FM_SCAN_STAGE_DISCOVERY].count; ++i) {
+		fm_scan_action_t *action = scanner->stage_requests[FM_SCAN_STAGE_DISCOVERY].entries[i];
+		fm_multiprobe_t *multiprobe = action->multiprobe;
+
+		/* First time around, install the data tap. This needs to happen before we
+		 * add the first broadcast target. */
+		if (!fm_job_is_active(&multiprobe->job))
+			fm_multiprobe_install_data_tap(multiprobe, fm_scanner_discovery_callback, scanner->addr_discovery);
+
+		for (i = 0; i < selected_prefixes.count; ++i) {
+			const fm_address_prefix_t *prefix = &selected_prefixes.elements[i];
+			const fm_address_t *src_addr = &prefix->source_addr;
+			int family = src_addr->ss_family;
+
+			if (!fm_multiprobe_add_link_level_broadcast(multiprobe, family, nic, src_addr)) {
+				fm_log_error("%s: cannot broadcast to %s on device %s",
+						multiprobe->name,
+						fm_address_format(src_addr),
+						fm_interface_get_name(nic));
+				continue;
+			}
+		}
+
+		/* Activate the job if it's not running yet */
+		if (!fm_job_is_active(&multiprobe->job))
+			fm_job_run(&multiprobe->job, NULL);
+	}
+
+	return true;
+}
+
+/*
  * The service_catalog tells you whether the scan has been configured to use service
  * probes for certain ports
  */

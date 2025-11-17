@@ -26,6 +26,7 @@ enum {
 	FM_CMDID_ADD_TARGETS,
 	FM_CMDID_CONFIGURE,
 	FM_CMDID_SCAN,
+	FM_CMDID_DISCOVERY_SCAN,
 	FM_CMDID_TOPO_SCAN,
 	FM_CMDID_HOST_SCAN,
 	FM_CMDID_PORT_SCAN,
@@ -44,10 +45,11 @@ enum {
 };
 
 extern void	fm_command_register_scan(fm_cmdparser_t *);
-extern int	fm_command_perform_scan(fm_command_t *);
 extern void	fm_command_register_project(fm_cmdparser_t *);
 extern void	fm_command_register_report(fm_cmdparser_t *);
 
+extern int	fm_command_perform_scan(fm_command_t *);
+extern int	fm_command_perform_discovery(fm_command_t *);
 extern int	fm_command_perform_init(fm_command_t *);
 extern int	fm_command_perform_add_targets(fm_command_t *);
 extern int	fm_command_perform_configure(fm_command_t *);
