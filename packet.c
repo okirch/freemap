@@ -250,6 +250,7 @@ fm_proto_ip_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_prot
 
 	switch (hdr->ip.ipproto) {
 	case IPPROTO_ICMP:
+	case IPPROTO_ICMPV6:
 		*next_proto = FM_PROTO_ICMP; break;
 	case IPPROTO_TCP:
 		*next_proto = FM_PROTO_TCP; break;
