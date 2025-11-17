@@ -269,12 +269,73 @@ fm_create_simple_address_enumerator_empty(void)
 
 /*
  * Enumeration of local IPv6 networks
+ * This relies on the output of a previous discovery scan, as it's hardly practical to enumerate an entire IPv6 prefix.
  */
 static fm_address_enumerator_t *
-fm_local_ipv6_address_enumerator(const char *device, const fm_address_t *addr, unsigned int pfxlen)
+fm_ipv6_network_enumerator(const fm_address_prefix_t *prefix, unsigned int pfxlen)
 {
-	fm_log_error("%s: not yet implemented", __func__);
-	return NULL;
+	struct fm_simple_address_enumerator *simple;
+	fm_host_asset_iterator_t iter;
+	fm_host_asset_t *host_asset;
+	const unsigned char *raw_addr1;
+	const unsigned char *raw_addr2;
+	const unsigned char *raw_mask;
+	unsigned int addr_bits, noctets, k;
+
+	/* Allow the user to be more restrictive if they really want to */
+	if (pfxlen < prefix->pfxlen)
+		pfxlen = prefix->pfxlen;
+
+	fm_log_debug("Trying to add all known addresses for prefix %s/%u on device %s",
+			fm_address_format(&prefix->address), pfxlen, prefix->ifname);
+
+	simple = fm_create_simple_address_enumerator_empty();
+
+	/* Load the asset tables */
+	fm_host_asset_cache_prime();
+
+	raw_addr1 = fm_address_get_raw_addr(&prefix->address, &addr_bits);
+	if (raw_addr1 == NULL)
+		return false;
+
+	raw_mask = prefix->raw_mask;
+
+	assert(pfxlen <= addr_bits);
+	noctets = (pfxlen + 7) / 8;
+
+	/* This is a bit brute force because we loop over all assets of the given address family.
+	 * With a large DB, this means we visit a lot of assets we are not interested in.
+	 * Doing this more efficiently requires some smarts inside the asset iterator,
+	 * which I'm not keen on doing right now. */
+	fm_host_asset_iterator_init_family(&iter, prefix->address.ss_family);
+	while ((host_asset = fm_host_asset_iterator_next(&iter)) != NULL) {
+		const fm_address_t *host_addr = &host_asset->address;
+		unsigned char xor = 0;
+
+		assert(host_addr->ss_family == prefix->address.ss_family);
+
+		if (!fm_address_generator_address_eligible_any_state(host_addr))
+			continue;
+
+		if (!(raw_addr2 = fm_address_get_raw_addr(host_addr, NULL)))
+			continue;
+
+		for (k = 0; k < noctets && xor == 0; ++k)
+			xor = raw_mask[k] & (raw_addr1[k] ^ raw_addr2[k]);
+
+		if (xor != 0)
+			continue; /* does not match prefix */
+
+		if (!fm_host_asset_hot_map(host_asset))
+			continue; /* can't map the asset into memory */
+
+		if (fm_host_asset_get_state(host_asset) != FM_ASSET_STATE_OPEN)
+			continue; /* host not reachable */
+
+		fm_address_array_append(&simple->addrs, host_addr);
+	}
+
+	return &simple->base;
 }
 
 /*
@@ -401,7 +462,7 @@ fm_create_cidr_address_enumerator(const char *addr_string, fm_target_manager_t *
 			return false;
 		}
 
-		agen = fm_local_ipv6_address_enumerator(local_prefix->ifname, &ss, cidr_bits);
+		agen = fm_ipv6_network_enumerator(local_prefix, cidr_bits);
 	} else
 	if (ss.ss_family == AF_INET) {
 		/* This limit is somewhat arbitrary and we need to increase it, at least for
