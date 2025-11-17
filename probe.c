@@ -392,7 +392,13 @@ fm_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_target_t *target)
 		return false;
 	}
 
-	debugmsg("%s added target %s", multiprobe->name, target->id);
+	if (host_task->control.sock != NULL && multiprobe->data_tap.callback) {
+		fm_socket_install_data_tap(host_task->control.sock,
+				multiprobe->data_tap.callback,
+				multiprobe->data_tap.user_data);
+	}
+
+	debugmsg("%s: created", host_task->name);
 	return true;
 }
 
@@ -456,6 +462,13 @@ fm_multiprobe_add_link_level_broadcast(fm_multiprobe_t *multiprobe, int af,
 		return false;
 	}
 
+	if (host_task->control.sock != NULL && multiprobe->data_tap.callback) {
+		fm_socket_install_data_tap(host_task->control.sock,
+				multiprobe->data_tap.callback,
+				multiprobe->data_tap.user_data);
+	}
+
+	debugmsg("%s: created", host_task->name);
 	return true;
 }
 
@@ -765,4 +778,17 @@ fm_multiprobe_get_completed(fm_multiprobe_t *multiprobe)
 	}
 
 	return NULL;
+}
+
+/*
+ * Install a callback that gets invoked whenever the probe receive a new
+ * response.
+ */
+void
+fm_multiprobe_install_data_tap(fm_multiprobe_t *multiprobe,
+					void (*callback)(const fm_pkt_t *, void *),
+					void *user_data)
+{
+	multiprobe->data_tap.callback = callback;
+	multiprobe->data_tap.user_data = user_data;
 }

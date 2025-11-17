@@ -165,6 +165,11 @@ struct fm_multiprobe {
 		void *		user_data;
 	} status_callback;
 
+	struct {
+		void		(*callback)(const fm_pkt_t *pkt, void *user_data);
+		void *		user_data;
+	} data_tap;
+
 	fm_probe_params_t	params;
 
 	void *			control;
@@ -198,6 +203,8 @@ extern fm_error_t	fm_multiprobe_transmit_ttl_probe(fm_multiprobe_t *multiprobe, 
 extern bool		fm_multiprobe_configure(fm_multiprobe_t *, fm_probe_class_t *, const fm_probe_params_t *, const void *);
 extern fm_target_t *	fm_multiprobe_get_completed(fm_multiprobe_t *);
 extern void		fm_multiprobe_install_status_callback(fm_multiprobe_t *, fm_multiprobe_status_callback_t *, void *);
+extern void		fm_multiprobe_install_data_tap(fm_multiprobe_t *,
+					void (*callback)(const fm_pkt_t *, void *), void *);
 extern bool		fm_multiprobe_set_service_catalog(fm_multiprobe_t *, const fm_service_catalog_t *);
 extern void		fm_multiprobe_free(fm_multiprobe_t *);
 
