@@ -661,6 +661,12 @@ fm_config_module_create_port_routine(curly_node_t *node, void *data)
 	return fm_config_module_create_routine(node, data, FM_SCAN_STAGE_PORT);
 }
 
+static void *
+fm_config_module_create_discovery_routine(curly_node_t *node, void *data)
+{
+	return fm_config_module_create_routine(node, data, FM_SCAN_STAGE_DISCOVERY);
+}
+
 /*
  * Handle
  *  service-probe blah { .. }
@@ -882,6 +888,7 @@ static fm_config_proc_t	fm_config_module_root = {
 		{ "topology-scan",	offsetof(fm_config_module_t, routines),	&fm_config_routine_root, .alloc_child = fm_config_module_create_topo_routine },
 		{ "host-scan",		offsetof(fm_config_module_t, routines),	&fm_config_routine_root, .alloc_child = fm_config_module_create_host_routine },
 		{ "port-scan",		offsetof(fm_config_module_t, routines),	&fm_config_routine_root, .alloc_child = fm_config_module_create_port_routine },
+		{ "discovery-scan",	offsetof(fm_config_module_t, routines),	&fm_config_routine_root, .alloc_child = fm_config_module_create_discovery_routine },
 		{ "service-probe",	offsetof(fm_config_module_t, services),	&fm_config_service_root, .alloc_child = fm_config_module_create_service },
 		{ "service-catalog",	offsetof(fm_config_module_t, service_catalogs),
 										&fm_config_catalog_root, .alloc_child = fm_config_module_create_service_catalog },

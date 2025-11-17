@@ -106,6 +106,7 @@ enum {
  * you scan, but just a few of them.
  */
 enum {
+	FM_SCAN_STAGE_DISCOVERY,
 	FM_SCAN_STAGE_TOPO,
 	FM_SCAN_STAGE_HOST,
 	FM_SCAN_STAGE_PORT,
