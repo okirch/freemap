@@ -654,6 +654,17 @@ fm_local_address_enumerator_add_discovery(const fm_interface_t *nic, const fm_ad
 	return true;
 }
 
+/*
+ * Address enumerator for local interfaces.
+ *
+ * Without --all-addresses, this will use only those addresses that have been discovered in a
+ * previous discovery probe. For IPv6, it will select only one prefix, preferring a globally
+ * routable prefix over a link-local fe80:: prefix.
+ *
+ * With --all-addresses, this will generate all addresses for each of the network prefixes
+ * attached to the interface. As that is not possible (reasonable) for IPv6, we print a
+ * warning instead, telling users to run a discovery probe first.
+ */
 bool
 fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *target_manager)
 {
@@ -662,6 +673,7 @@ fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *targ
 	const fm_interface_t *nic;
 	const fm_address_prefix_t *ipv6_discovery_prefix = NULL;
 	unsigned int i, old_count, num_created = 0;
+	bool warn_ipv6_no_discovery = false;
 
 	if (!(nic = fm_interface_by_name(ifname))) {
 		fm_log_error("Cannot generate local address generator for interface %s: unknown interface", ifname);
@@ -676,7 +688,9 @@ fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *targ
 		const fm_address_t *tgt_addr = &prefix->address;
 		fm_address_enumerator_t *child = NULL;
 
-		if (!fm_address_generator_address_eligible(&prefix->address))
+		/* The prefix address may not have a host asset, and we
+		 * have probably never set its asset state... */
+		if (!fm_address_generator_address_eligible_any_state(&prefix->address))
 			continue;
 
 		if (fm_interface_is_loopback(nic)) {
@@ -686,16 +700,17 @@ fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *targ
 		}
 
 		if (prefix->address.ss_family == AF_INET) {
-			if (prefix->pfxlen == 32)
+			if (prefix->pfxlen == 32) {
 				fm_local_address_enumerator_add_single_address(&simple, tgt_addr, target_manager);
-			else
+			} else {
 				child = fm_ipv4_network_enumerator(tgt_addr, prefix->pfxlen);
+			}
 		} else
 		if (prefix->address.ss_family == AF_INET6) {
 			if (prefix->pfxlen == 128) {
 				fm_local_address_enumerator_add_single_address(&simple, tgt_addr, target_manager);
 			} else if (fm_global.address_generation.try_all) {
-				fm_local_address_enumerator_add_discovery(nic, prefix, target_manager);
+				warn_ipv6_no_discovery = true;
 			} else {
 				if (ipv6_discovery_prefix == NULL || fm_address_is_ipv6_link_local(&ipv6_discovery_prefix->address))
 					ipv6_discovery_prefix = prefix;
@@ -704,18 +719,28 @@ fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *targ
 			/* silently ignore anything else (for those of you still on Netware IPX, I pity you) */
 		}
 
-		if (child != NULL) {
+		if (child != NULL)
 			fm_target_manager_add_address_generator(target_manager, child);
-			num_created += 1;
-		}
 	}
 
-	if (ipv6_discovery_prefix != NULL)
-		fm_local_address_enumerator_add_discovery(nic, ipv6_discovery_prefix, target_manager);
+	if (warn_ipv6_no_discovery) {
+		fm_log_warning("You have asked to inspect all IPv6 addresses on %s.", ifname);
+		fm_log_warning("To achieve this, please run a discovery probe first, like this:");
+		fm_log_warning("  freemap discovery-scan %%%s", ifname);
+		fm_log_warning("Then, re-run this probe command without the --all-addresses option");
+	}
+
+	if (ipv6_discovery_prefix != NULL) {
+		fm_address_enumerator_t *child;
+
+		child = fm_ipv6_network_enumerator(ipv6_discovery_prefix, ipv6_discovery_prefix->pfxlen);
+		if (child != NULL)
+			fm_target_manager_add_address_generator(target_manager, child);
+	}
 
 	num_created = fm_target_manager_get_generator_count(target_manager) - old_count;
 	if (num_created == 0)
-		fm_log_warning("Empty local address generator for interface %s: no local prefixes", ifname);
+		fm_log_warning("Empty local address generator for interface %s: no local prefixes found", ifname);
 
 	fm_address_prefix_array_destroy(&prefix_array);
 	return true;
