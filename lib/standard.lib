@@ -1,4 +1,7 @@
-
+discovery-scan default {
+	broadcast-probe icmp {
+	}
+}
 
 host-scan default {
 	host-probe arp {
