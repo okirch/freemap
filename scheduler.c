@@ -28,6 +28,8 @@
 #include "events.h"
 
 
+#define debugmsg	fm_debug_scheduler
+
 static fm_job_group_t *fm_global_group = NULL;
 
 /*
@@ -133,7 +135,7 @@ fm_job_continue(fm_job_t *job)
 	job->expires = 0;
 
 	if (fm_debug_level >= 2)
-		fm_log_debug("%s: moved to ready", job->fullname);
+		debugmsg("%s: moved to ready", job->fullname);
 }
 
 bool

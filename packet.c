@@ -60,11 +60,7 @@ static fm_protocol_handler_t	fm_protocol_handlers[] = {
 	{ FM_PROTO_NONE }
 };
 
-#ifdef FM_DEBUG_PACKET_PARSER
-# define debugmsg	fm_log_debug
-#else
-# define debugmsg(fmt ...) do { } while (0)
-#endif
+#define debugmsg	fm_debug_packet
 
 static fm_protocol_handler_t *
 fm_packet_parser_select(int proto_id)
@@ -153,9 +149,11 @@ fm_packet_parser_inspect(fm_packet_parser_t *parser, fm_pkt_t *pkt)
 
 	assert(parser->num_handlers);
 
-#ifdef FM_DEBUG_PACKET_PARSER
-	fm_buffer_dump(pkt->payload, __func__);
-#endif
+	/* If debug facility data is enabled, no need to print the packet a second
+	 * time. */
+	if ((fm_debug_facilities & (FM_DEBUG_FACILITY_PACKET|FM_DEBUG_FACILITY_DATA)) == FM_DEBUG_FACILITY_PACKET
+	 && fm_debug_level > 1)
+		fm_buffer_dump(pkt->payload, __func__);
 
 	if (!(cooked = fm_parsed_pkt_alloc(parser)))
 		return NULL;
@@ -180,11 +178,11 @@ fm_packet_parser_inspect(fm_packet_parser_t *parser, fm_pkt_t *pkt)
 	}
 
 	pkt->parsed = cooked;
-	debugmsg("success.");
+	debugmsg("  success.");
 	return cooked;
 
 trash:
-	debugmsg("failed.");
+	debugmsg("  failed.");
 	free(cooked);
 	return NULL;
 }

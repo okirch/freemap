@@ -42,6 +42,7 @@ enum {
 	OPT_FORCE,
 	OPT_SKIP_NORESPONSE,
 	OPT_SKIP_UNREACHABLE,
+	OPT_TRACE_FACILITY,
 };
 
 extern void	fm_command_register_scan(fm_cmdparser_t *);

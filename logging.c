@@ -29,6 +29,7 @@
 static FILE *	fm_log_file = NULL;
 
 unsigned int	fm_debug_level = 0;
+unsigned long	fm_debug_facilities = 0;
 
 void
 fm_set_logfile(FILE *fp)
@@ -142,4 +143,66 @@ fm_strerror(fm_error_t error)
 	}
 
 	return ret;
+}
+
+/*
+ * Enable debug facility
+ * Prefix matching is supported, but it must be unique (you cannot use "p" to enable
+ * both packet and probe tracing).
+ */
+static unsigned long
+fm_debug_facility_name_to_mask(const char *name)
+{
+	static struct {
+		const char *	name;
+		unsigned long	mask;
+	} map[] = {
+		{ "scheduler",	FM_DEBUG_FACILITY_SCHEDULER },
+		{ "probe",	FM_DEBUG_FACILITY_PROBE },
+		{ "packet",	FM_DEBUG_FACILITY_PACKET },
+		{ "addrpool",	FM_DEBUG_FACILITY_ADDRPOOL },
+		{ "data",	FM_DEBUG_FACILITY_DATA },
+		{ NULL }
+	};
+	unsigned int i, len;
+	unsigned long mask;
+
+	if (!strcmp(name, "all"))
+		return ~0UL;
+
+	if (!strcmp(name, "list")) {
+		printf("List of supported debug facilities:\n");
+		for (i = 0; map[i].name; ++i)
+			printf("   %s\n", map[i].name);
+		exit(0);
+	}
+
+	len = strlen(name);
+	for (i = 0; map[i].name; ++i) {
+		if (!strncmp(map[i].name, name, len))
+			mask |= map[i].mask;
+	}
+
+	if (mask == 0) {
+		fm_log_error("Unknown debug facility \"%s\"", name);
+	} else
+	if (mask & (mask - 1)) {
+		/* more than one bit set -> ambiguous */
+		fm_log_error("Ambiguous debug facility name \"%s\"", name);
+		mask = 0;
+	}
+
+	return mask;
+}
+
+bool
+fm_enable_debug_facility(const char *name)
+{
+	unsigned long mask;
+
+	if (!(mask = fm_debug_facility_name_to_mask(name)))
+		return false;
+
+	fm_debug_facilities |= mask;
+	return true;
 }

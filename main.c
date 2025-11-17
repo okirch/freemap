@@ -30,6 +30,7 @@ static fm_long_option_t main_long_options[] = {
 	{ "ipv4",		FM_ARG_NONE,		OPT_IPV4_ONLY,	},
 	{ "ipv6",		FM_ARG_NONE,		OPT_IPV6_ONLY,	},
 	{ "all-addresses",	FM_ARG_NONE,		OPT_ALL_ADDRS,	},
+	{ "trace",		FM_ARG_REQUIRED,	OPT_TRACE_FACILITY },
 	{ "debug",		FM_ARG_NONE,		'd',	},
 	{ "help",		FM_ARG_NONE,		'h',	},
 	{ NULL },
@@ -46,6 +47,8 @@ static struct fm_cmd_main_options main_options;
 static bool
 handle_main_options(int c, const char *arg_value)
 {
+	char *copy, *next;
+
 	/* printf("%s(%d, %s)\n", __func__, c, arg_value); */
 
 	switch (c) {
@@ -63,6 +66,21 @@ handle_main_options(int c, const char *arg_value)
 
 	case OPT_ALL_ADDRS:
 		main_options.all_addrs = true;
+		break;
+
+	case OPT_TRACE_FACILITY:
+		copy = alloca(strlen(arg_value) + 1);
+		strcpy(copy, arg_value);
+
+		for (; copy; copy = next) {
+			if ((next = strchr(copy, ',')) != NULL) {
+				while (*next == ',')
+					*next++ = '\0';
+			}
+
+			if (!fm_enable_debug_facility(copy))
+				return false;
+		}
 		break;
 
 	default:

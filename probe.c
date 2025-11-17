@@ -27,12 +27,7 @@
 #include "program.h"
 #include "logging.h"
 
-#undef FM_PROBE_DEBUG
-#ifdef FM_PROBE_DEBUG
-# define debugmsg	fm_log_debug
-#else
-# define debugmsg(fmt ...) do { } while (0)
-#endif
+#define debugmsg	fm_debug_probe
 
 static void		fm_multiprobe_destroy(fm_multiprobe_t *multiprobe);
 
