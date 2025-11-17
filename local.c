@@ -43,7 +43,7 @@ typedef struct fm_raw_socket_cache {
 static struct hlist_head	raw_sock_cache = { .first = NULL, };
 static fm_address_prefix_array_t fm_local_address_prefixes;
 
-static fm_address_prefix_t *	fm_address_prefix_array_append(fm_address_prefix_array_t *array, const fm_address_t *addr, unsigned int pfxlen);
+static fm_address_prefix_t *	fm_address_prefix_array_new_entry(fm_address_prefix_array_t *array, const fm_address_t *addr, unsigned int pfxlen);
 
 fm_socket_t *
 fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *driver, int sotype)
@@ -291,7 +291,7 @@ fm_interface_get_local_prefixes(const fm_interface_t *nic, fm_address_prefix_arr
 		fm_address_prefix_t *new_entry;
 
 		if (entry->ifindex == nic->ifindex) {
-			new_entry = fm_address_prefix_array_append(result, NULL, 0);
+			new_entry = fm_address_prefix_array_new_entry(result, NULL, 0);
 			*new_entry = *entry;
 		}
 	}
@@ -351,7 +351,7 @@ fm_interface_get_neighbor(const fm_interface_t *nic, const fm_address_t *network
  * addr prefix lists
  */
 fm_address_prefix_t *
-fm_address_prefix_array_append(fm_address_prefix_array_t *array, const fm_address_t *addr, unsigned int pfxlen)
+fm_address_prefix_array_new_entry(fm_address_prefix_array_t *array, const fm_address_t *addr, unsigned int pfxlen)
 {
 	fm_address_prefix_t *entry;
 
@@ -365,6 +365,14 @@ fm_address_prefix_array_append(fm_address_prefix_array_t *array, const fm_addres
 	entry->pfxlen = pfxlen;
 
 	return entry;
+}
+
+void
+fm_address_prefix_array_append(fm_address_prefix_array_t *array, const fm_address_prefix_t *pfx)
+{
+	fm_address_prefix_t *entry = fm_address_prefix_array_new_entry(array, NULL, 0);
+
+	*entry = *pfx;
 }
 
 void
@@ -414,7 +422,7 @@ fm_local_address_prefix_create(const fm_address_t *local_address, unsigned int p
 {
 	fm_address_prefix_t *entry;
 
-	entry = fm_address_prefix_array_append(&fm_local_address_prefixes, local_address, pfxlen);
+	entry = fm_address_prefix_array_new_entry(&fm_local_address_prefixes, local_address, pfxlen);
 	entry->source_addr = *local_address;
 	entry->ifindex = ifindex;
 
