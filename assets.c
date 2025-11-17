@@ -652,6 +652,25 @@ fm_host_asset_update_state_by_address(const fm_address_t *addr, unsigned int pro
 	return fm_host_asset_update_state(host, state);
 }
 
+fm_asset_state_t
+fm_host_asset_get_state_by_address(const fm_address_t *addr, unsigned int proto_id)
+{
+	fm_host_asset_t *host;
+
+	if (addr == NULL)
+		return FM_ASSET_STATE_UNDEF;
+
+	host = fm_host_asset_get(addr, true);
+	if (host == NULL)
+		return FM_ASSET_STATE_UNDEF;
+
+	/* If it's not mapped, hot-map it just for this update */
+	if (!fm_host_asset_hot_map(host))
+		return FM_ASSET_STATE_UNDEF; /* could be a permission issue */
+
+	return fm_host_asset_get_state(host);
+}
+
 /*
  * Iterate over host assets
  */

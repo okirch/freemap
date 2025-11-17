@@ -136,6 +136,7 @@ extern fm_host_asset_t *fm_host_asset_get_active(const fm_address_t *addr);
 extern void		fm_host_asset_attach(fm_host_asset_t *);
 extern void		fm_host_asset_detach(fm_host_asset_t *);
 extern fm_asset_state_t	fm_host_asset_get_state(fm_host_asset_t *host);
+extern fm_asset_state_t	fm_host_asset_get_state_by_address(const fm_address_t *addr, unsigned int proto_id);
 extern bool		fm_host_asset_update_state(fm_host_asset_t *host, fm_asset_state_t state);;
 extern fm_asset_state_t	fm_host_asset_get_port_state(fm_host_asset_t *host, unsigned int proto_id, unsigned int port, fm_asset_state_t state);
 extern bool		fm_host_asset_update_port_state(fm_host_asset_t *host, unsigned int proto_id, unsigned int port, fm_asset_state_t state);
