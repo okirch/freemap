@@ -518,6 +518,9 @@ rtnetlink_process_newaddr(fm_buffer_t *pkt)
 		fm_buffer_pull(pkt, (nla->nla_len + 3) & ~3);
 	}
 
+	if (prefix != NULL && prefix->ifname == NULL && prefix->device != NULL)
+		prefix->ifname = strdup(fm_interface_get_name(prefix->device));
+
 	if (prefix != NULL && fm_debug_level > 1) {
 		fm_log_debug("  %-8s  %s/%u\n",
 				prefix->device? fm_interface_get_name(prefix->device) : prefix->ifname,
