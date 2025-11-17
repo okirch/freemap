@@ -60,7 +60,7 @@ static inline unsigned int
 fm_target_pool_get_free_slots(const fm_target_pool_t *pool)
 {
 	assert(pool->count < pool->size);
-	return pool->size - pool->count;
+	return pool->size - pool->count - 1;
 }
 
 static inline bool
@@ -203,16 +203,42 @@ fm_target_pool_next(fm_target_pool_iterator_t *iter)
 {
 	fm_target_pool_t *queue = iter->queue;
 	fm_target_t *target;
+	int index;
 
 	if (iter->index < 0)
+		return NULL;
+
+	/* Things are a bit complicated because someone may drop
+	 * a target while we're iterating over the pool (for instance,
+	 * if a probe rejects an incompatible target - think ARP vs IPv6).
+	 *
+	 * Maybe this should become a list instead of an array?
+	 */
+	if ((index = iter->index) >= queue->count)
+		index = queue->count - 1;
+
+	while (index >= 0) {
+		target = queue->slots[index];
+		if (target->pool_id == queue->next_pool_id)
+			break;
+
+		if (target->pool_id < queue->next_pool_id) {
+			fm_log_warning("fm_target_pool_next: bad index/id - should never happen");
+			return NULL;
+		}
+
+		index -= 1;
+	}
+
+	if (index < 0)
 		return NULL;
 
 	if (iter->index >= queue->count)
 		return NULL;
 
-	target = queue->slots[iter->index++];
-	assert(target->pool_id == queue->next_pool_id);
+	iter->index = index + 1;
 
+	assert(target->pool_id == queue->next_pool_id);
 	queue->next_pool_id += 1;
 	return target;
 }
