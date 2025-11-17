@@ -102,17 +102,11 @@ fm_scanner_add_target_from_spec(fm_scanner_t *scanner, const char *spec)
 bool
 fm_scanner_ready(fm_scanner_t *scanner)
 {
-	fm_target_manager_t *target_manager = scanner->target_manager;
-
-	if (target_manager->address_generators.count == 0) {
-		fm_log_error("No scan targets configured; nothing to scan");
-		return false;
-	}
-
 	fm_timestamp_update(&scanner->scan_started);
 	fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
 
-	fm_scanner_start_stage(scanner);
+	if (!fm_scanner_start_stage(scanner))
+		return false;
 
 	return true;
 }
@@ -341,6 +335,16 @@ fm_scanner_start_stage(fm_scanner_t *scanner)
 		}
 		index++;
 	}
+
+	if (index != FM_SCAN_STAGE_DISCOVERY) {
+		fm_target_manager_t *target_manager = scanner->target_manager;
+
+		if (target_manager->address_generators.count == 0) {
+			fm_log_error("No scan targets configured; nothing to scan");
+			return false;
+		}
+	}
+
 
 	scanner->current_stage.index = index;
 	return false;
