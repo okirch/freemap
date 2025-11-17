@@ -53,7 +53,7 @@ fm_job_free(fm_job_t *job)
 		assert(job->link.prevp == NULL);
 	}
 
-	fm_log_debug("%s destroyed", job->fullname);
+	debugmsg("%s destroyed", job->fullname);
 	drop_string(&job->fullname);
 
 	memset(job, 0, sizeof(*job));
@@ -120,7 +120,7 @@ fm_job_postpone(fm_job_t *job)
 	if (job->blocking)
 		job_group->plugged = true;
 
-	fm_log_debug("%s: postponed", job->fullname);
+	debugmsg("%s: postponed", job->fullname);
 }
 
 void
@@ -308,7 +308,7 @@ fm_job_group_add_new(fm_job_group_t *job_group, fm_job_t *job)
 		fm_job_move_to_group(job, &job_group->ready_probes);
 	} else {
 		fm_job_move_to_group(job, &job_group->postponed_probes);
-		fm_log_debug("%s: postponed", job->fullname);
+		debugmsg("%s: postponed", job->fullname);
 	}
 
 	/* If the probe is marked as blocking, do not allow
@@ -317,7 +317,7 @@ fm_job_group_add_new(fm_job_group_t *job_group, fm_job_t *job)
 	if (job->blocking)
 		job_group->plugged = true;
 
-	fm_log_debug("%s: added", job->fullname);
+	debugmsg("%s: added", job->fullname);
 	return 0;
 }
 
@@ -403,7 +403,7 @@ fm_job_group_process_runnable(fm_job_group_t *job_group, fm_sched_stats_t *stats
 				fm_ratelimit_consume(job->group->rate_limit, 1);
 			stats->num_processed += 1;
 		} else {
-			fm_log_debug("%s: %s", job->fullname, fm_strerror(error));
+			debugmsg("%s: %s", job->fullname, fm_strerror(error));
 			fm_job_set_error(job, error);
 			stats->num_processed += 1;
 		}
@@ -428,7 +428,7 @@ fm_job_group_process_runnable(fm_job_group_t *job_group, fm_sched_stats_t *stats
 static void
 fm_job_group_check_for_hung_state(fm_job_group_t *job_group, const fm_sched_stats_t *stats)
 {
-	if (fm_debug_level) {
+	if (fm_debug_facilities & FM_DEBUG_FACILITY_SCHEDULER) {
 		const struct timeval *now = fm_timestamp_now();
 		static struct timeval next_ps;
 		bool update_ts = false;
@@ -571,7 +571,7 @@ fm_sched_stats_update_timeout_min(fm_sched_stats_t *stats, fm_time_t expiry, con
 
 		if (fm_debug_level > 1) {
 			double delay = stats->timeout - fm_time_now();
-			fm_log_debug("%s: new timeout is %f", who, delay);
+			debugmsg("%s: new timeout is %f", who, delay);
 			/* assert(delay >= -1e-6); */
 		}
 		return true;
@@ -585,7 +585,7 @@ fm_sched_stats_update_timeout_max(fm_sched_stats_t *stats, fm_time_t expiry, con
 	if (stats->timeout > 0 && stats->timeout < expiry) {
 		stats->timeout = expiry;
 
-		fm_log_debug("%s: new timeout is %f", who, stats->timeout - fm_time_now());
+		debugmsg("%s: new timeout is %f", who, stats->timeout - fm_time_now());
 		return true;
 	}
 	return false;
