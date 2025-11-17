@@ -109,6 +109,7 @@ struct fm_host_asset_table {
 typedef struct fm_host_asset_iterator {
 	unsigned int		family;
 	unsigned int		addr_len;
+	unsigned int		next_family;
 	unsigned char		raw[16];
 	bool			done;
 } fm_host_asset_iterator_t;
@@ -125,6 +126,7 @@ extern void		fm_assetio_unmap_host(fm_host_asset_t *host);
 extern void		fm_assetio_set_mapping(const char *project_dir, bool rw);
 
 extern void		fm_host_asset_iterator_init(fm_host_asset_iterator_t *);
+extern void		fm_host_asset_iterator_init_family(fm_host_asset_iterator_t *iter, int family);
 extern fm_host_asset_t *fm_host_asset_iterator_next(fm_host_asset_iterator_t *);
 
 extern bool		fm_host_asset_hot_map(fm_host_asset_t *);

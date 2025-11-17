@@ -655,12 +655,33 @@ fm_host_asset_update_state_by_address(const fm_address_t *addr, unsigned int pro
 /*
  * Iterate over host assets
  */
+static inline void
+fm_host_asset_iterator_set_family(fm_host_asset_iterator_t *iter, int family)
+{
+	iter->family = family;
+	if (family == AF_INET)
+		iter->addr_len = 4;
+	else if (family == AF_INET6)
+		iter->addr_len = 16;
+	else
+		fm_log_fatal("BUG: %s: unsupported address family %d", family);
+
+	memset(iter->raw, 0, sizeof(iter->raw));
+}
+
 void
 fm_host_asset_iterator_init(fm_host_asset_iterator_t *iter)
 {
 	memset(iter, 0, sizeof(*iter));
-	iter->family = AF_INET;
-	iter->addr_len = 4;
+	fm_host_asset_iterator_set_family(iter, AF_INET);
+	iter->next_family = AF_INET6;
+}
+
+void
+fm_host_asset_iterator_init_family(fm_host_asset_iterator_t *iter, int family)
+{
+	memset(iter, 0, sizeof(*iter));
+	fm_host_asset_iterator_set_family(iter, family);
 }
 
 fm_host_asset_t *
@@ -681,17 +702,15 @@ fm_host_asset_iterator_next(fm_host_asset_iterator_t *iter)
 			host = fm_host_asset_find_next(table, iter);
 
 		/* If we're done with IPv4, continue with IPv6 */
-		if (iter->done && iter->family == AF_INET) {
-			iter->family = AF_INET6;
-			memset(iter->raw, 0, sizeof(iter->raw));
-			iter->addr_len = 16;
+		if (iter->done && iter->next_family != AF_UNSPEC) {
+			fm_host_asset_iterator_set_family(iter, iter->next_family);
+			iter->next_family = AF_UNSPEC;
 			iter->done = false;
 		}
 	} while (host == NULL && !iter->done);
 
 	return host;
 }
-
 
 /*
  * Iterate over a host asset (for reporting)
