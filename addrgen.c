@@ -93,6 +93,18 @@ fm_address_enumerator_get_one(fm_address_enumerator_t *agen, fm_address_t *ret)
 	return agen->ops->get_one_address(agen, ret);
 }
 
+fm_error_t
+fm_address_enumerator_add(fm_address_enumerator_t *agen, const fm_address_t *new_addr)
+{
+	assert(agen->ops != NULL);
+
+	if (agen->ops->add_address == NULL)
+		return FM_NOT_SUPPORTED;
+
+	agen->ops->add_address(agen, new_addr);
+	return 0;
+}
+
 void
 fm_address_enumerator_array_append(fm_address_enumerator_array_t *array, fm_address_enumerator_t *agen)
 {
@@ -438,11 +450,27 @@ fm_local_discovery_info_callback(const fm_pkt_t *pkt, void *user_data)
 		fm_address_array_append_unique(&disco->found, new_addr);
 }
 
+static void
+fm_local_discovery_enumerator_add_address(fm_address_enumerator_t *agen, const fm_address_t *new_addr)
+{
+	struct fm_local_discovery_enumerator *disco = (struct fm_local_discovery_enumerator *) agen;
+
+	if (fm_address_generator_address_eligible(new_addr)) {
+		fm_address_array_append_unique(&disco->found, new_addr);
+
+		/* Record in the asset database that this address is reachable.
+		 * This may fail, eg if there's a problem mapping the asset file into memory.
+		 * Silently ignore those kinds of failure */
+		fm_host_asset_update_state_by_address(new_addr, FM_PROTO_NONE, FM_ASSET_STATE_OPEN);
+	}
+}
+
 static const struct fm_address_enumerator_ops fm_local_discovery_enumerator_ops = {
 	.obj_size	= sizeof(struct fm_local_discovery_enumerator),
 	.name		= "icmp-discovery",
 	.destroy	= NULL,
 	.get_one_address= fm_local_discovery_enumerator_get_one,
+	.add_address	= fm_local_discovery_enumerator_add_address,
 	.restart	= fm_local_discovery_enumerator_restart,
 };
 

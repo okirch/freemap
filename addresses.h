@@ -70,6 +70,7 @@ struct fm_address_enumerator {
 		void		(*destroy)(fm_address_enumerator_t *);
 		void		(*restart)(fm_address_enumerator_t *, int);
 		fm_error_t	(*get_one_address)(fm_address_enumerator_t *, fm_address_t *);
+		void		(*add_address)(fm_address_enumerator_t *, const fm_address_t *);
 	} *ops;
 };
 
