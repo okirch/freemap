@@ -291,8 +291,8 @@ fm_icmp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, con
 	return icmp;
 }
 
-static bool
-fm_icmp_control_install_packet_socket(fm_icmp_control_t *icmp, const fm_interface_t *nic, int family)
+static fm_socket_t *
+fm_icmp_create_packet_socket(fm_icmp_control_t *icmp, const fm_interface_t *nic, int family)
 {
 	fm_address_t lladdr;
 	fm_socket_t *sock;
@@ -300,23 +300,26 @@ fm_icmp_control_install_packet_socket(fm_icmp_control_t *icmp, const fm_interfac
 
 	if (!fm_interface_get_lladdr(nic, (struct sockaddr_ll *) &lladdr)
 	 || !fm_address_link_update_upper_protocol(&lladdr, family))
-		return false;
+		return NULL;
 
 	/* Extract the llproto from the sockaddr. Note, this is in network byte order, which
 	 * is exactly what socket(PF_PACKET, ...) expects as the protocol argument */
 	llproto = fm_address_to_link(&lladdr)->sll_protocol;
 
 	sock = fm_socket_create(PF_PACKET, SOCK_DGRAM, llproto, icmp->proto);
-        fm_socket_install_data_parser(sock, FM_PROTO_ICMP);
+
+	fm_socket_install_data_parser(sock, FM_PROTO_IP);
+	fm_socket_install_data_parser(sock, FM_PROTO_ICMP);
+
+	fm_socket_attach_extant_map(sock, &fm_icmp_extant_map);
 
         if (!fm_socket_bind(sock, &lladdr)) {
                 fm_log_error("Cannot bind raw socket to address %s: %m", fm_address_format(&lladdr));
                 fm_socket_free(sock);
-                return false;
+                return NULL;
         }
 
-	icmp->sock = sock;
-	return true;
+	return sock;
 }
 
 static void
@@ -382,11 +385,15 @@ fm_icmp_request_build_packet(const fm_icmp_control_t *icmp, fm_target_control_t 
 				fm_icmp_extant_info_t *extant_info)
 {
 	fm_pkt_t *pkt = fm_pkt_alloc(host->family, 0);
+	fm_csum_partial_t *csum = NULL, _csum;
 	fm_buffer_t *bp, *raw;
 
 	if ((raw = host->icmp.packet_header) != NULL) {
 		bp = fm_buffer_alloc(16 + fm_buffer_available(raw));
 		fm_buffer_append(bp, fm_buffer_head(raw), fm_buffer_available(raw));
+
+		_csum = host->icmp.csum;
+		csum = &_csum;
 	} else {
 		bp = fm_buffer_alloc(16);
 	}
@@ -415,13 +422,15 @@ fm_icmp_request_build_packet(const fm_icmp_control_t *icmp, fm_target_control_t 
 		icmph->icmp6_id = htons(send_params->ident);
 		icmph->icmp6_seq = htons(send_params->sequence);
 
-		/* Add the length field to the IPv6 pseudo header */
-		fm_csum_partial_u16(&host->icmp.csum, 8);
+		if (csum != NULL) {
+			/* Add the length field to the IPv6 pseudo header */
+			fm_csum_partial_u16(csum, 8);
 
-		/* Add the ICMP header for checksumming */
-		fm_csum_partial_update(&host->icmp.csum, icmph, 8);
+			/* Add the ICMP header for checksumming */
+			fm_csum_partial_update(csum, icmph, 8);
 
-		icmph->icmp6_cksum = htons(fm_csum_fold(&host->icmp.csum));
+			icmph->icmp6_cksum = fm_csum_fold(csum);
+		}
         }
 
 	/* Now construct the extant match.
@@ -576,15 +585,19 @@ fm_icmp_multiprobe_add_broadcast(fm_multiprobe_t *multiprobe, fm_host_tasklet_t 
 {
 	fm_target_control_t *target_control = &host_task->control;
 	fm_icmp_control_t *icmp = multiprobe->control;
+	fm_socket_t *sock;
 
 	if (target_control->family != AF_INET6) {
 		fm_log_error("ICMP broadcast currently implemented for IPv6 only");
 		return false;
 	}
 
+	if (!(sock = fm_icmp_create_packet_socket(icmp, nic, target_control->family)))
+		return false;
 
 	target_control->local_address = *src_link_addr;
 	target_control->address = *dst_link_addr;
+	target_control->sock = sock;
 
 	target_control->icmp.packet_header = fm_buffer_alloc(128);
 	fm_raw_packet_add_ipv6_header(target_control->icmp.packet_header, src_network_addr, dst_network_addr,
@@ -597,7 +610,7 @@ fm_icmp_multiprobe_add_broadcast(fm_multiprobe_t *multiprobe, fm_host_tasklet_t 
 	 * stay around so that we see *all* responses */
 	icmp->extants_are_multi_shot = true;
 
-	return false;
+	return true;
 }
 
 static fm_error_t
@@ -677,7 +690,7 @@ fm_icmp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipr
 static struct fm_probe_class fm_icmp_host_probe_class = {
 	.name		= "icmp",
 	.proto_id	= FM_PROTO_ICMP,
-	.modes		= FM_PROBE_MODE_TOPO|FM_PROBE_MODE_HOST,
+	.modes		= FM_PROBE_MODE_TOPO|FM_PROBE_MODE_HOST|FM_PROBE_MODE_BCAST,
 	.configure	= fm_icmp_configure_probe,
 };
 
@@ -711,7 +724,7 @@ fm_icmp_create_broadcast_probe(fm_protocol_t *proto, int family, const fm_interf
 	icmp = multiprobe->control;
 
 	/* install a PF_PACKET socket */
-	if (!fm_icmp_control_install_packet_socket(icmp, nic, family))
+	if (!(icmp->sock = fm_icmp_create_packet_socket(icmp, nic, family)))
 		goto failed;
 
 	if (!fm_multiprobe_add_link_level_broadcast(multiprobe, family, nic, net_src_addr))
