@@ -141,15 +141,22 @@ fm_scanner_queue_probe(fm_scanner_t *scanner, int stage_id, fm_multiprobe_t *mul
 {
 	fm_scan_stage_t *stage;
 	fm_scan_action_t *action;
+	fm_target_pool_t *target_queue;
 
 	stage = fm_scanner_create_stage(scanner, stage_id);
 
 	action = fm_scan_action_create(multiprobe);
 	fm_scan_action_array_append(&stage->actions, action);
 
-	/* Create a separate target queue through which we'll feed new
-	 * scan targets to the probe. */
-	action->target_queue = fm_target_manager_create_queue(scanner->target_manager, multiprobe->name);
+	if (stage_id != FM_SCAN_STAGE_DISCOVERY) {
+		/* Create a separate target queue through which we'll feed new
+		 * scan targets to the probe. */
+		target_queue = fm_target_manager_create_queue(scanner->target_manager, multiprobe->name);
+
+		/* Install it */
+		action->target_queue = target_queue;
+		multiprobe->target_queue = target_queue;
+	}
 
 #if 0
 	/* This is the wrong place; this needs to happen in the multiprobe code when

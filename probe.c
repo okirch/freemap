@@ -148,6 +148,12 @@ fm_multiprobe_job_run(fm_job_t *job, fm_sched_stats_t *stats)
 	fm_multiprobe_transmit(multiprobe, stats);
 
 	if (fm_multiprobe_is_idle(multiprobe)) {
+		if (multiprobe->target_queue == NULL) {
+			/* most likely a discovery probe */
+			debugmsg("job %s seems complete, with no target queue", job->fullname);
+			return FM_TASK_COMPLETE;
+		}
+
 		debugmsg("job %s is waiting for more targets", job->fullname);
 		job->expires = fm_time_now() + 60;
 	} else

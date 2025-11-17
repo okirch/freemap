@@ -154,6 +154,9 @@ struct fm_multiprobe {
 	int			probe_mode;
 	int			action_flags;
 
+	/* This is where the probe receives its targets from */
+	fm_target_pool_t *	target_queue;
+
 	struct {
 		double		packet_spacing;
 		double		timeout;
