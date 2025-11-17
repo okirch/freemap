@@ -92,6 +92,7 @@ extern void			fm_address_enumerator_array_remove_shallow(fm_address_enumerator_a
 extern void			fm_address_enumerator_array_destroy_shallow(fm_address_enumerator_array_t *);
 extern const unsigned char *	fm_address_get_raw_addr(const fm_address_t *, unsigned int *nbits);
 extern bool			fm_address_set_raw_addr(fm_address_t *,int family,  const unsigned char *raw_data, size_t len);
+extern bool			fm_address_generator_address_eligible(const fm_address_t *address);
 extern void			fm_interface_add(const char *name, const struct sockaddr_ll *);
 extern const fm_address_prefix_t *fm_local_prefix_for_address(const fm_address_t *addr);
 extern bool			fm_address_mask_from_prefixlen(int af, unsigned int pfxlen, unsigned char *mask, unsigned int size);
@@ -139,18 +140,6 @@ DECLARE_FM_ADDRESS_CAST_FUNCTIONS(AF_PACKET, fm_address_to_link, struct sockaddr
 DECLARE_FM_ADDRESS_CAST_FUNCTIONS(AF_INET, fm_address_to_ipv4, struct sockaddr_in)
 DECLARE_FM_ADDRESS_CAST_FUNCTIONS(AF_INET6, fm_address_to_ipv6, struct sockaddr_in6)
 
-
-static inline bool
-fm_address_generator_address_eligible(const fm_address_t *address)
-{
-	if (fm_global.address_generation.only_family == AF_UNSPEC)
-		return true;	/* no restrictions */
-
-	if (fm_global.address_generation.only_family == address->ss_family)
-		return true;	/* it's a match */
-
-	return false;
-}
 
 static inline void
 fm_address_array_append(fm_address_array_t *array, const fm_address_t *addr)

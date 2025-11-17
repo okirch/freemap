@@ -134,6 +134,25 @@ fm_address_enumerator_array_destroy_shallow(fm_address_enumerator_array_t *array
 	memset(array, 0, sizeof(*array));
 }
 
+/*
+ * Check whether a given address is eligible for scanning, based on the
+ * constraints given by the user.
+ */
+bool
+fm_address_generator_address_eligible(const fm_address_t *address)
+{
+	if (fm_global.address_generation.only_family == AF_UNSPEC)
+		return true;	/* no restrictions */
+
+	if (fm_global.address_generation.only_family == address->ss_family)
+		return true;	/* it's a match */
+
+	return false;
+}
+
+/*
+ * Parse a prefix in add/len notation
+ */
 static bool
 fm_try_parse_cidr(const char *addr_string, struct sockaddr_storage *ss, unsigned int *nbits)
 {
