@@ -27,12 +27,15 @@ static void		fm_target_release(fm_target_t *target);
 
 static fm_target_pool_t *fm_active_target_pool = NULL;
 
+#define debugmsg	fm_debug_addrpool
+
 /*
  * The target pool
  */
 fm_target_pool_t *
-fm_target_pool_create(unsigned int size)
+fm_target_pool_create(unsigned int size, const char *name)
 {
+	static unsigned int counter = 1;
 	fm_target_pool_t *pool;
 
 	pool = calloc(1, sizeof(*pool));
@@ -40,6 +43,12 @@ fm_target_pool_create(unsigned int size)
 	pool->slots = calloc(size, sizeof(pool->slots[0]));
 	pool->first_pool_id = 0;
 	pool->next_pool_id = 1;
+
+	/* For debugging */
+	if (name != NULL)
+		asprintf(&pool->name, "pool%u(%s)", counter++, name);
+	else
+		asprintf(&pool->name, "pool%u", counter++);
 
 	return pool;
 }
@@ -127,6 +136,8 @@ fm_target_pool_remove(fm_target_pool_t *pool, fm_target_t *target)
 	pool->count -= 1;
 	for (i = index; i < pool->count; ++i)
 		pool->slots[i] = pool->slots[i + 1];
+
+	debugmsg("%s: remove target %s from pool", pool->name, target->id);
 
 	fm_target_release(target);
 	return true;
@@ -278,13 +289,13 @@ fm_target_manager_get_generator_count(const fm_target_manager_t *mgr)
 }
 
 fm_target_pool_t *
-fm_target_manager_create_queue(fm_target_manager_t *mgr)
+fm_target_manager_create_queue(fm_target_manager_t *mgr, const char *name)
 {
 	fm_target_pool_t *queue;
 
 	maybe_realloc_array(mgr->queues, mgr->num_queues, 4);
 
-	queue = fm_target_pool_create(mgr->pool_size);
+	queue = fm_target_pool_create(mgr->pool_size, name);
 	mgr->queues[mgr->num_queues++] = queue;
 	return queue;
 }
@@ -394,7 +405,7 @@ fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 
 	/* When all generators have completed, call it a day */
 	if (target == NULL && mgr->active_generators.count == 0) {
-		fm_log_debug("Exhausted all address generators");
+		debugmsg("Exhausted all address generators");
 		mgr->all_targets_exhausted = true;
 	}
 
@@ -411,8 +422,13 @@ fm_target_manager_replenish_pools(fm_target_manager_t *mgr)
 
 	if (mgr->all_targets_exhausted) {
 		for (k = 0; k < mgr->num_queues; ++k) {
-			if (mgr->queues[k]->count)
+			if (mgr->queues[k]->count) {
+				debugmsg("queue %s still active", mgr->queues[k]->name);
+				debugmsg("  target %s refcount %u",
+						mgr->queues[k]->slots[0]->id,
+						mgr->queues[k]->slots[0]->refcount);
 				return true;
+			}
 		}
 		return false;
 	}
@@ -433,7 +449,7 @@ fm_target_manager_replenish_pools(fm_target_manager_t *mgr)
 		hlist_insert(&mgr->targets, &target->link);
 		target->refcount += 1;
 
-		fm_log_debug("%s added to address pool\n", fm_target_get_id(target));
+		debugmsg("%s added to address pool\n", fm_target_get_id(target));
 	}
 
 	return true;
@@ -529,7 +545,7 @@ fm_target_release(fm_target_t *target)
 	if (target->refcount != 0)
 		return;
 
-	fm_log_debug("%s is done - reaping what we have sown\n", target->id);
+	debugmsg("%s is done - reaping what we have sown\n", target->id);
 
 	hlist_remove(&target->link);
 	fm_target_free(target);

@@ -69,6 +69,8 @@ struct fm_target {
 };
 
 struct fm_target_pool {
+	char *			name;
+
 	unsigned int		size;
 	unsigned int		count;
 	unsigned int		first_pool_id;
@@ -126,7 +128,7 @@ extern bool		fm_scheduler_attach_target(fm_scheduler_t *, fm_target_t *);
 extern void		fm_scheduler_detach_target(fm_scheduler_t *, fm_target_t *);
 extern fm_scheduler_t *	fm_linear_scheduler_create(fm_scanner_t *);
 
-extern fm_target_pool_t *fm_target_manager_create_queue(fm_target_manager_t *);
+extern fm_target_pool_t *fm_target_manager_create_queue(fm_target_manager_t *, const char *name);
 extern void		fm_target_manager_resize_pool(fm_target_manager_t *mgr, unsigned int max_size);
 extern bool		fm_target_manager_replenish_pools(fm_target_manager_t *mgr);
 extern void		fm_target_manager_begin(fm_target_manager_t *, hlist_iterator_t *);

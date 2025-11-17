@@ -97,7 +97,7 @@ extern void		fm_target_manager_restart(fm_target_manager_t *, unsigned int stage
 extern void		fm_target_manager_add_address_generator(fm_target_manager_t *, fm_address_enumerator_t *);
 extern bool		fm_target_manager_replenish_pool(fm_target_manager_t *mgr, fm_target_pool_t *pool);
 
-extern fm_target_pool_t *fm_target_pool_create(unsigned int size);
+extern fm_target_pool_t *fm_target_pool_create(unsigned int size, const char *);
 extern fm_target_t *	fm_target_pool_get_next(fm_target_pool_t *pool);
 extern bool		fm_target_pool_remove(fm_target_pool_t *pool, fm_target_t *);
 extern bool		fm_target_pool_reap_completed(fm_target_pool_t *pool);

@@ -63,7 +63,7 @@ fm_probe_classes_init(void)
 
 			proto = fm_protocol_by_id(pclass->proto_id);
 			if (proto == NULL) {
-				fm_log_debug("probe class %s requires protocol %s, which is not available",
+				fm_log_warning("probe class %s requires protocol %s, which is not available",
 						pclass->name, fm_protocol_id_to_string(pclass->proto_id));
 
 				/* disable by cleaning out the mask of supported modes */
@@ -357,7 +357,7 @@ fm_multiprobe_validate_target(fm_multiprobe_t *multiprobe, fm_target_t *target)
         }
 
 	if (pclass->family != AF_UNSPEC && pclass->family != target->address.ss_family) {
-                fm_log_debug("%s: skipping incompatible probe %s", target->id, pclass->name);
+                debugmsg("%s: skipping incompatible probe %s", target->id, pclass->name);
                 return false;
         }
 
