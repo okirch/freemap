@@ -82,7 +82,7 @@ fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr)
 {
 	fm_socket_t *sock;
 
-	sock = fm_protocol_create_socket(proto, addr->ss_family);
+	sock = fm_protocol_create_socket(proto, addr->family);
 	if (sock == NULL)
 		return NULL;
 
@@ -220,9 +220,9 @@ fm_icmp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
 	const fm_address_t *addr = &target->address;
 	fm_socket_t **sharedp;
 
-	if (addr->ss_family == AF_INET)
+	if (addr->family == AF_INET)
 		sharedp = &target->raw_icmp4_sock;
-	else if (addr->ss_family == AF_INET6)
+	else if (addr->family == AF_INET6)
 		sharedp = &target->raw_icmp4_sock;
 	else
 		return NULL;
@@ -346,7 +346,7 @@ fm_icmp_request_init_target(const fm_icmp_control_t *icmp, fm_target_control_t *
 	if (sock == NULL)
 		return false;
 
-	target_control->family = addr->ss_family;
+	target_control->family = addr->family;
 	target_control->target = target;
 	target_control->address = *addr;
 	target_control->sock = sock;

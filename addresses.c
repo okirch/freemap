@@ -101,7 +101,7 @@ fm_get_raw_addr(int af, fm_address_t *ss, unsigned int *nbits)
 unsigned short
 fm_address_get_port(const fm_address_t *ss)
 {
-	switch (ss->ss_family) {
+	switch (ss->family) {
 	case AF_INET:
 		return ntohs(((struct sockaddr_in *) ss)->sin_port);
 
@@ -119,7 +119,7 @@ fm_address_get_port(const fm_address_t *ss)
 bool
 fm_address_set_port(fm_address_t *ss, unsigned short port)
 {
-	switch (ss->ss_family) {
+	switch (ss->family) {
 	case AF_INET:
 		((struct sockaddr_in *) ss)->sin_port = htons(port);
 		break;
@@ -139,7 +139,7 @@ fm_address_set_port(fm_address_t *ss, unsigned short port)
 const unsigned char *
 fm_address_get_raw_addr(const fm_address_t *ss, unsigned int *nbits)
 {
-	return fm_get_raw_addr(ss->ss_family, (fm_address_t *) ss, nbits);
+	return fm_get_raw_addr(ss->family, (fm_address_t *) ss, nbits);
 }
 
 bool
@@ -155,7 +155,7 @@ fm_address_set_raw_addr(fm_address_t *addr, int family, const unsigned char *src
 	if (len < nbits / 8)
 		return false;
 
-	addr->ss_family = family;
+	addr->family = family;
 	memcpy(dst_raw, src_raw, nbits / 8);
 	return true;
 }
@@ -164,14 +164,14 @@ void
 fm_address_set_ipv4(fm_address_t *ss, u_int32_t raw_addr)
 {
 	memset(ss, 0, sizeof(*ss));
-	ss->ss_family = AF_INET;
+	ss->family = AF_INET;
 	((struct sockaddr_in *) ss)->sin_addr.s_addr = raw_addr;
 }
 
 bool
 fm_address_get_ipv4(const fm_address_t *addr, u_int32_t *ip_addr)
 {
-	if (addr->ss_family != AF_INET)
+	if (addr->family != AF_INET)
 		return false;
 
 	*ip_addr = ((struct sockaddr_in *) addr)->sin_addr.s_addr;
@@ -182,14 +182,14 @@ void
 fm_address_set_ipv6(fm_address_t *ss, const struct in6_addr *raw_addr)
 {
 	memset(ss, 0, sizeof(*ss));
-	ss->ss_family = AF_INET6;
+	ss->family = AF_INET6;
 	((struct sockaddr_in6 *) ss)->sin6_addr = *raw_addr;
 }
 
 bool
 fm_address_get_ipv6(const fm_address_t *addr, struct in6_addr *raw_addr)
 {
-	if (addr->ss_family != AF_INET6)
+	if (addr->family != AF_INET6)
 		return false;
 
 	*raw_addr = ((struct sockaddr_in6 *) addr)->sin6_addr;
@@ -215,7 +215,7 @@ fm_address_is_ipv6_link_local(const fm_address_t *addr)
 {
 	struct sockaddr_in6 *six;
 
-	if (addr->ss_family != AF_INET6)
+	if (addr->family != AF_INET6)
 		return false;
 
 	six = (struct sockaddr_in6 *) addr;
@@ -303,11 +303,11 @@ fm_address_format(const fm_address_t *ap)
 	aindex = (aindex + 1) % 4;
 
 	if (!(raw_addr = fm_address_get_raw_addr(ap, NULL))) {
-		snprintf(abuf[index], sizeof(abuf[index]), "<unsupported address family %d>", ap->ss_family);
+		snprintf(abuf[index], sizeof(abuf[index]), "<unsupported address family %d>", ap->family);
 		return abuf[index];
 	}
 
-	if (ap->ss_family == AF_PACKET) {
+	if (ap->family == AF_PACKET) {
 		const struct sockaddr_ll *sll = (const struct sockaddr_ll *) ap;
 		const char *arp_type;
 		char *wbuf;
@@ -342,14 +342,14 @@ fm_address_format(const fm_address_t *ap)
 
 	port = fm_address_get_port(ap);
 	if (port == 0) {
-		return inet_ntop(ap->ss_family, raw_addr, abuf[index], sizeof(abuf[index]));
+		return inet_ntop(ap->family, raw_addr, abuf[index], sizeof(abuf[index]));
 	} else {
 		char tmpbuf[128];
 
-		if (!inet_ntop(ap->ss_family, raw_addr, tmpbuf, sizeof(tmpbuf)))
+		if (!inet_ntop(ap->family, raw_addr, tmpbuf, sizeof(tmpbuf)))
 			return NULL;
 
-		if (ap->ss_family == AF_INET6)
+		if (ap->family == AF_INET6)
 			snprintf(abuf[index], sizeof(abuf[index]), "[%s]:%u", tmpbuf, port);
 		else
 			snprintf(abuf[index], sizeof(abuf[index]), "%s:%u", tmpbuf, port);
@@ -360,10 +360,10 @@ fm_address_format(const fm_address_t *ap)
 bool
 fm_address_equal(const fm_address_t *a, const fm_address_t *b, bool with_port)
 {
-	if (a->ss_family != b->ss_family)
+	if (a->family != b->family)
 		return false;
 
-	if (a->ss_family == AF_INET) {
+	if (a->family == AF_INET) {
 		const struct sockaddr_in *sina = (const struct sockaddr_in *) a;
 		const struct sockaddr_in *sinb = (const struct sockaddr_in *) b;
 
@@ -372,7 +372,7 @@ fm_address_equal(const fm_address_t *a, const fm_address_t *b, bool with_port)
 
 		return sina->sin_addr.s_addr == sinb->sin_addr.s_addr;
 	} else
-	if (a->ss_family == AF_INET6) {
+	if (a->family == AF_INET6) {
 		const struct sockaddr_in6 *sixa = (const struct sockaddr_in6 *) a;
 		const struct sockaddr_in6 *sixb = (const struct sockaddr_in6 *) b;
 

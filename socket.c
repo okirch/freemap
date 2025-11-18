@@ -479,7 +479,7 @@ fm_socket_get_local_address(const fm_socket_t *sock, fm_address_t *addr)
 	if (sock->fd < 0)
 		return false;
 
-	if (sock->local_address.ss_family == AF_UNSPEC) {
+	if (sock->local_address.family == AF_UNSPEC) {
 		socklen_t slen = sizeof(sock->local_address);
 		if (getsockname(sock->fd, (struct sockaddr *) &sock->local_address, &slen) < 0) {
 			fm_log_error("getsockname: %m");
@@ -508,7 +508,7 @@ fm_sendmsg_prepare(const fm_address_t *dest_addr, fm_buffer_t *payload, int flag
 	struct fm_msghdr *rd;
 
 	rd = calloc(1, sizeof(*rd));
-	if (dest_addr && dest_addr->ss_family != AF_UNSPEC) {
+	if (dest_addr && dest_addr->family != AF_UNSPEC) {
 		rd->peer_addr = *dest_addr;
 		rd->msg.msg_name = &rd->peer_addr;
 		rd->msg.msg_namelen = sizeof(rd->peer_addr);
@@ -814,7 +814,7 @@ fm_socket_recv_and_dispatch_packet(fm_socket_t *sock, int flags)
 	/* For some reason, I don't always see the proper remote port with
 	 * connected TCP raw sockets. */
 	if (sock->type == SOCK_RAW && sock->proto->id == FM_PROTO_TCP
-	 && sock->peer_address.ss_family != AF_UNSPEC) {
+	 && sock->peer_address.family != AF_UNSPEC) {
 		uint16_t port = fm_address_get_port(&pkt->peer_addr);
 
 		if (port == 0)

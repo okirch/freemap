@@ -85,7 +85,7 @@ fm_rawip_create_socket(fm_protocol_t *proto, const fm_address_t *addr)
 	fm_address_t lladdr = *addr;
 	fm_socket_t *sock;
 
-	if (lladdr.ss_family != AF_PACKET)
+	if (lladdr.family != AF_PACKET)
 		return NULL;
 
 	((struct sockaddr_ll *) &lladdr)->sll_protocol = htons(ETH_P_IP);
@@ -114,7 +114,7 @@ fm_ipproto_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_pro
 {
 	fm_ipproto_request_t *req;
 
-	if (target->address.ss_family != AF_INET) {
+	if (target->address.family != AF_INET) {
 		fm_log_error("Cannot implement ipproto probe for %s: not supported",
 				fm_address_format(&target->address));
 		return NULL;
@@ -133,7 +133,7 @@ fm_ipproto_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_pro
 	if (req->params.retries == 0)
 		req->params.retries = 3; /* fm_global.ipproto.retries; */
 
-	req->family = target->address.ss_family;
+	req->family = target->address.family;
 	req->host_address = target->address;
 
 	req->ip.src_addr = target->local_bind_address;
@@ -195,7 +195,7 @@ fm_ipproto_build_proto_probe(fm_ipproto_request_t *req)
 	fm_pkt_t *pkt;
 	fm_buffer_t *bp;
 
-	if (rtinfo->dst.network_address.ss_family != AF_INET)
+	if (rtinfo->dst.network_address.family != AF_INET)
 		return NULL;
 
 	/* should be plenty */
@@ -240,7 +240,7 @@ fm_ipproto_request_send(fm_ipproto_request_t *req, fm_ipproto_extant_info_t *ext
 	fm_ip_header_info_t *ip = &req->ip;
 	fm_pkt_t *pkt;
 
-	if (rtinfo->nh.link_address.ss_family == AF_UNSPEC) {
+	if (rtinfo->nh.link_address.family == AF_UNSPEC) {
 		fm_log_error("%s: neighbor discovery failed",
 				fm_address_format(&ip->dst_addr));
 		return FM_SEND_ERROR;
@@ -332,7 +332,7 @@ fm_ipproto_host_probe_send(fm_probe_t *probe)
 	fm_socket_t *sock;
 	fm_buffer_t *bp;
 
-	if (rtinfo->nh.link_address.ss_family == AF_UNSPEC) {
+	if (rtinfo->nh.link_address.family == AF_UNSPEC) {
 		fm_log_error("%s: neighbor discovery failed",
 				fm_address_format(&ip->dst_addr));
 		return FM_SEND_ERROR;
@@ -365,7 +365,7 @@ fm_ipproto_host_probe_send(fm_probe_t *probe)
 		return FM_SEND_ERROR;
 	}
 
-	fm_ipproto_expect_response(probe, rtinfo->dst.network_address.ss_family, ip->ipproto);
+	fm_ipproto_expect_response(probe, rtinfo->dst.network_address.family, ip->ipproto);
 
 	/* update the asset state */
 	fm_target_update_host_state(probe->target, FM_PROTO_IP, FM_ASSET_STATE_PROBE_SENT);

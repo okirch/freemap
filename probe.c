@@ -362,7 +362,7 @@ fm_multiprobe_validate_target(fm_multiprobe_t *multiprobe, fm_target_t *target)
                 return false;
         }
 
-	if (pclass->family != AF_UNSPEC && pclass->family != target->address.ss_family) {
+	if (pclass->family != AF_UNSPEC && pclass->family != target->address.family) {
                 debugmsg("%s: skipping incompatible probe %s", target->id, pclass->name);
                 return false;
         }
@@ -447,7 +447,7 @@ fm_multiprobe_add_link_level_broadcast(fm_multiprobe_t *multiprobe, int af,
 
 	host_task = fm_host_tasklet_alloc(NULL, 17);
 	asprintf(&host_task->name, "%s/%s/broadcast", multiprobe->name, ifname);
-	host_task->control.family = net_src_addr->ss_family;
+	host_task->control.family = net_src_addr->family;
 
 	/* Dummy rate limit - we may want to define this per device */
 	{

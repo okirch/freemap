@@ -211,7 +211,7 @@ fm_route_show(fm_route_t *r)
 {
 	printf("%-10s ", route_type_name(r->type));
 	printf("%-25s", route_prefix_format(&r->dst.addr, r->dst.prefix_len));
-	if (r->gateway.ss_family != AF_UNSPEC)
+	if (r->gateway.family != AF_UNSPEC)
 		printf(" via %s", fm_address_format(&r->gateway));
 	if (r->priority)
 		printf(" priority %u", r->priority);
@@ -219,7 +219,7 @@ fm_route_show(fm_route_t *r)
 		printf(" dev %s", fm_interface_get_name(r->interface));
 	else if (r->oif)
 		printf(" oif %u", r->oif);
-	if (r->pref_src_addr.ss_family != AF_UNSPEC)
+	if (r->pref_src_addr.family != AF_UNSPEC)
 		printf(" prefsrc %s", fm_address_format(&r->pref_src_addr));
 	printf("\n");
 	fflush(stdout);
@@ -236,7 +236,7 @@ fm_routing_for_address(const fm_address_t *addr)
 	const unsigned char *raw_addr2;
 	unsigned int i, k, addr_bits, noctets;
 
-	if ((rtcache = fm_routing_cache_for_family(addr->ss_family)) == NULL)
+	if ((rtcache = fm_routing_cache_for_family(addr->family)) == NULL)
 		return NULL;
 
 	raw_addr1 = fm_address_get_raw_addr(addr, &addr_bits);
@@ -249,7 +249,7 @@ fm_routing_for_address(const fm_address_t *addr)
 		fm_route_t *route = rtcache->entries[i];
 		int xor = 0;
 
-		assert(route->family == addr->ss_family);
+		assert(route->family == addr->family);
 
 		/* default route */
 		if (route->dst.prefix_len == 0)
@@ -299,7 +299,7 @@ fm_routing_lookup(fm_routing_info_t *info)
 		return false;
 	}
 
-	if (route->gateway.ss_family == AF_UNSPEC) {
+	if (route->gateway.family == AF_UNSPEC) {
 		info->nh.network_address = info->dst.network_address;
 	} else {
 		info->nh.network_address = route->gateway;

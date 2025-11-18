@@ -205,7 +205,7 @@ fm_local_prefix_for_address(const fm_address_t *addr)
 		fm_address_prefix_t *entry = &fm_local_address_prefixes.elements[i];
 		int xor = 0;
 
-		if (entry->address.ss_family != addr->ss_family)
+		if (entry->address.family != addr->family)
 			continue;
 
 		raw_addr2 = fm_address_get_raw_addr(&entry->address, NULL);
@@ -227,7 +227,7 @@ fm_interface_get_network_address(const fm_interface_t *nic, int af, fm_address_t
 	for (i = 0; i < fm_local_address_prefixes.count; ++i) {
 		fm_address_prefix_t *entry = &fm_local_address_prefixes.elements[i];
 
-		if (entry->device == nic && entry->address.ss_family == af) {
+		if (entry->device == nic && entry->address.family == af) {
 			*ret_addr = entry->address;
 			return true;
 		}
@@ -309,7 +309,7 @@ fm_local_neighbor_cache_update(const fm_address_t *net_addr, const fm_address_t 
 	const fm_interface_t *nic;
 	int ifindex;
 
-	if (link_addr->ss_family != AF_PACKET || net_addr->ss_family == AF_UNSPEC)
+	if (link_addr->family != AF_PACKET || net_addr->family == AF_UNSPEC)
 		return; /* you don't even deserve an error message for that */
 
 	ifindex = ((const struct sockaddr_ll *) link_addr)->sll_ifindex;
@@ -427,7 +427,7 @@ fm_local_address_prefix_create(const fm_address_t *local_address, unsigned int p
 	entry->source_addr = *local_address;
 	entry->ifindex = ifindex;
 
-	fm_address_mask_from_prefixlen(local_address->ss_family, pfxlen,
+	fm_address_mask_from_prefixlen(local_address->family, pfxlen,
 			entry->raw_mask, sizeof(entry->raw_mask));
 
 	if (ifindex != 0) {

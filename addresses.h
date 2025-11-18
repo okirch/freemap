@@ -124,7 +124,7 @@ fm_addrfamily_max_addrbits(int af)
  * Various functions for casting fm_address_t to sockaddr_*
  */
 #define fm_address_maybe_cast(__addr, __af, __dtype) do { \
-	if (__addr->ss_family != __af) \
+	if (__addr->family != __af) \
 		return NULL; \
 	return (__dtype *) __addr; \
 } while (0)

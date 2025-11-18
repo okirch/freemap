@@ -235,7 +235,7 @@ fm_proto_ip_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_prot
 	 * address.
 	 * Replace these with the IP addrs.
 	 */
-	if (pkt->peer_addr.ss_family == AF_PACKET) {
+	if (pkt->peer_addr.family == AF_PACKET) {
 		int ifindex = ((struct sockaddr_ll *) &pkt->peer_addr)->sll_ifindex;
 
 		if (pkt->family == AF_INET6)

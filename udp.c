@@ -119,7 +119,7 @@ fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
 	fm_address_t bind_address;
 	fm_socket_t *sock = NULL;
 
-	sock = fm_protocol_create_socket(proto, dst_address->ss_family);
+	sock = fm_protocol_create_socket(proto, dst_address->family);
 
 	/* The following code is not used yet. We will use that eg for
 	 * allocating source ports from a given range.
@@ -236,7 +236,7 @@ fm_udp_control_init_target(const fm_udp_control_t *udp, fm_target_control_t *tar
 {
 	const fm_address_t *addr = &target->address;
 
-	target_control->family = addr->ss_family;
+	target_control->family = addr->family;
 	target_control->target = target;
 	target_control->address = *addr;
 	return true;
@@ -364,7 +364,7 @@ fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port, const fm_buffer_t 
 {
 	fm_pkt_t *pkt;
 
-	pkt = fm_pkt_alloc(dstaddr->ss_family, 0);
+	pkt = fm_pkt_alloc(dstaddr->family, 0);
 	pkt->peer_addr = *dstaddr;
 
 	fm_address_set_port(&pkt->peer_addr, port);

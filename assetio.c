@@ -163,7 +163,7 @@ fm_asset_path_init_address(struct fm_asset_path *path, const char *project_dir, 
 	if (raw_addr == NULL || nbits / 8 > sizeof(path->raw))
 		return false;
 
-	if (!fm_asset_path_init(path, project_dir, addr->ss_family))
+	if (!fm_asset_path_init(path, project_dir, addr->family))
 		return false;
 
 	memcpy(path->raw, raw_addr, nbits / 8);

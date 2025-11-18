@@ -111,7 +111,7 @@ fm_topo_state_init_target(fm_topo_state_t *topo, fm_target_control_t *target_con
 {
 	const fm_address_t *addr = &target->address;
 
-	target_control->family = addr->ss_family;
+	target_control->family = addr->family;
 	target_control->target = target;
 	target_control->address = *addr;
 	return true;
@@ -706,7 +706,7 @@ fm_topo_state_send_probe(fm_topo_state_t *topo, fm_topo_hop_state_t *hop, double
 		sock = fm_topo_shared_socket_open(topo->shared_socks, ttl);
 	}
 
-	assert(sock->family == topo->host_address.ss_family);
+	assert(sock->family == topo->host_address.family);
 
 	/* Overwrite the target control information with the socket for this TTL value, and
 	 * the source address of this socket */
@@ -863,7 +863,7 @@ fm_topo_shared_sockets_get(fm_protocol_t *packet_proto, const fm_address_t *dst_
 		return NULL;
 	}
 
-	af = dst_addr->ss_family;
+	af = dst_addr->family;
 	for (i = 0; i < nshared; ++i) {
 		s = shared_socks[i];
 
@@ -896,7 +896,7 @@ fm_topo_shared_socket_open(fm_topo_shared_sockets_t *shared, unsigned ttl)
 		sock->trace = true;
 
 		memset(&local_addr, 0, sizeof(local_addr));
-		local_addr.ss_family = shared->family;
+		local_addr.family = shared->family;
 		if (!fm_socket_bind(sock, &shared->local_address))
 			fm_log_fatal("%s: cannot bind socket", __func__);
 

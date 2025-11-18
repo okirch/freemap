@@ -124,7 +124,7 @@ fm_tcp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
 	fm_address_t bind_address;
 	fm_socket_t *sock = NULL;
 
-	sock = fm_protocol_create_socket(proto, dst_address->ss_family);
+	sock = fm_protocol_create_socket(proto, dst_address->family);
 
 	/* The following code is not used yet. We will use that eg for
 	 * allocating source ports from a given range.
@@ -219,7 +219,7 @@ fm_tcp_control_init_target(const fm_tcp_control_t *tcp, fm_target_control_t *tar
 		return false;
 	}
 
-	target_control->family = addr->ss_family;
+	target_control->family = addr->family;
 	target_control->target = target;
 	target_control->address = *addr;
 	target_control->sock = sock;

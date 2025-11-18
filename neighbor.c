@@ -191,10 +191,10 @@ fm_neighbor_initiate_discovery(fm_neighbor_t *neigh)
 		return true;
 	}
 
-	if (neigh->network_address.ss_family == AF_INET)
+	if (neigh->network_address.family == AF_INET)
 		return fm_neighbor_initiate_arp(&neigh->network_address);
 
-	if (neigh->network_address.ss_family == AF_INET6)
+	if (neigh->network_address.family == AF_INET6)
 		return fm_neighbor_initiate_ipv6_ndisc(&neigh->network_address);
 
 	return false;

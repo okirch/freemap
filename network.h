@@ -50,7 +50,7 @@ extern fm_gateway_t *	fm_gateway_alloc(const fm_address_t *);
 static inline bool
 fm_gateway_is_unknown(const fm_gateway_t *gw)
 {
-	return gw->addr.ss_family == AF_UNSPEC;
+	return gw->addr.family == AF_UNSPEC;
 }
 
 #endif /* FREEMAP_NETWORK_H */

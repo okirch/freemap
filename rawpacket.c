@@ -326,18 +326,18 @@ fm_raw_packet_add_network_header(fm_buffer_t *bp, const fm_address_t *src_addr, 
 				int ipproto, unsigned int ttl, unsigned int tos,
 				unsigned int transport_len)
 {
-	if (src_addr->ss_family != dst_addr->ss_family) {
+	if (src_addr->family != dst_addr->family) {
 		fm_log_error("%s: incompatible network protocols", __func__);
 		return false;
 	}
 
-	if (dst_addr->ss_family == AF_INET)
+	if (dst_addr->family == AF_INET)
 		return fm_raw_packet_add_ipv4_header(bp, src_addr, dst_addr, ipproto, ttl, tos, transport_len);
 
-	if (dst_addr->ss_family == AF_INET6)
+	if (dst_addr->family == AF_INET6)
 		return fm_raw_packet_add_ipv6_header(bp, src_addr, dst_addr, ipproto, ttl, tos, transport_len);
 
-	fm_log_error("%s: unsupported network protocol %u", __func__, dst_addr->ss_family);
+	fm_log_error("%s: unsupported network protocol %u", __func__, dst_addr->family);
 	return false;
 }
 
@@ -352,11 +352,11 @@ fm_raw_packet_tcp_checksum(const fm_buffer_t *bp, const fm_address_t *src_addr, 
 
 	th->th_sum = 0;
 
-	if (dst_addr->ss_family == AF_INET) {
+	if (dst_addr->family == AF_INET) {
 		if (!fm_ipv4_transport_csum_partial(&csum, src_addr, dst_addr, IPPROTO_TCP))
 			return false;
 	} else 
-	if (dst_addr->ss_family == AF_INET6) {
+	if (dst_addr->family == AF_INET6) {
 		if (!fm_ipv6_transport_csum_partial(&csum, src_addr, dst_addr, IPPROTO_TCP))
 			return false;
 	} else 
@@ -380,11 +380,11 @@ fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, cons
 	uint16_t window;
 	unsigned int len;
 
-	if (src_addr->ss_family == AF_INET && dst_addr->ss_family == AF_INET) {
+	if (src_addr->family == AF_INET && dst_addr->family == AF_INET) {
 		tcp_info->src_port = ((struct sockaddr_in *) src_addr)->sin_port;
 		tcp_info->dst_port = ((struct sockaddr_in *) dst_addr)->sin_port;
 	} else
-	if (src_addr->ss_family == AF_INET6 && dst_addr->ss_family == AF_INET6) {
+	if (src_addr->family == AF_INET6 && dst_addr->family == AF_INET6) {
 		tcp_info->src_port = ((struct sockaddr_in6 *) src_addr)->sin6_port;
 		tcp_info->dst_port = ((struct sockaddr_in6 *) dst_addr)->sin6_port;
 	} else

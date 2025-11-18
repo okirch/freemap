@@ -342,7 +342,7 @@ fm_scanner_discovery_select_prefixes(const fm_interface_t *nic, fm_address_prefi
                 if (!fm_address_generator_address_eligible_any_state(&prefix->address))
                         continue;
 
-		family = prefix->address.ss_family;
+		family = prefix->address.family;
 		if (fm_global.address_generation.try_all
 		 && (family == AF_INET || family == AF_INET6)) {
 			fm_address_prefix_array_append(selected, prefix);
@@ -420,7 +420,7 @@ fm_scanner_initiate_discovery(fm_scanner_t *scanner, const char *addrspec)
 		for (i = 0; i < selected_prefixes.count; ++i) {
 			const fm_address_prefix_t *prefix = &selected_prefixes.elements[i];
 			const fm_address_t *src_addr = &prefix->source_addr;
-			int family = src_addr->ss_family;
+			int family = src_addr->family;
 
 			if (!fm_multiprobe_add_link_level_broadcast(multiprobe, family, nic, src_addr)) {
 				fm_log_error("%s: cannot broadcast to %s on device %s",

@@ -150,7 +150,7 @@ fm_address_generator_address_eligible_state(const fm_address_t *address, int ass
 	if (fm_global.address_generation.only_family == AF_UNSPEC)
 		return true;	/* no restrictions */
 
-	if (fm_global.address_generation.only_family == address->ss_family)
+	if (fm_global.address_generation.only_family == address->family)
 		return true;	/* it's a match */
 
 	return false;
@@ -195,7 +195,7 @@ fm_try_parse_cidr(const char *addr_string, fm_address_t *addr, unsigned int *nbi
 	if (*end)
 		goto out;
 
-	if (*nbits > fm_addrfamily_max_addrbits(addr->ss_family))
+	if (*nbits > fm_addrfamily_max_addrbits(addr->family))
 		goto out;
 
 	ok = true;
@@ -324,12 +324,12 @@ fm_ipv6_network_enumerator(const fm_address_prefix_t *prefix, unsigned int pfxle
 	 * With a large DB, this means we visit a lot of assets we are not interested in.
 	 * Doing this more efficiently requires some smarts inside the asset iterator,
 	 * which I'm not keen on doing right now. */
-	fm_host_asset_iterator_init_family(&iter, prefix->address.ss_family);
+	fm_host_asset_iterator_init_family(&iter, prefix->address.family);
 	while ((host_asset = fm_host_asset_iterator_next(&iter)) != NULL) {
 		const fm_address_t *host_addr = &host_asset->address;
 		unsigned char xor = 0;
 
-		assert(host_addr->ss_family == prefix->address.ss_family);
+		assert(host_addr->family == prefix->address.family);
 
 		if (!fm_address_generator_address_eligible_any_state(host_addr))
 			continue;
@@ -428,7 +428,7 @@ fm_ipv4_network_enumerator(const fm_address_t *addr, unsigned int pfxlen)
 {
 	struct fm_ipv4_network_enumerator *sagen;
 
-	assert(addr->ss_family == AF_INET);
+	assert(addr->family == AF_INET);
 
 	sagen = NEW_ADDRESS_ENUMERATOR(fm_ipv4_network_enumerator);
 	sagen->ipv4_net = ntohl(((struct sockaddr_in *) addr)->sin_addr.s_addr);
@@ -460,7 +460,7 @@ fm_create_cidr_address_enumerator(const char *addr_string, fm_target_manager_t *
 	if (!fm_address_generator_address_eligible_any_state(&addr))
 		return false;
 
-	host_bits = fm_addrfamily_max_addrbits(addr.ss_family);
+	host_bits = fm_addrfamily_max_addrbits(addr.family);
 	if (host_bits == 0)
 		return false;
 
@@ -470,7 +470,7 @@ fm_create_cidr_address_enumerator(const char *addr_string, fm_target_manager_t *
 	}
 	host_bits -= cidr_bits;
 
-	if (addr.ss_family == AF_INET6) {
+	if (addr.family == AF_INET6) {
 		const fm_address_prefix_t *local_prefix;
 
 		local_prefix = fm_local_prefix_for_address(&addr);
@@ -481,7 +481,7 @@ fm_create_cidr_address_enumerator(const char *addr_string, fm_target_manager_t *
 
 		agen = fm_ipv6_network_enumerator(local_prefix, cidr_bits);
 	} else
-	if (addr.ss_family == AF_INET) {
+	if (addr.family == AF_INET) {
 		/* This limit is somewhat arbitrary and we need to increase it, at least for
 		 * local networks. */
 		if (host_bits > 8) {
@@ -555,14 +555,14 @@ fm_create_local_address_enumerator(const char *ifname, fm_target_manager_t *targ
 			/* Bravely talking to myself. Hullo, self... */
 			tgt_addr = &prefix->source_addr;
 		} else
-		if (prefix->address.ss_family == AF_INET) {
+		if (prefix->address.family == AF_INET) {
 			if (prefix->pfxlen == 32) {
 				tgt_addr = &prefix->address;
 			} else {
 				child = fm_ipv4_network_enumerator(&prefix->address, prefix->pfxlen);
 			}
 		} else
-		if (prefix->address.ss_family == AF_INET6) {
+		if (prefix->address.family == AF_INET6) {
 			if (prefix->pfxlen == 128) {
 				tgt_addr = &prefix->address;
 			} else if (fm_global.address_generation.try_all) {

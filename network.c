@@ -125,7 +125,7 @@ fm_network_hash_lookup(fm_nethash_table_t *t, const fm_address_t *addr)
 fm_network_t *
 fm_network_for_host(const fm_address_t *addr)
 {
-	switch (addr->ss_family) {
+	switch (addr->family) {
 	case AF_INET:
 		return fm_network_hash_lookup(&fm_network_hash_ipv4, addr);
 

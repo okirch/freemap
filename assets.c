@@ -174,7 +174,7 @@ fm_host_asset_get(const fm_address_t *addr, bool create)
 	unsigned int addr_bits, octets, i, index;
 	fm_host_asset_t *host;
 
-	if ((table = fm_host_asset_table_get(addr->ss_family)) == NULL)
+	if ((table = fm_host_asset_table_get(addr->family)) == NULL)
 		return NULL;
 
 	if (!(raw_addr = fm_address_get_raw_addr(addr, &addr_bits)))
@@ -519,7 +519,7 @@ fm_host_asset_update_routing_hop(fm_host_asset_t *host, unsigned int ttl, const 
 	if (!fm_host_asset_is_mapped(host))
 		return false;
 
-	route = fm_host_asset_route_for_family(host, address->ss_family);
+	route = fm_host_asset_route_for_family(host, address->family);
 	if (route == NULL)
 		return false;
 

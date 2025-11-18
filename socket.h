@@ -80,7 +80,7 @@ extern fm_extant_t *	fm_socket_add_extant(fm_socket_t *, fm_host_asset_t *host, 
 static inline bool
 fm_socket_is_connected(const fm_socket_t *sock)
 {
-	return sock->peer_address.ss_family != AF_UNSPEC;
+	return sock->peer_address.family != AF_UNSPEC;
 }
 
 struct fm_socket_list {

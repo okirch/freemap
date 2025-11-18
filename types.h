@@ -74,7 +74,7 @@ typedef struct fm_host_tasklet  fm_host_tasklet_t;
 
 /* For now, fm_address is just a sockaddr_storage */
 typedef union fm_address {
-	sa_family_t		ss_family;
+	sa_family_t		family;
 	struct sockaddr_in	sin;
 	struct sockaddr_in6	sin6;
 	struct sockaddr_ll	sll;

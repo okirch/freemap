@@ -389,7 +389,7 @@ fm_target_create(const fm_address_t *address, fm_network_t *network)
 	/* FIXME: this is worse than useless: */
 	tgt->local_device = fm_interface_by_address(address);
 	if (tgt->local_device != NULL)
-		fm_interface_get_network_address(tgt->local_device, address->ss_family, &tgt->local_bind_address);
+		fm_interface_get_network_address(tgt->local_device, address->family, &tgt->local_bind_address);
 
 	tgt->host_asset = fm_host_asset_get(address, true);
 	fm_host_asset_attach(tgt->host_asset);
@@ -466,11 +466,11 @@ fm_target_get_id(const fm_target_t *target)
 bool
 fm_target_get_local_bind_address(fm_target_t *target, fm_address_t *bind_address)
 {
-	if (target->local_bind_address.ss_family == AF_UNSPEC) {
+	if (target->local_bind_address.family == AF_UNSPEC) {
 		const fm_address_t *daddr = &target->address;
 		fm_socket_t *sock;
 
-		sock = fm_socket_create(daddr->ss_family, SOCK_DGRAM, 0, NULL);
+		sock = fm_socket_create(daddr->family, SOCK_DGRAM, 0, NULL);
 		if (sock == NULL)
 			return false;
 
@@ -481,7 +481,7 @@ fm_target_get_local_bind_address(fm_target_t *target, fm_address_t *bind_address
 		fm_socket_free(sock);
 	}
 
-	if (target->local_bind_address.ss_family == AF_UNSPEC)
+	if (target->local_bind_address.family == AF_UNSPEC)
 		return false;
 
 	*bind_address = target->local_bind_address;
