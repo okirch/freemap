@@ -676,7 +676,7 @@ fm_sched_stats_update_timeout_min(fm_sched_stats_t *stats, fm_time_t expiry, con
 	if (stats->timeout == 0 || expiry < stats->timeout) {
 		stats->timeout = expiry;
 
-		if (fm_debug_level > 1) {
+		if (fm_debug_level > 2) {
 			double delay = stats->timeout - fm_time_now();
 			debugmsg("%s: new timeout is %f", who, delay);
 			/* assert(delay >= -1e-6); */
@@ -691,8 +691,6 @@ fm_sched_stats_update_timeout_max(fm_sched_stats_t *stats, fm_time_t expiry, con
 {
 	if (stats->timeout > 0 && stats->timeout < expiry) {
 		stats->timeout = expiry;
-
-		debugmsg("%s: new timeout is %f", who, stats->timeout - fm_time_now());
 		return true;
 	}
 	return false;
