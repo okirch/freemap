@@ -311,6 +311,9 @@ fm_scanner_discovery_callback(const fm_pkt_t *pkt, void *user_data)
 	fm_address_enumerator_add(agen, &pkt->peer_addr);
 }
 
+/* This is currently unused. We may need something like this if we ever
+ * allow discovery and other probes to run in the same context. */
+#if 0
 static void
 fm_scanner_discovery_complete(void *user_data)
 {
@@ -320,6 +323,7 @@ fm_scanner_discovery_complete(void *user_data)
 	/* send a NULL address down the pipe to indicate EOF */
 	fm_address_enumerator_add(agen, &null);
 }
+#endif
 
 /* Maybe this wants to live in addrgen.c */
 static bool
