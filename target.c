@@ -390,6 +390,9 @@ fm_target_create(const fm_address_t *address, fm_network_t *network)
 	target->host_asset = fm_host_asset_get(address, true);
 	fm_host_asset_attach(target->host_asset);
 
+	if (target->rtinfo.is_local)
+		fm_host_asset_mark_as_local(target->host_asset);
+
 	return target;
 }
 

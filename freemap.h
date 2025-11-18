@@ -148,6 +148,7 @@ extern bool		fm_host_asset_update_link_address_by_address(const fm_address_t *ne
 extern bool		fm_host_asset_update_hostname(fm_host_asset_t *, const char *);
 extern bool		fm_host_asset_update_hostname_by_address(const fm_address_t *net_addr, const char *);
 extern const char *	fm_host_asset_get_hostname(const fm_host_asset_t *);
+extern bool		fm_host_asset_mark_as_local(fm_host_asset_t *host);
 extern bool		fm_host_asset_clear_routing(fm_host_asset_t *host, int family);
 extern bool		fm_host_asset_update_routing_hop(fm_host_asset_t *host, unsigned int ttl, const fm_address_t *address, const double *rtt, bool alternative);
 extern void		fm_host_asset_report_ports(fm_host_asset_t *host,

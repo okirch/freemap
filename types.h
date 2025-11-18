@@ -249,6 +249,8 @@ typedef struct fm_routing_info {
 	const fm_interface_t *	nic;
 
 	fm_neighbor_t *		incomplete_neighbor_entry;
+
+	bool			is_local;
 } fm_routing_info_t;
 
 /*

@@ -301,6 +301,7 @@ fm_routing_lookup(fm_routing_info_t *info)
 
 	if (route->gateway.family == AF_UNSPEC) {
 		info->nh.network_address = info->dst.network_address;
+		info->is_local = true;
 	} else {
 		info->nh.network_address = route->gateway;
 	}

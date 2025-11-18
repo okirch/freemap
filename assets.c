@@ -548,6 +548,15 @@ fm_host_asset_update_routing_hop(fm_host_asset_t *host, unsigned int ttl, const 
 	return true;
 }
 
+bool
+fm_host_asset_mark_as_local(fm_host_asset_t *host)
+{
+	if (!fm_host_asset_clear_routing(host, host->address.family))
+		return false;
+
+	return fm_host_asset_update_routing_hop(host, 1, &host->address, NULL, false);
+}
+
 /*
  * Update ancillary information such as hostnames, link-level addresses etc.
  */
