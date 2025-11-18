@@ -236,16 +236,15 @@ fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
  * Create new probes
  */
 static void
-fm_scanner_create_new_probes(fm_scanner_t *scanner)
+fm_target_manager_feed_probes(fm_target_manager_t *target_manager, fm_scan_stage_t *stage)
 {
-	fm_scan_stage_t *stage = scanner->current_stage;
 	bool have_new_targets = false;
 	unsigned int k;
 
 	if (stage->stage_id == FM_SCAN_STAGE_DISCOVERY)
 		return;
 
-	if (stage->next_pool_id != scanner->target_manager->next_free_pool_id)
+	if (stage->next_pool_id != target_manager->next_free_pool_id)
 		have_new_targets = true;
 
 	for (k = stage->num_done; k < stage->actions.count; ++k) {
@@ -257,7 +256,7 @@ fm_scanner_create_new_probes(fm_scanner_t *scanner)
 		multiprobe = action->multiprobe;
 		if (have_new_targets && multiprobe) {
 			if (multiprobe->job.group == NULL)
-				fm_scanner_add_global_job(scanner, &multiprobe->job);
+				fm_job_run(&multiprobe->job, NULL);
 
 			fm_target_pool_begin(action->target_queue, &iter);
 			while ((target = fm_target_pool_next(&iter)) != NULL) {
@@ -284,14 +283,20 @@ fm_scanner_create_new_probes(fm_scanner_t *scanner)
 			}
 		}
 
-		if (fm_multiprobe_is_idle(multiprobe) && scanner->target_manager->all_targets_exhausted) {
+		if (fm_multiprobe_is_idle(multiprobe) && target_manager->all_targets_exhausted) {
 			fm_log_debug("%s done with scanning all available targets", multiprobe->name);
 			fm_job_mark_complete(&multiprobe->job);
 			action->multiprobe = NULL;
 		}
 	}
 
-	stage->next_pool_id = scanner->target_manager->next_free_pool_id;
+	stage->next_pool_id = target_manager->next_free_pool_id;
+}
+
+static void
+fm_scanner_create_new_probes(fm_scanner_t *scanner)
+{
+	fm_target_manager_feed_probes(scanner->target_manager, scanner->current_stage);
 }
 
 /*
