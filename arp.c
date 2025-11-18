@@ -297,6 +297,7 @@ fm_arp_control_send(const fm_arp_control_t *arp, fm_target_control_t *target_con
 
 	eth_bcast = target_control->arp.src_lladdr;
 	eth_bcast.sll_pkttype = PACKET_BROADCAST;
+	eth_bcast.sll_protocol = htons(ETH_P_ARP);
 	memset(eth_bcast.sll_addr, 0xFF, ETH_ALEN);
 
 	if (!fm_socket_send(sock, (fm_address_t *) &eth_bcast, pktbuf, pktlen)) {
