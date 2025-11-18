@@ -194,6 +194,18 @@ static fm_extant_t *
 fm_arp_locate_common(fm_pkt_t *pkt, const struct in_addr *dst_ipaddr, hlist_iterator_t *iter)
 {
 	fm_extant_t *extant;
+	fm_address_t peer_addr;
+	fm_host_asset_t *host;
+
+	/* Look up the host asset.
+	 * It's possible that we do not have this host assset mapped.
+	 * This happens with discovery probes, for instance, or ARP lookups initiated
+	 * by the neighbor cache.
+	 */
+	fm_address_set_raw_addr(&peer_addr, AF_INET, (const unsigned char *) dst_ipaddr, sizeof(*dst_ipaddr));
+	host = fm_host_asset_get_active(&peer_addr);
+	if (host != NULL)
+		fm_host_asset_update_state(host, FM_ASSET_STATE_OPEN);
 
 	while ((extant = fm_extant_iterator_match(iter, pkt->family, IPPROTO_UDP)) != NULL) {
 		const fm_arp_extant_info_t *info = (fm_arp_extant_info_t *) (extant + 1);

@@ -152,6 +152,8 @@ fm_icmp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *i
 
 	/* Note, host can also be NULL. This happens with discovery probes, for instance. */
 	host = fm_host_asset_get_active(&pkt->peer_addr);
+	if (host != NULL)
+		fm_host_asset_update_state(host, FM_ASSET_STATE_OPEN);
 
 	/* this should go to packet.c */
 	if (fm_debug_level) {
