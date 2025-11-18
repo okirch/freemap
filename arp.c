@@ -104,8 +104,8 @@ fm_arp_control_init_target(const fm_arp_control_t *arp, fm_target_control_t *tar
 	uint32_t src_ipaddr, dst_ipaddr;
 	struct sockaddr_ll src_lladdr;
 
-	if (!fm_address_get_ipv4(&target->local_bind_address, &src_ipaddr)
-	 || !fm_address_get_ipv4(&target->address, &dst_ipaddr)
+	if (!fm_address_get_ipv4(&target_control->local_address, &src_ipaddr)
+	 || !fm_address_get_ipv4(&target_control->address, &dst_ipaddr)
 	 || !fm_interface_get_lladdr(target->local_device, &src_lladdr)) {
 		fm_log_error("%s: cannot create ARP probe: incompatible address family",
 				fm_address_format(&target->address));

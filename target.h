@@ -41,8 +41,8 @@ struct fm_target {
 	/* Use this address to bind the PF_PACKET socket for ARP et al */
 	const fm_interface_t *	local_device;
 
-	/* Use this address when binding to a port */
-	fm_address_t		local_bind_address;
+	/* We do a routing lookup per target */
+	fm_routing_info_t	rtinfo;
 
 	fm_socket_t *		raw_icmp4_sock;
 	fm_socket_t *		raw_icmp6_sock;
@@ -55,9 +55,6 @@ struct fm_target {
 
 	/* Limit the rate at which we send packets to this host */
 	fm_ratelimit_t		host_rate_limit;
-
-	/* sequence number for host probes, eg ICMP seq */
-	unsigned int		host_probe_seq;
 
 	/* Unique ID identifying a network that we scan */
 	fm_network_t *		network;

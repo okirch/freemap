@@ -30,6 +30,7 @@
 #define debugmsg	fm_debug_probe
 
 static void		fm_multiprobe_destroy(fm_multiprobe_t *multiprobe);
+static void		fm_target_control_init_default(fm_target_control_t *, fm_target_t *);
 
 /*
  * Handle registration of probe classes
@@ -209,6 +210,18 @@ fm_host_tasklet_alloc(fm_target_t *target, unsigned int num_tasks)
 }
 
 void
+fm_target_control_init_default(fm_target_control_t *target_control, fm_target_t *target)
+{
+	const fm_address_t *addr = &target->address;
+
+	target_control->family = addr->family;
+	target_control->target = target;
+	target_control->local_address = target->rtinfo.src.network_address;
+	target_control->address = *addr;
+	target_control->sock = NULL;
+}
+
+void
 fm_target_control_destroy(fm_target_control_t *host_state)
 {
 	/* careful with that axe, Eugene. */
@@ -385,10 +398,12 @@ fm_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_target_t *target)
 	if (!fm_multiprobe_validate_target(multiprobe, target))
 		return false;
 
-	host_task = fm_host_tasklet_alloc(target, 1);
+	host_task = fm_host_tasklet_alloc(target, 17);
 	asprintf(&host_task->name, "%s/%s", multiprobe->name, target->id);
 
 	hlist_insert(&multiprobe->ready, &host_task->link);
+
+	fm_target_control_init_default(&host_task->control, target);
 
 	if (!multiprobe->ops->add_target || !multiprobe->ops->add_target(multiprobe, host_task, target)) {
 		fm_log_error("%s: unable to add target %s", multiprobe->name, target->id);

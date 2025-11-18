@@ -373,28 +373,24 @@ static fm_job_ops_t     fm_target_manager_job_ops = {
 fm_target_t *
 fm_target_create(const fm_address_t *address, fm_network_t *network)
 {
-	fm_target_t *tgt;
+	fm_target_t *target;
 
-	tgt = calloc(1, sizeof(*tgt));
-	tgt->address = *address;
-	tgt->id = strdup(fm_address_format(address));
-	tgt->network = network;
-
-	/* Initial sequence number for ICMP probes */
-	tgt->host_probe_seq = 1;
+	target = calloc(1, sizeof(*target));
+	target->address = *address;
+	target->id = strdup(fm_address_format(address));
+	target->network = network;
 
 	/* The initial packet rate is very restricted */
-	fm_ratelimit_init(&tgt->host_rate_limit, 1, 1);
+	fm_ratelimit_init(&target->host_rate_limit, 1, 1);
 
-	/* FIXME: this is worse than useless: */
-	tgt->local_device = fm_interface_by_address(address);
-	if (tgt->local_device != NULL)
-		fm_interface_get_network_address(tgt->local_device, address->family, &tgt->local_bind_address);
+	target->rtinfo.dst.network_address = *address;
+	if (!fm_routing_lookup(&target->rtinfo))
+		fm_log_warning("%s: routing lookup failed - things may not work", target->id);
 
-	tgt->host_asset = fm_host_asset_get(address, true);
-	fm_host_asset_attach(tgt->host_asset);
+	target->host_asset = fm_host_asset_get(address, true);
+	fm_host_asset_attach(target->host_asset);
 
-	return tgt;
+	return target;
 }
 
 void
@@ -466,7 +462,9 @@ fm_target_get_id(const fm_target_t *target)
 bool
 fm_target_get_local_bind_address(fm_target_t *target, fm_address_t *bind_address)
 {
-	if (target->local_bind_address.family == AF_UNSPEC) {
+	*bind_address = target->rtinfo.src.network_address;
+
+	if (bind_address->family == AF_UNSPEC) {
 		const fm_address_t *daddr = &target->address;
 		fm_socket_t *sock;
 
@@ -475,16 +473,15 @@ fm_target_get_local_bind_address(fm_target_t *target, fm_address_t *bind_address
 			return false;
 
 		if (fm_socket_connect(sock, daddr)
-		 && fm_socket_get_local_address(sock, &target->local_bind_address))
-			fm_address_set_port(&target->local_bind_address, 0);
+		 && fm_socket_get_local_address(sock, bind_address))
+			fm_address_set_port(bind_address, 0);
 
 		fm_socket_free(sock);
 	}
 
-	if (target->local_bind_address.family == AF_UNSPEC)
+	if (bind_address->family == AF_UNSPEC)
 		return false;
 
-	*bind_address = target->local_bind_address;
 	return true;
 }
 

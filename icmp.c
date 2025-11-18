@@ -353,7 +353,7 @@ fm_icmp_request_init_target(const fm_icmp_control_t *icmp, fm_target_control_t *
 
 	if (target_control->family == AF_INET6) {
 		fm_ipv6_transport_csum_partial(&target_control->icmp.csum,
-						&target_control->target->local_bind_address,
+						&target_control->local_address,
 						&target_control->address,
 						IPPROTO_ICMPV6);
 	}
