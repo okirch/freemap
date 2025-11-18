@@ -392,6 +392,12 @@ static struct fm_probe_class fm_arp_host_probe_class = {
 
 FM_PROBE_CLASS_REGISTER(fm_arp_host_probe_class)
 
+/*
+ * ARP discovery, eg to be used by raw IP queries that need to find the link-level
+ * address of the gateway.
+ * Note, the use of a target is totally misplaced here; this needs to be rewritten
+ * so it can work exclusively with an fm_address.
+ */
 bool
 fm_arp_discover(fm_protocol_t *proto, fm_target_t *target, int retries)
 {

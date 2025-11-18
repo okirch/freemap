@@ -26,7 +26,6 @@
 static void		fm_target_pool_check(fm_target_pool_t *pool);
 static void		fm_target_release(fm_target_t *target);
 
-static fm_target_pool_t *fm_active_target_pool = NULL; /* nuke */
 static fm_job_ops_t     fm_target_manager_job_ops;
 static fm_cond_var_t	fm_task_manager_cond_var = FM_COND_VAR_INIT;
 
@@ -180,18 +179,6 @@ fm_target_pool_reap_completed(fm_target_pool_t *pool)
 
 	return completed_some;
 #endif
-}
-
-void
-fm_target_pool_make_active(fm_target_pool_t *pool)
-{
-	fm_active_target_pool = pool;
-}
-
-fm_target_t *
-fm_target_pool_find(const fm_address_t *addr)
-{
-	return NULL;
 }
 
 /*

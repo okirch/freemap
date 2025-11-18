@@ -46,8 +46,6 @@ fm_scanner_create(void)
 			FM_DEFAULT_GLOBAL_PACKET_RATE,
 			FM_DEFAULT_GLOBAL_PACKET_RATE / 10);
 
-	scanner->proto = fm_protocol_engine_create_default();
-
 	fm_routing_discover();
 
 	return scanner;
@@ -184,15 +182,6 @@ fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 }
 
 /*
- * Feed new targets to all probes in the current stage
- */
-static void
-fm_scanner_create_new_probes(fm_scanner_t *scanner)
-{
-	fm_target_manager_feed_probes(scanner->target_manager);
-}
-
-/*
  * Reap all targets that have completed.
  */
 void
@@ -287,13 +276,6 @@ bool
 fm_scanner_next_stage(fm_scanner_t *scanner)
 {
 	return fm_scanner_start_stage(scanner, scanner->next_stage_id);
-}
-
-
-fm_protocol_t *
-fm_scanner_get_protocol_engine(fm_scanner_t *scanner, const char *protocol_name)
-{
-	return fm_protocol_engine_get_protocol(scanner->proto, protocol_name);
 }
 
 void

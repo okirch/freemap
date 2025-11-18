@@ -146,7 +146,14 @@ fm_neighbor_initiate_arp(const fm_address_t *network_address)
 	fm_target_t *target;
 	fm_protocol_t *proto;
 
+#if 0
+	/* Obsolete, this function no longer exists. */
 	target = fm_target_pool_find(network_address);
+#else
+	/* We should not rely on our ability to access a target handle for this address.
+	 * Instead, fm_arp_discover() needs to be rewritten to accept an address */
+	target = NULL;
+#endif
 	if (target == NULL) {
 		/* We need to handle the case of local routers which may not be a scan target */
 		fm_log_error("%s: not a scan target", fm_address_format(network_address));

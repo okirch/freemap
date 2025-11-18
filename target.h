@@ -118,10 +118,6 @@ struct fm_target_manager {
 
 extern void		fm_target_schedule(fm_target_t *, fm_sched_stats_t *);
 
-extern void		fm_target_pool_make_active(fm_target_pool_t *);
-extern fm_target_t *	fm_target_pool_find(const fm_address_t *);
-extern void		fm_target_pool_purge(fm_target_pool_t *, unsigned int oldest_pending);
-
 typedef struct fm_target_pool_iterator {
 	fm_target_pool_t *queue;
 	unsigned int	index;

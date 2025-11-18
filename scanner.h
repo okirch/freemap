@@ -27,8 +27,6 @@
 #include "lists.h"
 #include "utils.h"
 
-typedef struct fm_scan_dummy	fm_scan_state_t;
-
 #define FM_SCAN_ACTION_FLAG_OPTIONAL	0x0001
 #define FM_SCAN_ACTION_FLAG_LOCAL_ONLY	0x0100
 
@@ -62,8 +60,6 @@ struct fm_scanner {
 	unsigned int		next_stage_id;
 	fm_scan_stage_t *	current_stage;
 	fm_scan_stage_t *	stages[__FM_SCAN_STAGE_MAX];
-
-	const fm_protocol_engine_t *proto;
 };
 
 extern bool			fm_scanner_add_probe(fm_scanner_t *, int stage, const fm_config_probe_t *);
