@@ -265,9 +265,6 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 	/* Process events */
 	fm_event_process_all();
 
-	/* Schedule and transmit a few additional probes */
-	fm_scanner_create_new_probes(scanner);
-
 	/* Reap any targets that we're done with, making room in the pool for
 	 * the next batch of targets. */
 	fm_scanner_process_completed(scanner);

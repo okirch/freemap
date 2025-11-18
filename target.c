@@ -26,7 +26,10 @@
 static void		fm_target_pool_check(fm_target_pool_t *pool);
 static void		fm_target_release(fm_target_t *target);
 
-static fm_target_pool_t *fm_active_target_pool = NULL;
+static fm_target_pool_t *fm_active_target_pool = NULL; /* nuke */
+static fm_job_ops_t     fm_target_manager_job_ops;
+static fm_cond_var_t	fm_task_manager_cond_var = FM_COND_VAR_INIT;
+
 
 #define debugmsg	fm_debug_addrpool
 
@@ -139,6 +142,9 @@ fm_target_pool_remove(fm_target_pool_t *pool, fm_target_t *target)
 		pool->slots[i] = pool->slots[i + 1];
 
 	debugmsg("%s: remove target %s from pool", pool->name, target->id);
+
+	if (target->refcount <= 2)
+		fm_scheduler_notify_condition(&fm_task_manager_cond_var);
 
 	fm_target_release(target);
 	return true;
@@ -266,6 +272,8 @@ fm_target_manager_create(void)
 	mgr->pool_size = FM_INITIAL_TARGET_POOL_SIZE;
 	mgr->host_packet_rate = FM_DEFAULT_HOST_PACKET_RATE;
 
+	fm_job_init(&mgr->job, &fm_target_manager_job_ops, "target-manager");
+
 	return mgr;
 }
 
@@ -294,6 +302,10 @@ fm_target_manager_create_queue(fm_target_manager_t *mgr, const char *name)
 
 	queue = fm_target_pool_create(mgr->pool_size, name);
 	mgr->queues[mgr->num_queues++] = queue;
+
+	/* Wake up the task manager */
+	fm_scheduler_notify_condition(&fm_task_manager_cond_var);
+
 	return queue;
 }
 
@@ -367,6 +379,10 @@ fm_target_manager_set_stage(fm_target_manager_t *target_manager, fm_scan_stage_t
 			action->target_queue = target_queue;
 			multiprobe->target_queue = target_queue;
 		}
+
+		if (!fm_job_is_active(&target_manager->job))
+			fm_job_run(&target_manager->job, NULL);
+		fm_job_continue(&target_manager->job);
 	}
 	return true;
 }
@@ -615,6 +631,47 @@ fm_target_manager_restart(fm_target_manager_t *mgr, unsigned int stage)
 	mgr->all_targets_exhausted = false;
 }
 
+/*
+ * The target_manager<->job glue
+ */
+static fm_error_t
+fm_target_manager_job_run(fm_job_t *job, fm_sched_stats_t *stats)
+{
+        fm_target_manager_t *target_manager = (fm_target_manager_t *) job;
+
+	if (fm_target_manager_is_done(target_manager))
+		return FM_TASK_COMPLETE;
+
+	if (target_manager->scan_stage != NULL) {
+		fm_target_manager_feed_probes(target_manager);
+		/* we still miss some wake-up call from somewhere (probably around retiring
+		 * targets); so we have to do a bit of busy-waiting */
+		job->expires = fm_time_now() + .5;
+		return FM_TRY_AGAIN;
+		return 0;
+	}
+
+	fm_job_wait_condition(&fm_task_manager_cond_var, job);
+	return FM_TRY_AGAIN;
+}
+
+static void
+fm_target_manager_job_destroy(fm_job_t *job)
+{
+        fm_target_manager_t *target_manager = (fm_target_manager_t *) job;
+
+	(void) target_manager;
+	fm_log_notice("Target manager job complete");
+}
+
+static fm_job_ops_t     fm_target_manager_job_ops = {
+        .run            = fm_target_manager_job_run,
+        .destroy        = fm_target_manager_job_destroy,
+};
+
+/*
+ * Target objects
+ */
 fm_target_t *
 fm_target_create(const fm_address_t *address, fm_network_t *network)
 {

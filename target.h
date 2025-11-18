@@ -87,6 +87,8 @@ typedef struct fm_target_queue {
 } fm_target_queue_t;
 
 struct fm_target_manager {
+	fm_job_t		job;
+
 	fm_address_enumerator_array_t address_generators;
 
 	fm_scan_stage_t *	scan_stage;
@@ -136,6 +138,8 @@ extern void		fm_target_manager_resize_pool(fm_target_manager_t *mgr, unsigned in
 extern bool		fm_target_manager_replenish_pools(fm_target_manager_t *mgr);
 extern void		fm_target_manager_begin(fm_target_manager_t *, hlist_iterator_t *);
 extern fm_target_t *	fm_target_manager_next(fm_target_manager_t *, hlist_iterator_t *);
+extern bool		fm_target_manager_is_done_quiet(fm_target_manager_t *target_manager);
+extern bool		fm_target_manager_is_done(fm_target_manager_t *target_manager);
 extern bool		fm_target_manager_set_stage(fm_target_manager_t *, fm_scan_stage_t *);
 extern void		fm_target_manager_feed_probes(fm_target_manager_t *);
 
