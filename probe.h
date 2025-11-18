@@ -107,6 +107,7 @@ typedef struct fm_target_control {
 		struct {
 			fm_buffer_t *		packet_header;
 			fm_csum_partial_t	csum;
+			/* counter for icmp seq generation: */
 			uint16_t		retries;
 		} icmp;
 	};
@@ -161,13 +162,6 @@ struct fm_multiprobe {
 		double		packet_spacing;
 		double		timeout;
 	} timings;
-
-	/* Used by traceroute to receive callbacks when there is something to be
-	 * learned. */
-	struct {
-		fm_multiprobe_status_callback_t *cb;
-		void *		user_data;
-	} status_callback;
 
 	struct {
 		void		(*callback)(const fm_pkt_t *pkt, void *user_data);
