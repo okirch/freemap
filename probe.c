@@ -796,3 +796,13 @@ fm_multiprobe_install_data_tap(fm_multiprobe_t *multiprobe,
 	multiprobe->data_tap.callback = callback;
 	multiprobe->data_tap.user_data = user_data;
 }
+
+/*
+ * multiprobe arrays
+ */
+void
+fm_multiprobe_array_append(fm_multiprobe_array_t *array, fm_multiprobe_t *multiprobe)
+{
+	maybe_realloc_array(array->entries, array->count, 4);
+	array->entries[array->count++] = multiprobe;
+}

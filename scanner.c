@@ -135,12 +135,10 @@ static void
 fm_scanner_queue_probe(fm_scanner_t *scanner, int stage_id, fm_multiprobe_t *multiprobe)
 {
 	fm_scan_stage_t *stage;
-	fm_scan_action_t *action;
 
 	stage = fm_scanner_create_stage(scanner, stage_id);
 
-	action = fm_scan_action_create(multiprobe);
-	fm_scan_action_array_append(&stage->actions, action);
+	fm_multiprobe_array_append(&stage->probes, multiprobe);
 
 #if 0
 	/* This is the wrong place; this needs to happen in the multiprobe code when
@@ -278,7 +276,7 @@ fm_scanner_start_stage(fm_scanner_t *scanner, unsigned int index)
 	while (index <  __FM_SCAN_STAGE_MAX) {
 		fm_scan_stage_t *stage = scanner->stages[index];
 
-		if (stage && stage->actions.count > 0) {
+		if (stage && stage->probes.count > 0) {
 			assert(stage->num_done == 0);
 			stage->stage_id = index;
 			new_stage = stage;
@@ -298,9 +296,8 @@ fm_scanner_start_stage(fm_scanner_t *scanner, unsigned int index)
 	}
 
 	/* Now start all probe jobs in this stage */
-	for (k = 0; k < new_stage->actions.count; ++k) {
-		fm_scan_action_t *action = new_stage->actions.entries[k];
-		fm_multiprobe_t *multiprobe = action->multiprobe;
+	for (k = 0; k < new_stage->probes.count; ++k) {
+		fm_multiprobe_t *multiprobe = new_stage->probes.entries[k];
 
 		if (!fm_job_is_active(&multiprobe->job))
 			fm_job_run(&multiprobe->job, NULL);
@@ -469,9 +466,8 @@ fm_scanner_initiate_discovery(fm_scanner_t *scanner, const char *addrspec)
 	if (scanner->addr_discovery == NULL)
 		scanner->addr_discovery = fm_address_enumerator_new_discovery();
 
-	for (i = 0; i < stage->actions.count; ++i) {
-		fm_scan_action_t *action = stage->actions.entries[i];
-		fm_multiprobe_t *multiprobe = action->multiprobe;
+	for (i = 0; i < stage->probes.count; ++i) {
+		fm_multiprobe_t *multiprobe = stage->probes.entries[i];
 
 		/* First time around, install the data tap. This needs to happen before we
 		 * add the first broadcast target. */

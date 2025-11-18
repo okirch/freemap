@@ -380,15 +380,13 @@ fm_target_manager_set_stage(fm_target_manager_t *target_manager, fm_scan_stage_t
 
 		/* For each probe, create a separate target queue through which we'll feed new
                  * scan targets to the probe. */
-		for (k = 0; k < stage->actions.count; ++k) {
-			fm_scan_action_t *action = stage->actions.entries[k];
-			fm_multiprobe_t *multiprobe = action->multiprobe;
+		for (k = 0; k < stage->probes.count; ++k) {
+			fm_multiprobe_t *multiprobe = stage->probes.entries[k];
 			fm_target_pool_t *target_queue;
 
 			target_queue = fm_target_manager_create_queue(target_manager, multiprobe->name);
 
 			/* Install it */
-			action->target_queue = target_queue;
 			multiprobe->target_queue = target_queue;
 		}
 
@@ -412,9 +410,8 @@ fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 		return;
 
 	/* Retire all targets that the probes are done with */
-	for (k = stage->num_done; k < stage->actions.count; ++k) {
-		fm_scan_action_t *action = stage->actions.entries[k];
-		fm_multiprobe_t *multiprobe = action->multiprobe;
+	for (k = stage->num_done; k < stage->probes.count; ++k) {
+		fm_multiprobe_t *multiprobe = stage->probes.entries[k];
 		fm_target_t *target;
 
 		assert(multiprobe);
@@ -422,24 +419,21 @@ fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 		/* inform the pool about targets that we're done with */
 		while ((target = fm_multiprobe_get_completed(multiprobe)) != NULL) {
 			fm_log_debug("%s: done with target %s", multiprobe->name, target->id);
-			fm_target_pool_remove(action->target_queue, target);
+			fm_target_pool_remove(multiprobe->target_queue, target);
 		}
 	}
 
 	if (target_manager->all_targets_exhausted) {
 		/* Detach the target queue from all multiprobes, telling them that they
 		 * can exit as soon as they're done. */
-		while (stage->num_done < stage->actions.count) {
-			fm_scan_action_t *action = stage->actions.entries[stage->num_done];
-			fm_multiprobe_t *multiprobe;
+		while (stage->num_done < stage->probes.count) {
+			fm_multiprobe_t *multiprobe = stage->probes.entries[stage->num_done];
 
-			multiprobe = action->multiprobe;
 			if (!fm_multiprobe_is_idle(multiprobe))
 				break;
 
 			fm_log_debug("%s done with scanning all available targets", multiprobe->name);
 			fm_job_mark_complete(&multiprobe->job);
-			action->multiprobe = NULL;
 
 			stage->num_done += 1;
 		}
@@ -450,19 +444,18 @@ fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 	if (!fm_target_manager_replenish_pools(target_manager))
 		return;
 
-	for (k = stage->num_done; k < stage->actions.count; ++k) {
-		fm_scan_action_t *action = stage->actions.entries[k];
-		fm_multiprobe_t *multiprobe;
+	for (k = stage->num_done; k < stage->probes.count; ++k) {
+		fm_multiprobe_t *multiprobe = stage->probes.entries[k];
 		fm_target_pool_iterator_t iter;
 		fm_target_t *target;
 
-		multiprobe = action->multiprobe;
 		assert(multiprobe);
+		assert(multiprobe->target_queue);
 
-		fm_target_pool_begin(action->target_queue, &iter);
+		fm_target_pool_begin(multiprobe->target_queue, &iter);
 		while ((target = fm_target_pool_next(&iter)) != NULL) {
 			if (!fm_multiprobe_add_target(multiprobe, target)) {
-				fm_target_pool_remove(action->target_queue, target);
+				fm_target_pool_remove(multiprobe->target_queue, target);
 				fm_log_debug("%s: could not add %s", multiprobe->name, target->id);
 			}
 		}

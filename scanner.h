@@ -49,7 +49,6 @@ struct fm_scan_stage {
 	unsigned int		num_done;
 
 	fm_multiprobe_array_t	probes;
-	fm_scan_action_array_t	actions;
 };
 
 
