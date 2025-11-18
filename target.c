@@ -272,6 +272,8 @@ fm_target_manager_create(void)
 	mgr->pool_size = FM_INITIAL_TARGET_POOL_SIZE;
 	mgr->host_packet_rate = FM_DEFAULT_HOST_PACKET_RATE;
 
+	mgr->next_pool_resize = fm_time_now() + FM_TARGET_POOL_RESIZE_TIME;
+
 	fm_job_init(&mgr->job, &fm_target_manager_job_ops, "target-manager");
 
 	return mgr;
@@ -309,11 +311,18 @@ fm_target_manager_create_queue(fm_target_manager_t *mgr, const char *name)
 	return queue;
 }
 
-void
-fm_target_manager_resize_pool(fm_target_manager_t *mgr, unsigned int max_size)
+/*
+ * Resize the pool at regular interval, up to the configured upper limit
+ */
+static void
+fm_target_manager_maybe_resize_pool(fm_target_manager_t *mgr)
 {
+	unsigned int max_size = FM_TARGET_POOL_MAX_SIZE;
 	unsigned int current_size, new_size;
 	unsigned int i;
+
+	if (mgr->pool_size >= max_size || mgr->next_pool_resize > fm_time_now())
+		return;
 
 	current_size = mgr->pool_size;
 	if (current_size < max_size / 2)
@@ -321,10 +330,13 @@ fm_target_manager_resize_pool(fm_target_manager_t *mgr, unsigned int max_size)
 	else
 		new_size = max_size;
 
+	debugmsg("Resizing target pool; new capacity %u", new_size);
 	if (new_size > current_size) {
 		for (i = 0; i < mgr->num_queues; ++i)
 			fm_target_pool_resize(mgr->queues[i], new_size);
 	}
+
+	mgr->next_pool_resize = fm_time_now() + FM_TARGET_POOL_RESIZE_TIME;
 }
 
 static unsigned int
@@ -643,6 +655,8 @@ fm_target_manager_job_run(fm_job_t *job, fm_sched_stats_t *stats)
 		return FM_TASK_COMPLETE;
 
 	if (target_manager->scan_stage != NULL) {
+		fm_target_manager_maybe_resize_pool(target_manager);
+
 		fm_target_manager_feed_probes(target_manager);
 		/* we still miss some wake-up call from somewhere (probably around retiring
 		 * targets); so we have to do a bit of busy-waiting */

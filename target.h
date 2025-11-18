@@ -100,6 +100,9 @@ struct fm_target_manager {
 
 	fm_address_enumerator_array_t active_generators;
 
+	/* When to attempt the next resize */
+	double			next_pool_resize;
+
 	/* The capacity of all each pool */
 	unsigned int		pool_size;
 
@@ -134,7 +137,6 @@ extern void		fm_scheduler_detach_target(fm_scheduler_t *, fm_target_t *);
 extern fm_scheduler_t *	fm_linear_scheduler_create(fm_scanner_t *);
 
 extern fm_target_pool_t *fm_target_manager_create_queue(fm_target_manager_t *, const char *name);
-extern void		fm_target_manager_resize_pool(fm_target_manager_t *mgr, unsigned int max_size);
 extern bool		fm_target_manager_replenish_pools(fm_target_manager_t *mgr);
 extern void		fm_target_manager_begin(fm_target_manager_t *, hlist_iterator_t *);
 extern fm_target_t *	fm_target_manager_next(fm_target_manager_t *, hlist_iterator_t *);

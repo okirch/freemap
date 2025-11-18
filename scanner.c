@@ -103,7 +103,6 @@ bool
 fm_scanner_ready(fm_scanner_t *scanner, unsigned int first_stage_id)
 {
 	fm_timestamp_update(&scanner->scan_started);
-	fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
 
 	if (!fm_scanner_start_stage(scanner, first_stage_id))
 		return false;
@@ -240,13 +239,6 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 	fm_sched_stats_t scan_stats;
 
 	if (scanner->current_stage->stage_id != FM_SCAN_STAGE_DISCOVERY) {
-		/* This should probably also be a job... */
-		if (fm_timestamp_older(&scanner->next_pool_resize, NULL)) {
-			fm_log_debug("Trying to resize target pool\n");
-			fm_target_manager_resize_pool(scanner->target_manager, FM_TARGET_POOL_MAX_SIZE);
-			fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
-		}
-
 		if (fm_target_manager_is_done_quiet(scanner->target_manager)) {
 			fm_log_debug("Looks like we're done\n");
 			fm_report_flush(scanner->report);

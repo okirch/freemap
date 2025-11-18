@@ -58,7 +58,6 @@ struct fm_scanner {
 	fm_report_t *		report;
 
 	struct timeval		scan_started;
-	struct timeval		next_pool_resize;
 
 	/* We put an overall limit on the number of packets we
 	 * generate per second.
