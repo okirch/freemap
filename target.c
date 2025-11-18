@@ -152,7 +152,7 @@ fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 
 		/* inform the pool about targets that we're done with */
 		while ((target = fm_multiprobe_get_completed(multiprobe)) != NULL) {
-			fm_log_debug("%s: done with target %s (refcount %u)", multiprobe->name, target->id, target->refcount);
+			debugmsg("%s: done with target %s (refcount %u)", multiprobe->name, target->id, target->refcount);
 
 			fm_target_release(target);
 
@@ -173,7 +173,7 @@ fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 			if (!fm_multiprobe_is_idle(multiprobe))
 				break;
 
-			fm_log_debug("%s done with scanning all available targets", multiprobe->name);
+			debugmsg("%s done with scanning all available targets", multiprobe->name);
 			fm_job_mark_complete(&multiprobe->job);
 
 			stage->num_done += 1;
@@ -210,7 +210,7 @@ fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 				assert(fm_job_is_active(&multiprobe->job));
 				fm_job_continue(&multiprobe->job);
 			} else {
-				fm_log_debug("%s: could not add %s", multiprobe->name, target->id);
+				debugmsg("%s: could not add %s", multiprobe->name, target->id);
 			}
 		}
 
