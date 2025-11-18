@@ -703,7 +703,7 @@ fm_process_cmsg(struct fm_msghdr *rd, fm_pkt_info_t *info, fm_address_t *local_a
 
 			if (len > sizeof(info->eebuf)) {
 				fm_log_warning("Truncating RECVERR (%u > %u)\n",
-						len, sizeof(info->eebuf));
+						len, (int) sizeof(info->eebuf));
 				len = sizeof(info->eebuf);
 			}
 
@@ -1247,7 +1247,7 @@ fm_socket_poll_all(fm_time_t timeout)
 		if (timeout_ms < 0)
 			timeout_ms = 0;
 		else if (timeout_ms > 2000) {
-			fm_log_warning("%s: excessively large timeout %f sec", timeout - fm_time_now());
+			fm_log_warning("%s: excessively large timeout %f sec", __func__, timeout - fm_time_now());
 			timeout_ms = 2000;
 		}
 	}

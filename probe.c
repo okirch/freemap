@@ -563,7 +563,7 @@ fm_tasklet_extant_done(fm_tasklet_t *tasklet, fm_extant_t *extant)
 				tasklet->state = FM_TASKLET_STATE_DONE;
 				/* FIXME: wake up host task */
 			}
-			debugmsg("%s%s received reply", tasklet->host->name, tasklet->detail, tasklet->probe_index);
+			debugmsg("%s%s received reply", tasklet->host->name, tasklet->detail);
 			tasklet->extants[k] = NULL;
 			return;
 		}

@@ -465,7 +465,7 @@ fm_create_cidr_address_enumerator(const char *addr_string, fm_target_manager_t *
 		return false;
 
 	if (cidr_bits > host_bits) {
-		fm_log_error("%s: network size of %lu bits bigger than address size", addr_string, cidr_bits);
+		fm_log_error("%s: network size of %u bits bigger than address size", addr_string, cidr_bits);
 		return false;
 	}
 	host_bits -= cidr_bits;

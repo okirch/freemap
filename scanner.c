@@ -263,7 +263,7 @@ fm_scanner_next_stage(fm_scanner_t *scanner)
 void
 fm_scanner_dump_program(fm_scanner_t *scanner)
 {
-	fm_log_notice("%s: does nothing right now");
+	fm_log_notice("%s: does nothing right now", __func__);
 }
 
 /*
@@ -286,7 +286,7 @@ fm_scanner_add_probe(fm_scanner_t *scanner, int stage, const fm_config_probe_t *
 			return false;
 		}
 
-		fm_log_debug("Ignoring optional %s %s probe", fm_probe_mode_to_string(mode));
+		fm_log_debug("Ignoring optional %s %s probe", fm_probe_mode_to_string(mode), probe_name);
 		return true;
 	}
 

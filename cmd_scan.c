@@ -143,7 +143,7 @@ fm_command_perform_discovery(fm_command_t *cmd)
 			fm_socket_poll_all(timeout);
 		} else
 		if (fm_scanner_next_stage(scanner)) {
-			fm_log_notice("Proceeding to stage %d\n", scanner->current_stage);
+			fm_log_notice("Proceeding to stage %d\n", scanner->current_stage->stage_id);
 		} else {
 			fm_log_notice("All probes completed (%.2f msec)\n",
 					fm_scanner_elapsed(scanner));
@@ -248,7 +248,7 @@ fm_command_perform_scan(fm_command_t *cmd)
 			fm_socket_poll_all(timeout);
 		} else
 		if (fm_scanner_next_stage(scanner)) {
-			fm_log_notice("Proceeding to stage %d\n", scanner->current_stage);
+			fm_log_notice("Proceeding to stage %d\n", scanner->current_stage->stage_id);
 		} else {
 			fm_log_notice("All probes completed (%.2f msec)\n",
 					fm_scanner_elapsed(scanner));

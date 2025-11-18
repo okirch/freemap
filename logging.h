@@ -20,12 +20,14 @@
 
 #include "freemap.h"
 
+#define FM_PRINTF_DECORATOR __attribute__ ((format (printf, 1, 2)))
+
 extern void		fm_set_logfile(FILE *fp);
-extern void		fm_trace(const char *fmt, ...);
-extern void		fm_log_fatal(const char *fmt, ...);
-extern void		fm_log_error(const char *fmt, ...);
-extern void		fm_log_warning(const char *fmt, ...);
-extern void		fm_log_notice(const char *fmt, ...);
+extern void		fm_trace(const char *fmt, ...) FM_PRINTF_DECORATOR;
+extern void		fm_log_fatal(const char *fmt, ...) FM_PRINTF_DECORATOR;
+extern void		fm_log_error(const char *fmt, ...) FM_PRINTF_DECORATOR;
+extern void		fm_log_warning(const char *fmt, ...) FM_PRINTF_DECORATOR;
+extern void		fm_log_notice(const char *fmt, ...) FM_PRINTF_DECORATOR;
 extern bool		fm_enable_debug_facility(const char *);
 
 #define FM_DEBUG_FACILITY_SCHEDULER		0x00000001

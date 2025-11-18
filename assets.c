@@ -406,7 +406,7 @@ fm_host_asset_update_state(fm_host_asset_t *host, fm_asset_state_t state)
 
 	host->main->host_state = state;
 
-	printf("STATUS %s: %s\n",
+	fm_log_notice("STATUS %s: %s\n",
 			fm_address_format(&host->address),
 			fm_asset_state_to_string(state));
 	return true;
@@ -711,7 +711,7 @@ fm_host_asset_iterator_set_family(fm_host_asset_iterator_t *iter, int family)
 	else if (family == AF_INET6)
 		iter->addr_len = 16;
 	else
-		fm_log_fatal("BUG: %s: unsupported address family %d", family);
+		fm_log_fatal("BUG: %s: unsupported address family %d", __func__, family);
 
 	memset(iter->raw, 0, sizeof(iter->raw));
 }

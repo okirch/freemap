@@ -282,18 +282,18 @@ fm_topo_hop_pkt_notifier(const fm_extant_t *extant, const fm_pkt_t *pkt, const d
 		if (ee->ee_type == ICMP_TIME_EXCEEDED) {
 			fm_log_debug("time exceeded ttl=%u, gw=%s, rtt=%f", hop->distance,
 					fm_address_format(pkt->info.offender),
-					rtt);
+					rtt? *rtt : 0);
 		} else
 		if (ee->ee_type == ICMP_DEST_UNREACH) {
 			fm_log_debug("destination unreachable ttl=%u, gw=%s, rtt=%f", hop->distance,
 					fm_address_format(pkt->info.offender),
-					rtt);
+					rtt? *rtt : 0);
 		} else {
 			fm_log_debug("ICMP message type %d code %d ttl=%u, gw=%s, rtt=%f",
 					ee->ee_type, ee->ee_code,
 					hop->distance,
 					fm_address_format(pkt->info.offender),
-					rtt);
+					rtt? *rtt : 0);
 			return;
 		}
 
