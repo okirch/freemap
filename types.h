@@ -18,6 +18,8 @@
 #ifndef FREEMAP_TYPES_H
 #define FREEMAP_TYPES_H
 
+#include <linux/if_packet.h>	/* for sockaddr_ll */
+#include <netinet/in.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
@@ -71,7 +73,12 @@ typedef struct fm_multiprobe	fm_multiprobe_t;
 typedef struct fm_host_tasklet  fm_host_tasklet_t;
 
 /* For now, fm_address is just a sockaddr_storage */
-typedef struct sockaddr_storage	fm_address_t;
+typedef union fm_address {
+	sa_family_t		ss_family;
+	struct sockaddr_in	sin;
+	struct sockaddr_in6	sin6;
+	struct sockaddr_ll	sll;
+} fm_address_t;
 
 /* Events are identified by a 32bit id. */
 typedef unsigned int fm_event_t;
@@ -204,7 +211,7 @@ typedef struct fm_pkt_info {
 	int			error_class;
 
 	struct sock_extended_err *ee;
-	const struct sockaddr_storage *offender;
+	const fm_address_t *	offender;
 	unsigned char		eebuf[256];
 } fm_pkt_info_t;
 
@@ -212,8 +219,8 @@ typedef struct fm_parsed_pkt	fm_parsed_pkt_t;
 
 typedef struct fm_pkt {
 	int			family;
-	struct sockaddr_storage local_addr;
-	struct sockaddr_storage peer_addr;
+	fm_address_t		local_addr;
+	fm_address_t		peer_addr;
 
 	fm_pkt_info_t		info;
 	fm_parsed_pkt_t *	parsed;

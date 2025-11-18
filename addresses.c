@@ -69,14 +69,14 @@ fm_try_parse_ipv6_address(const char *addr_string, struct sockaddr_in6 *six)
 }
 
 bool
-fm_address_parse(const char *addr_string, struct sockaddr_storage *ss)
+fm_address_parse(const char *addr_string, fm_address_t *ss)
 {
 	return fm_try_parse_ipv4_address(addr_string, (struct sockaddr_in *) ss)
 	    || fm_try_parse_ipv6_address(addr_string, (struct sockaddr_in6 *) ss);
 }
 
 static unsigned char *
-fm_get_raw_addr(int af, struct sockaddr_storage *ss, unsigned int *nbits)
+fm_get_raw_addr(int af, fm_address_t *ss, unsigned int *nbits)
 {
 	switch (af) {
 	case AF_INET:
@@ -99,7 +99,7 @@ fm_get_raw_addr(int af, struct sockaddr_storage *ss, unsigned int *nbits)
 }
 
 unsigned short
-fm_address_get_port(const struct sockaddr_storage *ss)
+fm_address_get_port(const fm_address_t *ss)
 {
 	switch (ss->ss_family) {
 	case AF_INET:
@@ -117,7 +117,7 @@ fm_address_get_port(const struct sockaddr_storage *ss)
 }
 
 bool
-fm_address_set_port(struct sockaddr_storage *ss, unsigned short port)
+fm_address_set_port(fm_address_t *ss, unsigned short port)
 {
 	switch (ss->ss_family) {
 	case AF_INET:
@@ -137,9 +137,9 @@ fm_address_set_port(struct sockaddr_storage *ss, unsigned short port)
 }
 
 const unsigned char *
-fm_address_get_raw_addr(const struct sockaddr_storage *ss, unsigned int *nbits)
+fm_address_get_raw_addr(const fm_address_t *ss, unsigned int *nbits)
 {
-	return fm_get_raw_addr(ss->ss_family, (struct sockaddr_storage *) ss, nbits);
+	return fm_get_raw_addr(ss->ss_family, (fm_address_t *) ss, nbits);
 }
 
 bool
@@ -161,7 +161,7 @@ fm_address_set_raw_addr(fm_address_t *addr, int family, const unsigned char *src
 }
 
 void
-fm_address_set_ipv4(struct sockaddr_storage *ss, u_int32_t raw_addr)
+fm_address_set_ipv4(fm_address_t *ss, u_int32_t raw_addr)
 {
 	memset(ss, 0, sizeof(*ss));
 	ss->ss_family = AF_INET;
@@ -179,7 +179,7 @@ fm_address_get_ipv4(const fm_address_t *addr, u_int32_t *ip_addr)
 }
 
 void
-fm_address_set_ipv6(struct sockaddr_storage *ss, const struct in6_addr *raw_addr)
+fm_address_set_ipv6(fm_address_t *ss, const struct in6_addr *raw_addr)
 {
 	memset(ss, 0, sizeof(*ss));
 	ss->ss_family = AF_INET6;
@@ -197,13 +197,13 @@ fm_address_get_ipv6(const fm_address_t *addr, struct in6_addr *raw_addr)
 }
 
 void
-fm_address_set_ipv4_local_broadcast(struct sockaddr_storage *ss)
+fm_address_set_ipv4_local_broadcast(fm_address_t *ss)
 {
 	fm_address_set_ipv4(ss, 0xffffffff);
 }
 
 void
-fm_address_set_ipv6_all_hosts_multicast(struct sockaddr_storage *ss)
+fm_address_set_ipv6_all_hosts_multicast(fm_address_t *ss)
 {
 	static struct in6_addr all_hosts = { .s6_addr =  { 0xff, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 } };
 

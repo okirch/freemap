@@ -105,7 +105,7 @@ extern void		fm_target_pool_auto_resize(fm_target_pool_t *pool, unsigned int max
 
 extern fm_scanner_t *	fm_scanner_create(void);
 extern bool		fm_scanner_add_target_from_spec(fm_scanner_t *, const char *);
-extern bool		fm_scanner_ready(fm_scanner_t *);
+extern bool		fm_scanner_ready(fm_scanner_t *, unsigned int first_stage_id);
 extern fm_report_t *	fm_scanner_get_report(fm_scanner_t *);
 extern fm_target_pool_t *fm_scanner_get_target_pool(fm_scanner_t *);
 extern bool		fm_scanner_transmit(fm_scanner_t *, fm_time_t *);
@@ -154,17 +154,17 @@ extern void		fm_host_asset_report_ports(fm_host_asset_t *host,
 				bool (*visitor)(const fm_host_asset_t *host, const char *proto_name, unsigned int port, fm_asset_state_t state, void *user_data),
 				void *user_data);
 
-extern void		fm_address_set_ipv4(struct sockaddr_storage *ss, u_int32_t raw_addr);
+extern void		fm_address_set_ipv4(fm_address_t *addr, u_int32_t raw_addr);
 extern bool		fm_address_get_ipv4(const fm_address_t *addr, u_int32_t *ip_addr);
-extern void		fm_address_set_ipv6(struct sockaddr_storage *ss, const struct in6_addr *raw_addr);
+extern void		fm_address_set_ipv6(fm_address_t *addr, const struct in6_addr *raw_addr);
 extern bool		fm_address_get_ipv6(const fm_address_t *addr, struct in6_addr *raw_addr);
 extern bool		fm_address_set_port(fm_address_t *address, unsigned short port);
-extern void		fm_address_set_ipv4_local_broadcast(struct sockaddr_storage *ss);
-extern void		fm_address_set_ipv6_all_hosts_multicast(struct sockaddr_storage *ss);
+extern void		fm_address_set_ipv4_local_broadcast(fm_address_t *addr);
+extern void		fm_address_set_ipv6_all_hosts_multicast(fm_address_t *addr);
 extern bool		fm_address_is_ipv6_link_local(const fm_address_t *addr);
 extern bool		fm_address_ipv6_update_scope_id(fm_address_t *, int ifindex);
 extern bool		fm_address_link_update_upper_protocol(fm_address_t *, int family);
-extern unsigned short	fm_address_get_port(const struct sockaddr_storage *ss);
+extern unsigned short	fm_address_get_port(const fm_address_t *addr);
 extern unsigned int	fm_addrfamily_sockaddr_size(int family);
 extern const char *	fm_addrfamily_name(int family);
 

@@ -173,7 +173,7 @@ fm_routing_cache_dump(fm_routing_cache_t *cache)
 }
 
 static const char *
-route_prefix_format(struct sockaddr_storage *addr, unsigned int pfxlen)
+route_prefix_format(fm_address_t *addr, unsigned int pfxlen)
 {
 	static char abuf[128];
 

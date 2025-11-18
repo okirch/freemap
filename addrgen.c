@@ -175,7 +175,7 @@ fm_address_generator_address_eligible_any_state(const fm_address_t *address)
  * Parse a prefix in add/len notation
  */
 static bool
-fm_try_parse_cidr(const char *addr_string, struct sockaddr_storage *ss, unsigned int *nbits)
+fm_try_parse_cidr(const char *addr_string, fm_address_t *addr, unsigned int *nbits)
 {
 	char *addr_copy, *slash, *end;
 	bool ok = false;
@@ -188,14 +188,14 @@ fm_try_parse_cidr(const char *addr_string, struct sockaddr_storage *ss, unsigned
 		goto out;
 
 	*slash++ = '\0';
-	if (!fm_address_parse(addr_copy, ss))
+	if (!fm_address_parse(addr_copy, addr))
 		goto out;
 
 	*nbits = strtoul(slash, &end, 0);
 	if (*end)
 		goto out;
 
-	if (*nbits > fm_addrfamily_max_addrbits(ss->ss_family))
+	if (*nbits > fm_addrfamily_max_addrbits(addr->ss_family))
 		goto out;
 
 	ok = true;
@@ -448,19 +448,19 @@ fm_ipv4_network_enumerator(const fm_address_t *addr, unsigned int pfxlen)
 bool
 fm_create_cidr_address_enumerator(const char *addr_string, fm_target_manager_t *target_manager)
 {
-	struct sockaddr_storage ss;
+	fm_address_t addr;
 	unsigned int cidr_bits, host_bits;
 	fm_address_enumerator_t *agen = NULL;
 
-	if (!fm_try_parse_cidr(addr_string, &ss, &cidr_bits)) {
+	if (!fm_try_parse_cidr(addr_string, &addr, &cidr_bits)) {
 		/* TBD: resolve hostname, apply opts to filter which addresses to use */
 		return false;
 	}
 
-	if (!fm_address_generator_address_eligible_any_state(&ss))
+	if (!fm_address_generator_address_eligible_any_state(&addr))
 		return false;
 
-	host_bits = fm_addrfamily_max_addrbits(ss.ss_family);
+	host_bits = fm_addrfamily_max_addrbits(addr.ss_family);
 	if (host_bits == 0)
 		return false;
 
@@ -470,10 +470,10 @@ fm_create_cidr_address_enumerator(const char *addr_string, fm_target_manager_t *
 	}
 	host_bits -= cidr_bits;
 
-	if (ss.ss_family == AF_INET6) {
+	if (addr.ss_family == AF_INET6) {
 		const fm_address_prefix_t *local_prefix;
 
-		local_prefix = fm_local_prefix_for_address(&ss);
+		local_prefix = fm_local_prefix_for_address(&addr);
 		if (local_prefix == NULL || cidr_bits < local_prefix->pfxlen) {
 			fm_log_error("%s: remote network enumeration not supported for IPv6", addr_string);
 			return false;
@@ -481,7 +481,7 @@ fm_create_cidr_address_enumerator(const char *addr_string, fm_target_manager_t *
 
 		agen = fm_ipv6_network_enumerator(local_prefix, cidr_bits);
 	} else
-	if (ss.ss_family == AF_INET) {
+	if (addr.ss_family == AF_INET) {
 		/* This limit is somewhat arbitrary and we need to increase it, at least for
 		 * local networks. */
 		if (host_bits > 8) {
@@ -489,7 +489,7 @@ fm_create_cidr_address_enumerator(const char *addr_string, fm_target_manager_t *
 			return false;
 		}
 
-		agen = fm_ipv4_network_enumerator(&ss, cidr_bits);
+		agen = fm_ipv4_network_enumerator(&addr, cidr_bits);
 	}
 
 	if (agen == NULL)

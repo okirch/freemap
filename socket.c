@@ -42,7 +42,7 @@
 static struct fm_socket_list	socket_list;
 
 struct fm_msghdr {
-	struct sockaddr_storage peer_addr;
+	fm_address_t peer_addr;
 	struct msghdr msg;
 	struct iovec iov;
 	char control[1024];
@@ -709,7 +709,7 @@ fm_process_cmsg(struct fm_msghdr *rd, fm_pkt_info_t *info, fm_address_t *local_a
 
 			memcpy(info->eebuf, ptr, len);
 			info->ee = (struct sock_extended_err *) info->eebuf;
-			info->offender = (const struct sockaddr_storage *) SO_EE_OFFENDER(info->ee);
+			info->offender = (const fm_address_t *) SO_EE_OFFENDER(info->ee);
 			info->error_class = fm_socket_error_class(info);
 		} else
 		if (cm->cmsg_level == SOL_IP && cm->cmsg_type == IP_PKTINFO) {
@@ -752,7 +752,7 @@ fm_socket_recverr(fm_socket_t *sock, fm_pkt_info_t *info)
 
 static int
 fm_socket_recv(fm_socket_t *sock,
-		struct sockaddr_storage *local_addr, struct sockaddr_storage *peer_addr,
+		fm_address_t *local_addr, fm_address_t *peer_addr,
 		void *buffer, size_t size, fm_pkt_info_t *info, int flags)
 {
 	struct fm_msghdr *rd;

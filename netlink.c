@@ -225,7 +225,7 @@ nlattr_get_string(struct nlattr *nla, char **ret)
 }
 
 static bool
-nlattr_get_address(struct nlattr *nla, int af, struct sockaddr_storage *ret)
+nlattr_get_address(struct nlattr *nla, int af, fm_address_t *ret)
 {
 	memset(ret, 0, sizeof(*ret));
 	if (af == AF_INET) {
