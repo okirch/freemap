@@ -23,6 +23,7 @@
 #include <assert.h>
 
 #include "freemap.h"
+#include "probe.h"
 #include "lists.h"
 #include "utils.h"
 
@@ -41,7 +42,16 @@ typedef struct fm_scan_action_array {
 	fm_scan_action_t **	entries;
 } fm_scan_action_array_t;
 
-typedef struct fm_scan_stage fm_scan_stage_t;
+struct fm_scan_stage {
+	unsigned int		stage_id;
+	unsigned int		next_pool_id;
+
+	unsigned int		num_done;
+
+	fm_multiprobe_array_t	probes;
+	fm_scan_action_array_t	actions;
+};
+
 
 struct fm_scanner {
 	fm_target_manager_t *	target_manager;

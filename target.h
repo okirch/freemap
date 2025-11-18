@@ -134,5 +134,6 @@ extern void		fm_target_manager_resize_pool(fm_target_manager_t *mgr, unsigned in
 extern bool		fm_target_manager_replenish_pools(fm_target_manager_t *mgr);
 extern void		fm_target_manager_begin(fm_target_manager_t *, hlist_iterator_t *);
 extern fm_target_t *	fm_target_manager_next(fm_target_manager_t *, hlist_iterator_t *);
+extern void		fm_target_manager_feed_probes(fm_target_manager_t *, fm_scan_stage_t *);
 
 #endif /* FREEMAP_TARGET_H */

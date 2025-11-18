@@ -51,6 +51,7 @@ typedef struct fm_scheduler fm_scheduler_t;
 typedef struct fm_sched_stats fm_sched_stats_t;
 typedef struct fm_scanner fm_scanner_t;
 typedef struct fm_scan_action	fm_scan_action_t;
+typedef struct fm_scan_stage fm_scan_stage_t;
 typedef struct fm_config_program	fm_config_program_t;
 typedef const struct fm_protocol fm_protocol_t;
 typedef const struct fm_protocol_engine fm_protocol_engine_t;
