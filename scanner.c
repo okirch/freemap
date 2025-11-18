@@ -30,31 +30,6 @@
 
 static bool			fm_scanner_start_stage(fm_scanner_t *scanner, unsigned int stage_id);
 
-static inline void
-fm_scan_action_array_append(struct fm_scan_action_array *array, fm_scan_action_t *action)
-{
-	maybe_realloc_array(array->entries, array->count, 4);
-	array->entries[array->count++] = action;
-}
-
-static inline fm_scan_action_t *
-fm_scan_action_array_get(const struct fm_scan_action_array *array, unsigned int index)
-{
-	if (index >= array->count)
-		return NULL;
-	return array->entries[index];
-}
-
-fm_scan_action_t *
-fm_scan_action_create(fm_multiprobe_t *multiprobe)
-{
-	fm_scan_action_t *action;
-
-	action = calloc(1, sizeof(*action));
-	action->multiprobe = multiprobe;
-	return action;
-}
-
 fm_scanner_t *
 fm_scanner_create(void)
 {

@@ -200,7 +200,6 @@ struct fm_linear_scheduler {
 };
 
 struct fm_linear_sched_target_state {
-	fm_scan_action_t *	action;
 	unsigned int		action_index;
 	unsigned int		probe_index;
 };

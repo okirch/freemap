@@ -32,16 +32,6 @@ typedef struct fm_scan_dummy	fm_scan_state_t;
 #define FM_SCAN_ACTION_FLAG_OPTIONAL	0x0001
 #define FM_SCAN_ACTION_FLAG_LOCAL_ONLY	0x0100
 
-struct fm_scan_action {
-	struct fm_multiprobe *	multiprobe;
-	fm_target_pool_t *	target_queue;
-};
-
-typedef struct fm_scan_action_array {
-	unsigned int		count;
-	fm_scan_action_t **	entries;
-} fm_scan_action_array_t;
-
 struct fm_scan_stage {
 	unsigned int		stage_id;
 	unsigned int		next_pool_id;
@@ -76,9 +66,6 @@ struct fm_scanner {
 	const fm_protocol_engine_t *proto;
 };
 
-struct fm_scan_action_ops;
-
-extern fm_scan_action_t *	fm_scan_action_create(fm_multiprobe_t *multiprobe);
 extern bool			fm_scanner_add_probe(fm_scanner_t *, int stage, const fm_config_probe_t *);
 extern void			fm_scanner_set_service_catalog(fm_scanner_t *, const fm_service_catalog_t *);
 extern bool			fm_scanner_initiate_discovery(fm_scanner_t *, const char *addrspec);
