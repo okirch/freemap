@@ -137,22 +137,11 @@ fm_scanner_queue_probe(fm_scanner_t *scanner, int stage_id, fm_multiprobe_t *mul
 {
 	fm_scan_stage_t *stage;
 	fm_scan_action_t *action;
-	fm_target_pool_t *target_queue;
 
 	stage = fm_scanner_create_stage(scanner, stage_id);
 
 	action = fm_scan_action_create(multiprobe);
 	fm_scan_action_array_append(&stage->actions, action);
-
-	if (stage_id != FM_SCAN_STAGE_DISCOVERY) {
-		/* Create a separate target queue through which we'll feed new
-		 * scan targets to the probe. */
-		target_queue = fm_target_manager_create_queue(scanner->target_manager, multiprobe->name);
-
-		/* Install it */
-		action->target_queue = target_queue;
-		multiprobe->target_queue = target_queue;
-	}
 
 #if 0
 	/* This is the wrong place; this needs to happen in the multiprobe code when
@@ -292,6 +281,9 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 static bool
 fm_scanner_start_stage(fm_scanner_t *scanner, unsigned int index)
 {
+	fm_scan_stage_t *new_stage = NULL;
+	unsigned int k;
+
 	scanner->current_stage = NULL;
 
 	while (index <  __FM_SCAN_STAGE_MAX) {
@@ -300,22 +292,32 @@ fm_scanner_start_stage(fm_scanner_t *scanner, unsigned int index)
 		if (stage && stage->actions.count > 0) {
 			assert(stage->num_done == 0);
 			stage->stage_id = index;
-			scanner->current_stage = stage;
+			new_stage = stage;
 			break;
 		}
 		index++;
 	}
 
-	if (scanner->current_stage == NULL)
+	if (new_stage == NULL)
 		return false;
 
 	if (index == FM_SCAN_STAGE_DISCOVERY) {
 		fm_target_manager_set_stage(scanner->target_manager, NULL);
 	} else
-	if (!fm_target_manager_set_stage(scanner->target_manager, scanner->current_stage)) {
+	if (!fm_target_manager_set_stage(scanner->target_manager, new_stage)) {
 		return false;
 	}
 
+	/* Now start all probe jobs in this stage */
+	for (k = 0; k < new_stage->actions.count; ++k) {
+		fm_scan_action_t *action = new_stage->actions.entries[k];
+		fm_multiprobe_t *multiprobe = action->multiprobe;
+
+		if (!fm_job_is_active(&multiprobe->job))
+			fm_job_run(&multiprobe->job, NULL);
+	}
+
+	scanner->current_stage = new_stage;
 	scanner->next_stage_id = index + 1;
 	return true;
 }
