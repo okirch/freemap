@@ -71,11 +71,20 @@ struct fm_target {
 struct fm_target_pool {
 	char *			name;
 
+	/* When to attempt the next resize */
+	double			next_resize;
+
+	/* The capacity of the pool */
 	unsigned int		size;
+
+	/* Number of targets currently in the pool */
 	unsigned int		count;
-	unsigned int		first_pool_id;
-	unsigned int		next_pool_id;
-	fm_target_t **		slots;
+
+	/* Assign ids to targets */
+	unsigned int		next_id;
+
+	/* for the time being, we maintain a list of targets here. */
+	struct hlist_head	targets;
 };
 
 typedef struct fm_target_queue {
@@ -100,20 +109,8 @@ struct fm_target_manager {
 
 	fm_address_enumerator_array_t active_generators;
 
-	/* When to attempt the next resize */
-	double			next_pool_resize;
-
-	/* The capacity of all each pool */
-	unsigned int		pool_size;
-
-	/* Number of targets currently in the pool */
-	unsigned int		pool_count;
-
-	/* The pool id to assign to the next target */
-	unsigned int		next_free_pool_id;
-
-	/* for the time being, we maintain a list of targets here. */
-	struct hlist_head	targets;
+	/* Target pool */
+	fm_target_pool_t	pool;
 
 	unsigned int		num_queues;
 	fm_target_pool_t **	queues;

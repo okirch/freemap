@@ -24,7 +24,6 @@
 #include "utils.h"
 
 static fm_target_t *	fm_target_manager_get_next_target(fm_target_manager_t *);
-static void		fm_target_pool_check(fm_target_pool_t *pool);
 static void		fm_target_release(fm_target_t *target);
 
 static fm_job_ops_t     fm_target_manager_job_ops;
@@ -36,6 +35,7 @@ static fm_cond_var_t	fm_task_manager_cond_var = FM_COND_VAR_INIT;
 /*
  * The target pool
  */
+#if 0
 fm_target_pool_t *
 fm_target_pool_create(unsigned int size, const char *name)
 {
@@ -44,9 +44,6 @@ fm_target_pool_create(unsigned int size, const char *name)
 
 	pool = calloc(1, sizeof(*pool));
 	pool->size = size;
-	pool->slots = calloc(size, sizeof(pool->slots[0]));
-	pool->first_pool_id = 0;
-	pool->next_pool_id = 1;
 
 	/* For debugging */
 	if (name != NULL)
@@ -60,14 +57,6 @@ fm_target_pool_create(unsigned int size, const char *name)
 void
 fm_target_pool_resize(fm_target_pool_t *pool, unsigned int new_size)
 {
-	unsigned int i;
-
-	if (pool->size < new_size) {
-		pool->slots = realloc(pool->slots, new_size * sizeof(pool->slots[0]));
-		for (i = pool->size; i < new_size; ++i)
-			pool->slots[i] = NULL;
-		pool->size = new_size;
-	}
 }
 
 static inline unsigned int
@@ -245,6 +234,7 @@ fm_target_pool_next(fm_target_pool_iterator_t *iter)
 
 	return target;
 }
+#endif
 
 /*
  * abstract target manager
@@ -256,11 +246,11 @@ fm_target_manager_create(void)
 
 	mgr = calloc(1, sizeof(*mgr));
 
-	mgr->next_free_pool_id = 1;
-	mgr->pool_size = FM_INITIAL_TARGET_POOL_SIZE;
 	mgr->host_packet_rate = FM_DEFAULT_HOST_PACKET_RATE;
 
-	mgr->next_pool_resize = fm_time_now() + FM_TARGET_POOL_RESIZE_TIME;
+	mgr->pool.size = FM_INITIAL_TARGET_POOL_SIZE;
+	mgr->pool.next_resize = fm_time_now() + FM_TARGET_POOL_RESIZE_TIME;
+	mgr->pool.next_id = 1;
 
 	fm_job_init(&mgr->job, &fm_target_manager_job_ops, "target-manager");
 
@@ -283,6 +273,7 @@ fm_target_manager_get_generator_count(const fm_target_manager_t *mgr)
 	return mgr->address_generators.count;
 }
 
+#if 0
 fm_target_pool_t *
 fm_target_manager_create_queue(fm_target_manager_t *mgr, const char *name)
 {
@@ -290,7 +281,7 @@ fm_target_manager_create_queue(fm_target_manager_t *mgr, const char *name)
 
 	maybe_realloc_array(mgr->queues, mgr->num_queues, 4);
 
-	queue = fm_target_pool_create(mgr->pool_size, name);
+	queue = fm_target_pool_create(mgr->pool.size, name);
 	mgr->queues[mgr->num_queues++] = queue;
 
 	/* Wake up the task manager */
@@ -298,6 +289,7 @@ fm_target_manager_create_queue(fm_target_manager_t *mgr, const char *name)
 
 	return queue;
 }
+#endif
 
 /*
  * Resize the pool at regular interval, up to the configured upper limit
@@ -307,23 +299,23 @@ fm_target_manager_maybe_resize_pool(fm_target_manager_t *mgr)
 {
 	unsigned int max_size = FM_TARGET_POOL_MAX_SIZE;
 	unsigned int current_size, new_size;
-	unsigned int i;
 
-	if (mgr->pool_size >= max_size || mgr->next_pool_resize > fm_time_now())
+	if (mgr->pool.size >= max_size || mgr->pool.next_resize > fm_time_now())
 		return;
 
-	current_size = mgr->pool_size;
+	current_size = mgr->pool.size;
 	if (current_size < max_size / 2)
 		new_size = current_size * 2;
 	else
 		new_size = max_size;
 
 	debugmsg("Resizing target pool; new capacity %u", new_size);
-	mgr->pool_size = new_size;
+	mgr->pool.size = new_size;
 
-	mgr->next_pool_resize = fm_time_now() + FM_TARGET_POOL_RESIZE_TIME;
+	mgr->pool.next_resize = fm_time_now() + FM_TARGET_POOL_RESIZE_TIME;
 }
 
+#if 0
 static unsigned int
 fm_target_manager_get_free_slots(const fm_target_manager_t *mgr)
 {
@@ -332,7 +324,7 @@ fm_target_manager_get_free_slots(const fm_target_manager_t *mgr)
 	if (mgr->num_queues == 0)
 		return 0;
 
-	min_free = mgr->pool_size;
+	min_free = mgr->pool.size;
 	for (k = 0; k < mgr->num_queues; ++k) {
 		unsigned int count = fm_target_pool_get_free_slots(mgr->queues[k]);
 
@@ -342,6 +334,7 @@ fm_target_manager_get_free_slots(const fm_target_manager_t *mgr)
 
 	return min_free;
 }
+#endif
 
 /*
  * Connect the target manager to the next scan stage
@@ -367,12 +360,11 @@ fm_target_manager_set_stage(fm_target_manager_t *target_manager, fm_scan_stage_t
                  * scan targets to the probe. */
 		for (k = 0; k < stage->probes.count; ++k) {
 			fm_multiprobe_t *multiprobe = stage->probes.entries[k];
-			fm_target_pool_t *target_queue;
 
-			target_queue = fm_target_manager_create_queue(target_manager, multiprobe->name);
-
-			/* Install it */
-			multiprobe->target_queue = target_queue;
+			/* Tell the multiprobe it's being fed by us.
+			 * Right now, this pointer does little useful; we could also
+			 * just use a bool has_target_queue instead. */
+			multiprobe->target_queue = &target_manager->pool;
 		}
 
 		if (!fm_job_is_active(&target_manager->job))
@@ -403,13 +395,15 @@ fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 
 		/* inform the pool about targets that we're done with */
 		while ((target = fm_multiprobe_get_completed(multiprobe)) != NULL) {
-			fm_log_debug("%s: done with target %s", multiprobe->name, target->id);
+			fm_log_debug("%s: done with target %s (refcount %u)", multiprobe->name, target->id, target->refcount);
+
+			fm_target_release(target);
 
 			if (target->refcount == 1) {
-				assert(target_manager->pool_count != 0);
-				target_manager->pool_count -= 1;
+				assert(target_manager->pool.count != 0);
+				target_manager->pool.count -= 1;
+				fm_target_release(target);
 			}
-			fm_target_release(target);
 		}
 	}
 
@@ -428,10 +422,15 @@ fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 			stage->num_done += 1;
 		}
 
+		if (stage->num_done >= stage->probes.count
+		 && !fm_target_manager_is_done(target_manager)) {
+			abort();
+		}
+
 		return;
 	}
 
-	while (target_manager->pool_count < target_manager->pool_size) {
+	while (target_manager->pool.count < target_manager->pool.size) {
 		fm_target_t *target;
 
 		if ((target = fm_target_manager_get_next_target(target_manager)) == NULL)
@@ -456,13 +455,13 @@ fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 		}
 
 		if (target->refcount > 1) {
-			target_manager->pool_count += 1;
+			target_manager->pool.count += 1;
 		} else {
 			fm_target_release(target);
 		}
 	}
 
-	stage->next_pool_id = target_manager->next_free_pool_id;
+	stage->next_pool_id = target_manager->pool.next_id;
 }
 
 /*
@@ -471,7 +470,7 @@ fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 void
 fm_target_manager_begin(fm_target_manager_t *mgr, hlist_iterator_t *iter)
 {
-	hlist_iterator_init(iter, &mgr->targets);
+	hlist_iterator_init(iter, &mgr->pool.targets);
 }
 
 fm_target_t *
@@ -531,7 +530,7 @@ fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 				mgr->host_packet_rate,
 				mgr->host_packet_rate / 10);
 
-		hlist_insert(&mgr->targets, &target->link);
+		hlist_insert(&mgr->pool.targets, &target->link);
 		target->refcount += 1;
 
 		debugmsg("%s added to address pool\n", target->id);
@@ -556,7 +555,7 @@ _fm_target_manager_is_done(fm_target_manager_t *target_manager, bool quiet)
 	if (!target_manager->all_targets_exhausted)
 		return false;
 
-	return hlist_is_empty(&target_manager->targets);
+	return hlist_is_empty(&target_manager->pool.targets);
 }
 
 bool
@@ -577,6 +576,7 @@ fm_target_manager_is_done_quiet(fm_target_manager_t *target_manager)
 bool
 fm_target_manager_replenish_pools(fm_target_manager_t *mgr)
 {
+#if 0
 	unsigned int k, budget;
 
 	if (fm_target_manager_is_done_quiet(mgr))
@@ -599,6 +599,7 @@ fm_target_manager_replenish_pools(fm_target_manager_t *mgr)
 			fm_target_pool_add(mgr->queues[k], target);
 
 	}
+#endif
 
 	return true;
 }
