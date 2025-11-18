@@ -391,6 +391,9 @@ fm_job_group_process_runnable(fm_job_group_t *job_group, fm_sched_stats_t *stats
 
 		job->expires = 0;
 
+		if (job->cond_await != NULL)
+			fm_job_cancel_wait(job);
+
 		error = job->ops->run(job, stats);
 		if (error == FM_TRY_AGAIN) {
 			/* the job asked to be postponed. */
@@ -555,6 +558,110 @@ fm_job_group_t *
 fm_scheduler_get_global_queue(void)
 {
 	return fm_global_group;
+}
+
+/*
+ * Condition variables.
+ * A job can wait on a condition variable by calling fm_job_wait_condition().
+ * It must save the pointer returned by this.
+ * When woken up by the scheduler, it can either remove itself from the
+ * wait list by calling fm_job_wait_free(), or go back to sleep and wait some
+ * more by using fm_job_wait_continue().
+ *
+ * When waiting with a timeout, this value is applied end-to-end, ie no matter
+ * how many times a task may be woken up intermittently, the task will be
+ * awoken after the time elapsed since first waiting exceeds the specified timeout.
+ *
+ * FIXME: right now, the job is supposed to re-check its condition(s) and then
+ * decide whether to cancel the awaiter, or to continue. This is a bit error prone.
+ * We could either
+ *    - add a "check_condition()" callback to the awaiter, and invoke that
+ *	before calling job.run(). If the condition isn't met, put the job back
+ *	to sleep
+ *    - always free the awaiter as soon as the job is woken up. This has the
+ *	drawback that we lose the ability to track the timeout end-to-end.
+ */
+fm_cond_await_t *
+fm_job_wait_condition_timed(fm_cond_var_t *cond_var, fm_job_t *job, double timeout)
+{
+	fm_cond_await_t *await;
+
+	if (job->cond_await != NULL) {
+		fm_log_error("%s: cannot wait on two condition variables at the same time", job->fullname);
+		return NULL;
+	}
+
+	await = calloc(1, sizeof(*await));
+	await->job = job;
+
+	if (timeout > 0) {
+		await->expires = fm_time_now() + timeout;
+		job->expires = await->expires;
+	} else {
+		await->expires = 0;
+		job->expires = fm_time_now() + 30;
+	}
+
+	hlist_insert(&cond_var->waiters, &await->link);
+
+	job->cond_await = await;
+
+	return await;
+}
+
+fm_cond_await_t *
+fm_job_wait_condition(fm_cond_var_t *cond_var, fm_job_t *job)
+{
+	return fm_job_wait_condition_timed(cond_var, job, 0);
+}
+
+bool
+fm_job_wait_continue(fm_cond_await_t *await)
+{
+	if (await->expires && await->expires <= fm_time_now())
+		return false;
+	assert(await->link.prevp != NULL);
+	return true;
+}
+
+void
+fm_job_wait_free(fm_cond_await_t *await)
+{
+	hlist_remove(&await->link);
+	await->job = NULL;
+	free(await);
+}
+
+void
+fm_job_cancel_wait(fm_job_t *job)
+{
+	if (job->cond_await != NULL) {
+		fm_job_wait_free(job->cond_await);
+		job->cond_await = NULL;
+	}
+}
+
+void
+fm_scheduler_notify_condition(fm_cond_var_t *cond_var)
+{
+	hlist_iterator_t iter;
+	fm_cond_await_t *await;
+
+	hlist_iterator_init(&iter, &cond_var->waiters);
+	while ((await = hlist_iterator_next(&iter)) != NULL) {
+		fm_job_t *job = await->job;
+
+		if (job->ops->check_condition != NULL
+		 && !job->ops->check_condition(job, cond_var)) {
+			/* keep waiting */
+			continue;
+		}
+
+		/* hlist_iterator tolerates removal of the current item */
+		fm_job_cancel_wait(job);
+
+		fm_job_continue(job);
+	}
 }
 
 /*

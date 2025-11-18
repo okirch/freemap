@@ -57,6 +57,21 @@ typedef struct fm_job_group {
 typedef struct fm_job fm_job_t;
 
 /*
+ * Condition variables
+ */
+typedef struct fm_cond_await {
+	struct hlist		link;
+	fm_job_t *		job;
+	double			expires;
+} fm_cond_await_t;
+
+typedef struct fm_cond_var {
+	struct hlist_head	waiters;
+} fm_cond_var_t;
+
+#define FM_COND_VAR_INIT	{ .waiters = { .first = NULL } }
+
+/*
  * completions can be used to wait for a probe to finish.
  * They're owned by the caller and are theirs to disponse of after use.
  */
@@ -68,6 +83,7 @@ struct fm_completion {
 typedef struct fm_job_ops {
 	fm_error_t		(*run)(fm_job_t *, fm_sched_stats_t *);
 	void			(*complete)(fm_job_t *, fm_error_t);
+	bool			(*check_condition)(const fm_job_t *, const fm_cond_var_t *);
 	void			(*destroy)(fm_job_t *);
 } fm_job_ops_t;
 
@@ -82,9 +98,11 @@ struct fm_job {
 	const char *		_name;
 	char *			fullname;
 
-	bool			blocking;
-	bool			done;
-	fm_error_t		error;
+	fm_cond_await_t *	cond_await;
+
+	bool			blocking;	/* FIXME: still needed? */
+	bool			done;		/* FIXME: still needed? */
+	fm_error_t		error;		/* FIXME: still needed? */
 
 	/* When the job should be scheduled next. */
 	fm_time_t		expires;
@@ -149,6 +167,13 @@ extern bool		fm_job_wait_for_event(fm_job_t *job, fm_event_callback_t *callback,
 extern void		fm_job_mark_complete(fm_job_t *job);
 extern void		fm_job_set_expiry(fm_job_t *, double);
 extern void		fm_job_free(fm_job_t *);
+
+extern fm_cond_await_t *fm_job_wait_condition(fm_cond_var_t *, fm_job_t *);
+extern fm_cond_await_t *fm_job_wait_condition_timed(fm_cond_var_t *, fm_job_t *, double);
+extern bool		fm_job_wait_continue(fm_cond_await_t *);
+extern void		fm_job_cancel_wait(fm_job_t *);
+extern void		fm_job_wait_free(fm_cond_await_t *);
+extern void		fm_scheduler_notify_condition(fm_cond_var_t *);
 
 static inline bool
 fm_job_list_is_empty(const struct hlist_head *head)
