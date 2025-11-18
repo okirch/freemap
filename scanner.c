@@ -29,6 +29,11 @@
 #include "utils.h"
 
 struct fm_scan_stage {
+	unsigned int		stage_id;
+	unsigned int		next_pool_id;
+
+	unsigned int		num_done;
+
 	fm_multiprobe_array_t	probes;
 	fm_scan_action_array_t	actions;
 };
@@ -130,6 +135,7 @@ fm_scanner_create_stage(fm_scanner_t *scanner, unsigned int stage_id)
 	assert(stage_id < __FM_SCAN_STAGE_MAX);
 	if ((stage = scanner->stages[stage_id]) == NULL) {
 		stage = calloc(1, sizeof(*stage));
+		stage->stage_id = stage_id;
 		scanner->stages[stage_id] = stage;
 	}
 
@@ -232,17 +238,18 @@ fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 static void
 fm_scanner_create_new_probes(fm_scanner_t *scanner)
 {
+	fm_scan_stage_t *stage = scanner->current_stage;
 	bool have_new_targets = false;
 	unsigned int k;
 
-	if (scanner->current_stage.index == FM_SCAN_STAGE_DISCOVERY)
+	if (stage->stage_id == FM_SCAN_STAGE_DISCOVERY)
 		return;
 
-	if (scanner->current_stage.next_pool_id != scanner->target_manager->next_free_pool_id)
+	if (stage->next_pool_id != scanner->target_manager->next_free_pool_id)
 		have_new_targets = true;
 
-	for (k = scanner->current_stage.num_done; k < scanner->current_stage.actions->count; ++k) {
-		fm_scan_action_t *action = scanner->current_stage.actions->entries[k];
+	for (k = stage->num_done; k < stage->actions.count; ++k) {
+		fm_scan_action_t *action = stage->actions.entries[k];
 		fm_multiprobe_t *multiprobe;
 		fm_target_pool_iterator_t iter;
 		fm_target_t *target;
@@ -263,8 +270,8 @@ fm_scanner_create_new_probes(fm_scanner_t *scanner)
 		}
 
 		if (multiprobe == NULL) {
-			if (scanner->current_stage.num_done == k) {
-				scanner->current_stage.num_done = k +1;
+			if (stage->num_done == k) {
+				stage->num_done = k +1;
 			}
 			continue;
 		}
@@ -284,7 +291,7 @@ fm_scanner_create_new_probes(fm_scanner_t *scanner)
 		}
 	}
 
-	scanner->current_stage.next_pool_id = scanner->target_manager->next_free_pool_id;
+	stage->next_pool_id = scanner->target_manager->next_free_pool_id;
 }
 
 /*
@@ -306,7 +313,7 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 {
 	fm_sched_stats_t scan_stats;
 
-	if (scanner->current_stage.index != FM_SCAN_STAGE_DISCOVERY) {
+	if (scanner->current_stage->stage_id != FM_SCAN_STAGE_DISCOVERY) {
 		/* This should probably also be a job... */
 		if (fm_timestamp_older(&scanner->next_pool_resize, NULL)) {
 			fm_log_debug("Trying to resize target pool\n");
@@ -348,22 +355,23 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 static bool
 fm_scanner_start_stage(fm_scanner_t *scanner, unsigned int index)
 {
-	unsigned int index = scanner->current_stage.index;
-
-	scanner->current_stage.actions = NULL;
-	scanner->current_stage.num_done = 0;
+	scanner->current_stage = NULL;
 
 	while (index <  __FM_SCAN_STAGE_MAX) {
 		fm_scan_stage_t *stage = scanner->stages[index];
 
 		if (stage && stage->actions.count > 0) {
 			fm_target_manager_restart(scanner->target_manager, index);
-			scanner->current_stage.index = index;
-			scanner->current_stage.actions = &stage->actions;
-			return true;
+			assert(stage->num_done == 0);
+			stage->stage_id = index;
+			scanner->current_stage = stage;
+			break;
 		}
 		index++;
 	}
+
+	if (scanner->current_stage == NULL)
+		return false;
 
 	if (index != FM_SCAN_STAGE_DISCOVERY) {
 		fm_target_manager_t *target_manager = scanner->target_manager;

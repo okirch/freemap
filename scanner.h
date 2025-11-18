@@ -61,18 +61,10 @@ struct fm_scanner {
 
 	fm_address_enumerator_t *addr_discovery;
 
-	struct {
-		/* Index into scanner->stage_requests */
-		unsigned int		index;
-		unsigned int		next_pool_id;
-
-		unsigned int		num_done;
-		fm_scan_action_array_t *actions;
-	}			current_stage;
-
-	fm_scan_stage_t *	 stages[__FM_SCAN_STAGE_MAX];
-
 	unsigned int		next_stage_id;
+	fm_scan_stage_t *	current_stage;
+	fm_scan_stage_t *	stages[__FM_SCAN_STAGE_MAX];
+
 	const fm_protocol_engine_t *proto;
 };
 
@@ -92,10 +84,10 @@ fm_scanner_get_stage(fm_scanner_t *scanner, unsigned int stage)
 	return scanner->stages[stage];
 }
 
-static inline fm_scan_action_array_t *
+static inline fm_scan_stage_t *
 fm_scanner_get_current_stage(fm_scanner_t *scanner)
 {
-	return scanner->current_stage.actions;
+	return scanner->current_stage;
 }
 
 #endif /* FREEMAP_SCANNER_H */
