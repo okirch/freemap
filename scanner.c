@@ -230,7 +230,7 @@ fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
  * Create new probes
  */
 static void
-fm_scanner_create_new_probes(fm_scanner_t *scanner, fm_sched_stats_t *sched_stats)
+fm_scanner_create_new_probes(fm_scanner_t *scanner)
 {
 	bool have_new_targets = false;
 	unsigned int k;
@@ -268,8 +268,6 @@ fm_scanner_create_new_probes(fm_scanner_t *scanner, fm_sched_stats_t *sched_stat
 			}
 			continue;
 		}
-
-		fm_multiprobe_transmit(action->multiprobe, sched_stats);
 
 		if (multiprobe != NULL) {
 			/* inform the pool about targets that we're done with */
@@ -335,7 +333,7 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 	fm_event_process_all();
 
 	/* Schedule and transmit a few additional probes */
-	fm_scanner_create_new_probes(scanner, &scan_stats);
+	fm_scanner_create_new_probes(scanner);
 
 	/* Reap any targets that we're done with, making room in the pool for
 	 * the next batch of targets. */
