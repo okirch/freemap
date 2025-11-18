@@ -106,6 +106,9 @@ struct fm_target_manager {
 	/* The capacity of all each pool */
 	unsigned int		pool_size;
 
+	/* Number of targets currently in the pool */
+	unsigned int		pool_count;
+
 	/* The pool id to assign to the next target */
 	unsigned int		next_free_pool_id;
 

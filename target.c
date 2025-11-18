@@ -23,6 +23,7 @@
 #include "logging.h"
 #include "utils.h"
 
+static fm_target_t *	fm_target_manager_get_next_target(fm_target_manager_t *);
 static void		fm_target_pool_check(fm_target_pool_t *pool);
 static void		fm_target_release(fm_target_t *target);
 
@@ -318,10 +319,7 @@ fm_target_manager_maybe_resize_pool(fm_target_manager_t *mgr)
 		new_size = max_size;
 
 	debugmsg("Resizing target pool; new capacity %u", new_size);
-	if (new_size > current_size) {
-		for (i = 0; i < mgr->num_queues; ++i)
-			fm_target_pool_resize(mgr->queues[i], new_size);
-	}
+	mgr->pool_size = new_size;
 
 	mgr->next_pool_resize = fm_time_now() + FM_TARGET_POOL_RESIZE_TIME;
 }
@@ -406,7 +404,12 @@ fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 		/* inform the pool about targets that we're done with */
 		while ((target = fm_multiprobe_get_completed(multiprobe)) != NULL) {
 			fm_log_debug("%s: done with target %s", multiprobe->name, target->id);
-			fm_target_pool_remove(multiprobe->target_queue, target);
+
+			if (target->refcount == 1) {
+				assert(target_manager->pool_count != 0);
+				target_manager->pool_count -= 1;
+			}
+			fm_target_release(target);
 		}
 	}
 
@@ -428,27 +431,35 @@ fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 		return;
 	}
 
-	if (!fm_target_manager_replenish_pools(target_manager))
-		return;
-
-	for (k = stage->num_done; k < stage->probes.count; ++k) {
-		fm_multiprobe_t *multiprobe = stage->probes.entries[k];
-		fm_target_pool_iterator_t iter;
+	while (target_manager->pool_count < target_manager->pool_size) {
 		fm_target_t *target;
 
-		assert(multiprobe);
-		assert(multiprobe->target_queue);
+		if ((target = fm_target_manager_get_next_target(target_manager)) == NULL)
+			break;
 
-		fm_target_pool_begin(multiprobe->target_queue, &iter);
-		while ((target = fm_target_pool_next(&iter)) != NULL) {
-			if (!fm_multiprobe_add_target(multiprobe, target)) {
-				fm_target_pool_remove(multiprobe->target_queue, target);
+		assert(target->refcount == 1);
+
+		for (k = stage->num_done; k < stage->probes.count; ++k) {
+			fm_multiprobe_t *multiprobe = stage->probes.entries[k];
+
+			assert(multiprobe);
+			assert(multiprobe->target_queue);
+
+			if (fm_multiprobe_add_target(multiprobe, target)) {
+				target->refcount += 1;
+
+				assert(fm_job_is_active(&multiprobe->job));
+				fm_job_continue(&multiprobe->job);
+			} else {
 				fm_log_debug("%s: could not add %s", multiprobe->name, target->id);
 			}
 		}
 
-		assert(fm_job_is_active(&multiprobe->job));
-		fm_job_continue(&multiprobe->job);
+		if (target->refcount > 1) {
+			target_manager->pool_count += 1;
+		} else {
+			fm_target_release(target);
+		}
 	}
 
 	stage->next_pool_id = target_manager->next_free_pool_id;
@@ -470,7 +481,7 @@ fm_target_manager_next(fm_target_manager_t *mgr, hlist_iterator_t *iter)
 
 	while ((target = hlist_iterator_next(iter)) != NULL) {
 		if (target->refcount == 1) {
-			/* This target is done. The following call with free it. */
+			/* This target is done. The following call will free it. */
 			fm_target_release(target);
 		} else if (found == NULL) {
 			found = target;
@@ -519,6 +530,11 @@ fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 		fm_ratelimit_init(&target->host_rate_limit,
 				mgr->host_packet_rate,
 				mgr->host_packet_rate / 10);
+
+		hlist_insert(&mgr->targets, &target->link);
+		target->refcount += 1;
+
+		debugmsg("%s added to address pool\n", target->id);
 	}
 
 	/* When all generators have completed, call it a day */
@@ -537,26 +553,10 @@ fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 static bool
 _fm_target_manager_is_done(fm_target_manager_t *target_manager, bool quiet)
 {
-	unsigned int k;
-
 	if (!target_manager->all_targets_exhausted)
 		return false;
 
-	for (k = 0; k < target_manager->num_queues; ++k) {
-		fm_target_pool_t *queue = target_manager->queues[k];
-
-		if (queue->count) {
-			fm_target_t *first = queue->slots[0];
-
-			if (!quiet) {
-				debugmsg("queue %s still active (target %s, refcount %u)",
-						queue->name, first->id, first->refcount);
-			}
-			return false;
-		}
-	}
-
-	return true;
+	return hlist_is_empty(&target_manager->targets);
 }
 
 bool
@@ -598,10 +598,6 @@ fm_target_manager_replenish_pools(fm_target_manager_t *mgr)
 		for (k = 0; k < mgr->num_queues; ++k)
 			fm_target_pool_add(mgr->queues[k], target);
 
-		hlist_insert(&mgr->targets, &target->link);
-		target->refcount += 1;
-
-		debugmsg("%s added to address pool\n", fm_target_get_id(target));
 	}
 
 	return true;
