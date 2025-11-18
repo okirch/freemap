@@ -11,6 +11,11 @@
  * use nanosecond timestamps for measuring RTTs
  * Do not try to send packets to interfaces where it makes no sense
    (such as ARP over loopback, tunnels etc)
+ * Does it make sense to extract eg MPLS extension info from ICMP responses
+   in traceroute?
+ * The synthetic packet header parsing is wonky
+ * Ability to read address lists from file
+ * use AS information to group targets into networks
 
 Other probes to implement
  - A host probe that uses invalid protocol numbers to elicit a response
@@ -35,3 +40,7 @@ Dealing with fdesc limits
  - add info to probes on whether they will need additional sockets
     * default: 1 socket for each probe
     * but account for shared sockets (eg icmp raw)
+
+Cleanups
+ - uniform array names (elements vs entries)
+ - addrgen naming
