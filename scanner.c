@@ -228,7 +228,7 @@ fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 static void
 fm_scanner_create_new_probes(fm_scanner_t *scanner)
 {
-	fm_target_manager_feed_probes(scanner->target_manager, scanner->current_stage);
+	fm_target_manager_feed_probes(scanner->target_manager);
 }
 
 /*
@@ -298,7 +298,6 @@ fm_scanner_start_stage(fm_scanner_t *scanner, unsigned int index)
 		fm_scan_stage_t *stage = scanner->stages[index];
 
 		if (stage && stage->actions.count > 0) {
-			fm_target_manager_restart(scanner->target_manager, index);
 			assert(stage->num_done == 0);
 			stage->stage_id = index;
 			scanner->current_stage = stage;
@@ -310,13 +309,11 @@ fm_scanner_start_stage(fm_scanner_t *scanner, unsigned int index)
 	if (scanner->current_stage == NULL)
 		return false;
 
-	if (index != FM_SCAN_STAGE_DISCOVERY) {
-		fm_target_manager_t *target_manager = scanner->target_manager;
-
-		if (target_manager->address_generators.count == 0) {
-			fm_log_error("No scan targets configured; nothing to scan");
-			return false;
-		}
+	if (index == FM_SCAN_STAGE_DISCOVERY) {
+		fm_target_manager_set_stage(scanner->target_manager, NULL);
+	} else
+	if (!fm_target_manager_set_stage(scanner->target_manager, scanner->current_stage)) {
+		return false;
 	}
 
 	scanner->next_stage_id = index + 1;

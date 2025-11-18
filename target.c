@@ -335,15 +335,37 @@ fm_target_manager_get_free_slots(const fm_target_manager_t *mgr)
 }
 
 /*
+ * Connect the target manager to the next scan stage
+ */
+bool
+fm_target_manager_set_stage(fm_target_manager_t *target_manager, fm_scan_stage_t *stage)
+{
+	target_manager->scan_stage = stage;
+
+	if (stage != NULL) {
+		if (target_manager->address_generators.count == 0) {
+			fm_log_error("No scan targets configured; nothing to scan");
+			return false;
+                }
+
+		fm_target_manager_restart(target_manager, stage->stage_id);
+
+		assert(stage->stage_id != FM_SCAN_STAGE_DISCOVERY);
+	}
+	return true;
+}
+
+/*
  * Feed new targets to all probes in the current stage
  */
 void
-fm_target_manager_feed_probes(fm_target_manager_t *target_manager, fm_scan_stage_t *stage)
+fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 {
+	fm_scan_stage_t *stage = target_manager->scan_stage;
 	bool have_new_targets = false;
 	unsigned int k;
 
-	if (stage->stage_id == FM_SCAN_STAGE_DISCOVERY)
+	if (stage == NULL)
 		return;
 
 	if (stage->next_pool_id != target_manager->next_free_pool_id)
