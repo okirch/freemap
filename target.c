@@ -526,8 +526,8 @@ fm_target_manager_get_next_target(fm_target_manager_t *mgr)
  * Returns true if the target manager has exhausted all enumerators,
  * and probes are done processing their targets.
  */
-bool
-fm_target_manager_is_done(fm_target_manager_t *target_manager)
+static bool
+_fm_target_manager_is_done(fm_target_manager_t *target_manager, bool quiet)
 {
 	unsigned int k;
 
@@ -540,13 +540,27 @@ fm_target_manager_is_done(fm_target_manager_t *target_manager)
 		if (queue->count) {
 			fm_target_t *first = queue->slots[0];
 
-			debugmsg("queue %s still active (target %s, refcount %u)", queue->name,
-					first->id, first->refcount);
+			if (!quiet) {
+				debugmsg("queue %s still active (target %s, refcount %u)",
+						queue->name, first->id, first->refcount);
+			}
 			return false;
 		}
 	}
 
 	return true;
+}
+
+bool
+fm_target_manager_is_done(fm_target_manager_t *target_manager)
+{
+	return _fm_target_manager_is_done(target_manager, false);
+}
+
+bool
+fm_target_manager_is_done_quiet(fm_target_manager_t *target_manager)
+{
+	return _fm_target_manager_is_done(target_manager, true);
 }
 
 /*
@@ -557,7 +571,7 @@ fm_target_manager_replenish_pools(fm_target_manager_t *mgr)
 {
 	unsigned int k, budget;
 
-	if (fm_target_manager_is_done(mgr))
+	if (fm_target_manager_is_done_quiet(mgr))
 		return false;
 
 	budget = fm_target_manager_get_free_slots(mgr);

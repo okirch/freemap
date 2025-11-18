@@ -247,7 +247,7 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 			fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
 		}
 
-		if (fm_target_manager_is_done(scanner->target_manager)) {
+		if (fm_target_manager_is_done_quiet(scanner->target_manager)) {
 			fm_log_debug("Looks like we're done\n");
 			fm_report_flush(scanner->report);
 			return false;
