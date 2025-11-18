@@ -186,7 +186,15 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 {
 	fm_sched_stats_t scan_stats;
 
-	if (scanner->current_stage->stage_id != FM_SCAN_STAGE_DISCOVERY) {
+	if (scanner->current_stage->stage_id == FM_SCAN_STAGE_DISCOVERY) {
+		fm_job_group_t *job_group = fm_scheduler_get_global_queue();
+
+		if (job_group == NULL || fm_job_group_is_done(job_group)) {
+			fm_log_debug("Looks like we're done\n");
+			fm_report_flush(scanner->report);
+			return false;
+		}
+	} else {
 		if (fm_target_manager_is_done_quiet(scanner->target_manager)) {
 			fm_log_debug("Looks like we're done\n");
 			fm_report_flush(scanner->report);
