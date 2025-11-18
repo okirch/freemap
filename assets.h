@@ -89,6 +89,7 @@ struct fm_host_asset {
 	fm_host_asset_ondisk_t *main;
 	fm_protocol_asset_t	protocols[__FM_PROTO_MAX];
 
+	/* FIXME: We don't need two different routes; the asset is either v4 or v6 */
 	fm_route_asset_ondisk_t	*ipv4_route;
 	fm_route_asset_ondisk_t	*ipv6_route;
 };

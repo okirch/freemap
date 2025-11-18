@@ -150,7 +150,8 @@ fm_multiprobe_job_run(fm_job_t *job, fm_sched_stats_t *stats)
 
 	if (fm_multiprobe_is_idle(multiprobe)) {
 		if (multiprobe->target_queue == NULL) {
-			/* most likely a discovery probe */
+			/* most likely a discovery probe, or the target manager has run out of
+			 * new targets. */
 			debugmsg("job %s seems complete, with no target queue", job->fullname);
 			return FM_TASK_COMPLETE;
 		}
@@ -330,6 +331,7 @@ fm_multiprobe_destroy(fm_multiprobe_t *multiprobe)
 	/* The actual freeing of the structure happens in fm_job_free() */
 }
 
+/* FIXME: nuke */
 bool
 fm_multiprobe_configure(fm_multiprobe_t *multiprobe, fm_probe_class_t *pclass, const fm_probe_params_t *params, const void *extra_params)
 {

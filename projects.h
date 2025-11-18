@@ -25,6 +25,7 @@
 #include "freemap.h"
 #include "utils.h"
 
+/* FIXME: the _probe members should be renamed to _stage */
 struct fm_project {
 	char *			name;
 	char *			discovery_probe;
