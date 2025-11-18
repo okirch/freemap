@@ -195,13 +195,4 @@ fm_timeout_update(fm_time_t *aggregate, fm_time_t timeout)
 	return false;
 }
 
-struct fm_linear_scheduler {
-	fm_scheduler_t		base;
-};
-
-struct fm_linear_sched_target_state {
-	unsigned int		action_index;
-	unsigned int		probe_index;
-};
-
 #endif /* FREEMAP_SCHEDULER_H */
