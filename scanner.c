@@ -181,20 +181,6 @@ fm_scanner_schedule(fm_scanner_t *scanner, fm_sched_stats_t *global_stats)
 		fm_scanner_schedule_job_group(scanner, global_queue, global_stats);
 }
 
-/*
- * Reap all targets that have completed.
- */
-void
-fm_scanner_process_completed(fm_scanner_t *scanner)
-{
-	hlist_iterator_t iter;
-
-	/* We just iterate over all targets. This will remove completed ones */
-	fm_target_manager_begin(scanner->target_manager, &iter);
-	while (fm_target_manager_next(scanner->target_manager, &iter) != NULL)
-		;
-}
-
 bool
 fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 {
@@ -218,10 +204,6 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 
 	/* Process events */
 	fm_event_process_all();
-
-	/* Reap any targets that we're done with, making room in the pool for
-	 * the next batch of targets. */
-	fm_scanner_process_completed(scanner);
 
 	if (timeout)
 		*timeout = scan_stats.timeout;

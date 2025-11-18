@@ -33,210 +33,6 @@ static fm_cond_var_t	fm_task_manager_cond_var = FM_COND_VAR_INIT;
 #define debugmsg	fm_debug_addrpool
 
 /*
- * The target pool
- */
-#if 0
-fm_target_pool_t *
-fm_target_pool_create(unsigned int size, const char *name)
-{
-	static unsigned int counter = 1;
-	fm_target_pool_t *pool;
-
-	pool = calloc(1, sizeof(*pool));
-	pool->size = size;
-
-	/* For debugging */
-	if (name != NULL)
-		asprintf(&pool->name, "pool%u(%s)", counter++, name);
-	else
-		asprintf(&pool->name, "pool%u", counter++);
-
-	return pool;
-}
-
-void
-fm_target_pool_resize(fm_target_pool_t *pool, unsigned int new_size)
-{
-}
-
-static inline unsigned int
-fm_target_pool_get_free_slots(const fm_target_pool_t *pool)
-{
-	assert(pool->count < pool->size);
-	return pool->size - pool->count - 1;
-}
-
-static inline bool
-fm_target_pool_has_free_slots(const fm_target_pool_t *pool)
-{
-	return pool->count < pool->size;
-}
-
-static void
-fm_target_pool_add(fm_target_pool_t *pool, fm_target_t *target)
-{
-	assert(target != NULL);
-	assert(target->pool_id != 0);
-	assert(pool->count + 1 < pool->size);
-
-	if (pool->count == 0)
-		pool->first_pool_id = target->pool_id;
-
-	pool->slots[pool->count++] = target;
-	target->refcount++;
-}
-
-static int
-fm_target_pool_bsearch(fm_target_pool_t *pool, unsigned int target_id)
-{
-	unsigned int i0, i1, mid;
-	unsigned int mid_id;
-
-	i0 = 0;
-	i1 = pool->count;
-
-	while (i1 - i0 >= 2) {
-		mid = (i0 + i1) / 2;
-		mid_id = pool->slots[mid]->pool_id;
-
-		if (mid_id == target_id)
-			return mid;
-
-		if (target_id < mid_id)
-			i1 = mid;
-		else
-			i0 = mid;
-	}
-
-	if (pool->slots[i0]->pool_id == target_id)
-		return i0;
-	if (i1 < pool->count && pool->slots[i1]->pool_id == target_id)
-		return i1;
-	return -1;
-}
-
-bool
-fm_target_pool_remove(fm_target_pool_t *pool, fm_target_t *target)
-{
-	unsigned int i;
-	int index;
-
-	index = fm_target_pool_bsearch(pool, target->pool_id);
-	assert(index >= 0);
-
-	assert(pool->slots[index] == target);
-
-	pool->count -= 1;
-	for (i = index; i < pool->count; ++i)
-		pool->slots[i] = pool->slots[i + 1];
-
-	debugmsg("%s: remove target %s from pool", pool->name, target->id);
-
-	if (target->refcount <= 2)
-		fm_scheduler_notify_condition(&fm_task_manager_cond_var);
-
-	fm_target_release(target);
-	return true;
-}
-
-static inline void
-fm_target_pool_check(fm_target_pool_t *pool)
-{
-	/* NOP for now */
-}
-
-bool
-fm_target_pool_reap_completed(fm_target_pool_t *pool)
-{
-#if 1
-	return false;
-#else
-	fm_target_t *target;
-	unsigned int i;
-	bool completed_some = false;
-
-	for (i = 0; i < pool->size; ++i) {
-		if ((target = pool->slots[i]) != NULL) {
-			if (fm_job_group_reap_complete(&target->job_group))
-				completed_some = true;
-
-			if (fm_target_is_done(target))
-				fm_log_debug("%s all outstanding probes collected\n", target->job_group.name);
-		}
-	}
-
-	fm_target_pool_check(pool);
-
-	return completed_some;
-#endif
-}
-
-/*
- * Iterate through a target pool
- */
-fm_target_t *
-fm_target_pool_get_next(fm_target_pool_t *queue)
-{
-	int index;
-
-	index = fm_target_pool_bsearch(queue, queue->next_pool_id);
-	if (index < 0)
-		return NULL;
-
-	queue->next_pool_id += 1;
-	return queue->slots[index];
-}
-
-void
-fm_target_pool_begin(fm_target_pool_t *queue, fm_target_pool_iterator_t *iter)
-{
-	iter->queue = queue;
-	iter->next_pool_id = queue->next_pool_id;
-	iter->index = 0;
-}
-
-fm_target_t *
-fm_target_pool_next(fm_target_pool_iterator_t *iter)
-{
-	static const unsigned int INVALID_INDEX = ~(unsigned int) 0;
-	fm_target_pool_t *queue = iter->queue;
-	fm_target_t *target = NULL;
-	int index;
-
-	if (iter->index == INVALID_INDEX)
-		return NULL;
-
-	if (iter->index < queue->count)
-		target = queue->slots[iter->index++];
-
-	/* Things are a bit complicated because a target may be dropped from
-	 * the pool while we're iterating over it (for instance, if a probe
-	 * rejects an incompatible target - think ARP vs IPv6).
-	 *
-	 * Things could be easier if we really pop() the first entry
-	 * from the queue, and forget about it. However, then it would
-	 * be up to the multiprobe to call fm_target_release() when it's
-	 * done with it.
-	 */
-	if (target == NULL || target->pool_id != iter->next_pool_id) {
-		index = fm_target_pool_bsearch(queue, iter->next_pool_id);
-		if (index < 0) {
-			iter->index = INVALID_INDEX;
-			return NULL;
-		}
-
-		target = queue->slots[index++];
-		iter->index = index;
-	}
-
-	assert(target->pool_id == iter->next_pool_id);
-	iter->next_pool_id += 1;
-
-	return target;
-}
-#endif
-
-/*
  * abstract target manager
  */
 fm_target_manager_t *
@@ -273,24 +69,6 @@ fm_target_manager_get_generator_count(const fm_target_manager_t *mgr)
 	return mgr->address_generators.count;
 }
 
-#if 0
-fm_target_pool_t *
-fm_target_manager_create_queue(fm_target_manager_t *mgr, const char *name)
-{
-	fm_target_pool_t *queue;
-
-	maybe_realloc_array(mgr->queues, mgr->num_queues, 4);
-
-	queue = fm_target_pool_create(mgr->pool.size, name);
-	mgr->queues[mgr->num_queues++] = queue;
-
-	/* Wake up the task manager */
-	fm_scheduler_notify_condition(&fm_task_manager_cond_var);
-
-	return queue;
-}
-#endif
-
 /*
  * Resize the pool at regular interval, up to the configured upper limit
  */
@@ -314,27 +92,6 @@ fm_target_manager_maybe_resize_pool(fm_target_manager_t *mgr)
 
 	mgr->pool.next_resize = fm_time_now() + FM_TARGET_POOL_RESIZE_TIME;
 }
-
-#if 0
-static unsigned int
-fm_target_manager_get_free_slots(const fm_target_manager_t *mgr)
-{
-	unsigned int k, min_free;
-
-	if (mgr->num_queues == 0)
-		return 0;
-
-	min_free = mgr->pool.size;
-	for (k = 0; k < mgr->num_queues; ++k) {
-		unsigned int count = fm_target_pool_get_free_slots(mgr->queues[k]);
-
-		if (count < min_free)
-			min_free = count;
-	}
-
-	return min_free;
-}
-#endif
 
 /*
  * Connect the target manager to the next scan stage
@@ -465,31 +222,9 @@ fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 }
 
 /*
- * Iterate over all active targets
+ * We have room in the target pool. Try to get a new address from one of the
+ * address generators.
  */
-void
-fm_target_manager_begin(fm_target_manager_t *mgr, hlist_iterator_t *iter)
-{
-	hlist_iterator_init(iter, &mgr->pool.targets);
-}
-
-fm_target_t *
-fm_target_manager_next(fm_target_manager_t *mgr, hlist_iterator_t *iter)
-{
-	fm_target_t *target, *found = NULL;
-
-	while ((target = hlist_iterator_next(iter)) != NULL) {
-		if (target->refcount == 1) {
-			/* This target is done. The following call will free it. */
-			fm_target_release(target);
-		} else if (found == NULL) {
-			found = target;
-		}
-	}
-
-	return found;
-}
-
 fm_target_t *
 fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 {
@@ -571,39 +306,8 @@ fm_target_manager_is_done_quiet(fm_target_manager_t *target_manager)
 }
 
 /*
- * Returns true if there are active targets in at least one of the queues.
+ * Restart all address generators for a new scanning stage.
  */
-bool
-fm_target_manager_replenish_pools(fm_target_manager_t *mgr)
-{
-#if 0
-	unsigned int k, budget;
-
-	if (fm_target_manager_is_done_quiet(mgr))
-		return false;
-
-	budget = fm_target_manager_get_free_slots(mgr);
-	if (budget == 0)
-		return false;
-
-	while (budget--) {
-		fm_target_t *target;
-
-		if ((target = fm_target_manager_get_next_target(mgr)) == NULL)
-			break;
-
-		/* Give this target a pool id */
-		target->pool_id = mgr->next_free_pool_id++;
-
-		for (k = 0; k < mgr->num_queues; ++k)
-			fm_target_pool_add(mgr->queues[k], target);
-
-	}
-#endif
-
-	return true;
-}
-
 void
 fm_target_manager_restart(fm_target_manager_t *mgr, unsigned int stage)
 {
