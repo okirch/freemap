@@ -195,6 +195,9 @@ fm_target_manager_feed_probes(fm_target_manager_t *target_manager)
 
 		assert(target->refcount == 1);
 
+		if (stage->stage_id == FM_SCAN_STAGE_HOST)
+			fm_target_reset_host_state(target, FM_PROTO_NONE);
+
 		for (k = stage->num_done; k < stage->probes.count; ++k) {
 			fm_multiprobe_t *multiprobe = stage->probes.entries[k];
 
@@ -488,6 +491,14 @@ fm_target_get_local_bind_address(fm_target_t *target, fm_address_t *bind_address
 /*
  * Update the host asset information
  */
+void
+fm_target_reset_host_state(fm_target_t *target, unsigned int proto_id)
+{
+	/* ignore the proto id for now */
+	if (target->host_asset)
+		fm_host_asset_reset_state(target->host_asset);
+}
+
 void
 fm_target_update_host_state(fm_target_t *target, unsigned int proto_id, fm_asset_state_t state)
 {

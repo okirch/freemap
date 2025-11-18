@@ -387,6 +387,11 @@ fm_host_asset_get_state(fm_host_asset_t *host)
 	return host->main->host_state;
 }
 
+/*
+ * Update the host state, taking care to never "go back".
+ * For instance, if we have 3 host probes, and just one of them sees the target,
+ * then we want the "best" result to win, not the one that comes in last.
+ */
 bool
 fm_host_asset_update_state(fm_host_asset_t *host, fm_asset_state_t state)
 {
@@ -404,6 +409,19 @@ fm_host_asset_update_state(fm_host_asset_t *host, fm_asset_state_t state)
 	printf("STATUS %s: %s\n",
 			fm_address_format(&host->address),
 			fm_asset_state_to_string(state));
+	return true;
+}
+
+/*
+ * This is invoked prior to a host scan. It resets the host state to UNDEF
+ */
+bool
+fm_host_asset_reset_state(fm_host_asset_t *host)
+{
+	if (!fm_host_asset_is_mapped(host))
+		return false;
+
+	host->main->host_state = FM_ASSET_STATE_UNDEF;
 	return true;
 }
 
