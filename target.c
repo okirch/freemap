@@ -494,6 +494,33 @@ fm_target_manager_get_next_target(fm_target_manager_t *mgr)
 }
 
 /*
+ * Returns true if the target manager has exhausted all enumerators,
+ * and probes are done processing their targets.
+ */
+bool
+fm_target_manager_is_done(fm_target_manager_t *target_manager)
+{
+	unsigned int k;
+
+	if (!target_manager->all_targets_exhausted)
+		return false;
+
+	for (k = 0; k < target_manager->num_queues; ++k) {
+		fm_target_pool_t *queue = target_manager->queues[k];
+
+		if (queue->count) {
+			fm_target_t *first = queue->slots[0];
+
+			debugmsg("queue %s still active (target %s, refcount %u)", queue->name,
+					first->id, first->refcount);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+/*
  * Returns true if there are active targets in at least one of the queues.
  */
 bool
@@ -501,18 +528,8 @@ fm_target_manager_replenish_pools(fm_target_manager_t *mgr)
 {
 	unsigned int k, budget;
 
-	if (mgr->all_targets_exhausted) {
-		for (k = 0; k < mgr->num_queues; ++k) {
-			if (mgr->queues[k]->count) {
-				debugmsg("queue %s still active", mgr->queues[k]->name);
-				debugmsg("  target %s refcount %u",
-						mgr->queues[k]->slots[0]->id,
-						mgr->queues[k]->slots[0]->refcount);
-				return true;
-			}
-		}
+	if (fm_target_manager_is_done(mgr))
 		return false;
-	}
 
 	budget = fm_target_manager_get_free_slots(mgr);
 	while (budget--) {
