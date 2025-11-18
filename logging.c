@@ -45,6 +45,27 @@ fm_logfp(void)
 	return fm_log_file?: stderr;
 }
 
+static const char *
+fm_timestamp_string(void)
+{
+	static double t0 = 0;
+	static char buffer[32];
+	double dt;
+
+	if (t0 == 0)
+		t0 = fm_time_now();
+
+	dt = fm_time_now() - t0;
+
+	snprintf(buffer, sizeof(buffer), "[%02u:%02u:%02u.%03u]",
+			(unsigned int) (dt / 3600),
+			(unsigned int) (dt / 60) % 60,
+			(unsigned int) dt % 60,
+			(unsigned int) (dt * 1000) % 1000);
+
+	return buffer;
+}
+
 void
 fm_trace(const char *fmt, ...)
 {
@@ -52,6 +73,7 @@ fm_trace(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
+	fprintf(fp, "%s: ", fm_timestamp_string());
 	vfprintf(fp, fmt, ap);
 	if (strchr(fmt, '\n') == NULL)
 		fputc('\n', fp);
@@ -65,7 +87,7 @@ fm_log_fatal(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	fprintf(fp, "FATAL: ");
+	fprintf(fp, "%s: FATAL: ", fm_timestamp_string());
 	vfprintf(fp, fmt, ap);
 	if (strchr(fmt, '\n') == NULL)
 		fputc('\n', fp);
@@ -81,7 +103,7 @@ fm_log_error(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	fprintf(fp, "Error: ");
+	fprintf(fp, "%s: Error: ", fm_timestamp_string());
 	vfprintf(fp, fmt, ap);
 	if (strchr(fmt, '\n') == NULL)
 		fputc('\n', fp);
@@ -95,7 +117,7 @@ fm_log_warning(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	fprintf(fp, "Warning: ");
+	fprintf(fp, "%s: Warning: ", fm_timestamp_string());
 	vfprintf(fp, fmt, ap);
 	if (strchr(fmt, '\n') == NULL)
 		fputc('\n', fp);
@@ -108,6 +130,7 @@ fm_log_notice(const char *fmt, ...)
 	FILE *fp = fm_logfp();
 	va_list ap;
 
+	fprintf(fp, "%s: ", fm_timestamp_string());
 	va_start(ap, fmt);
 	vfprintf(fp, fmt, ap);
 	if (strchr(fmt, '\n') == NULL)
