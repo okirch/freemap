@@ -33,7 +33,7 @@ struct fm_scan_stage {
 	fm_scan_action_array_t	actions;
 };
 
-static bool			fm_scanner_start_stage(fm_scanner_t *scanner);
+static bool			fm_scanner_start_stage(fm_scanner_t *scanner, unsigned int stage_id);
 
 static inline void
 fm_scan_action_array_append(struct fm_scan_action_array *array, fm_scan_action_t *action)
@@ -105,12 +105,12 @@ fm_scanner_add_target_from_spec(fm_scanner_t *scanner, const char *spec)
 }
 
 bool
-fm_scanner_ready(fm_scanner_t *scanner)
+fm_scanner_ready(fm_scanner_t *scanner, unsigned int first_stage_id)
 {
 	fm_timestamp_update(&scanner->scan_started);
 	fm_timestamp_set_timeout(&scanner->next_pool_resize, FM_TARGET_POOL_RESIZE_TIME * 1000);
 
-	if (!fm_scanner_start_stage(scanner))
+	if (!fm_scanner_start_stage(scanner, first_stage_id))
 		return false;
 
 	return true;
@@ -346,7 +346,7 @@ fm_scanner_transmit(fm_scanner_t *scanner, fm_time_t *timeout)
 }
 
 static bool
-fm_scanner_start_stage(fm_scanner_t *scanner)
+fm_scanner_start_stage(fm_scanner_t *scanner, unsigned int index)
 {
 	unsigned int index = scanner->current_stage.index;
 
@@ -374,16 +374,14 @@ fm_scanner_start_stage(fm_scanner_t *scanner)
 		}
 	}
 
-
-	scanner->current_stage.index = index;
-	return false;
+	scanner->next_stage_id = index + 1;
+	return true;
 }
 
 bool
 fm_scanner_next_stage(fm_scanner_t *scanner)
 {
-	scanner->current_stage.index += 1;
-	return fm_scanner_start_stage(scanner);
+	return fm_scanner_start_stage(scanner, scanner->next_stage_id);
 }
 
 

@@ -72,6 +72,7 @@ struct fm_scanner {
 
 	fm_scan_stage_t *	 stages[__FM_SCAN_STAGE_MAX];
 
+	unsigned int		next_stage_id;
 	const fm_protocol_engine_t *proto;
 };
 

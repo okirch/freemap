@@ -131,7 +131,7 @@ fm_command_perform_discovery(fm_command_t *cmd)
 	if (scan_options.dump)
 		fm_scanner_dump_program(scanner);
 
-	if (!fm_scanner_ready(scanner)) {
+	if (!fm_scanner_ready(scanner, FM_SCAN_STAGE_DISCOVERY)) {
 		fprintf(stderr, "scanner is not fully configured\n");
 		return 1;
 	}
@@ -161,7 +161,7 @@ fm_command_perform_scan(fm_command_t *cmd)
 	fm_project_t *project;
 	fm_config_program_t *program = NULL;
 	fm_scanner_t *scanner;
-	unsigned int k;
+	unsigned int k, first_stage = FM_SCAN_STAGE_HOST;
 
 	project = fm_project_load();
 	if (project == NULL) {
@@ -203,14 +203,17 @@ fm_command_perform_scan(fm_command_t *cmd)
 	if (cmd->cmdid == FM_CMDID_TOPO_SCAN) {
 		if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_TOPO, project->topology_probe?: "traceroute"))
 			fm_log_fatal("cannot set requested topology scan stage");
+		first_stage = FM_SCAN_STAGE_TOPO;
 	} else
 	if (cmd->cmdid == FM_CMDID_HOST_SCAN) {
 		if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_HOST, project->reachability_probe?: "default"))
 			fm_log_fatal("cannot set requested topology scan stage");
+		first_stage = FM_SCAN_STAGE_HOST;
 	} else
 	if (cmd->cmdid == FM_CMDID_PORT_SCAN) {
 		if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_PORT, project->service_probe?: "default"))
 			fm_log_fatal("cannot set requested topology scan stage");
+		first_stage = FM_SCAN_STAGE_PORT;
 	} else
 	if (scan_options.program != NULL) {
 		fm_log_fatal("the entire program mess is gone.");
@@ -218,6 +221,7 @@ fm_command_perform_scan(fm_command_t *cmd)
 		if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_HOST, project->reachability_probe?: "default")
 		 || !fm_config_program_set_stage(program, FM_SCAN_STAGE_PORT, project->service_probe?: "default"))
 			fm_log_fatal("Could not build scan program");
+		first_stage = FM_SCAN_STAGE_HOST;
 	}
 
 	if (!fm_config_program_set_service_catalog(program, "default"))
@@ -232,7 +236,7 @@ fm_command_perform_scan(fm_command_t *cmd)
 	if (scan_options.dump)
 		fm_scanner_dump_program(scanner);
 
-	if (!fm_scanner_ready(scanner)) {
+	if (!fm_scanner_ready(scanner, first_stage)) {
 		fprintf(stderr, "scanner is not fully configured\n");
 		return 1;
 	}
