@@ -72,6 +72,7 @@ extern void			fm_routing_cache_add(fm_routing_cache_t *cache, fm_route_t *route)
 extern bool			netlink_build_device_cache(void);
 extern bool			netlink_build_address_cache(void);
 extern bool			netlink_build_routing_cache(int af);
-
+extern bool			netlink_send_newaddr(int, const fm_address_t *, unsigned int);
+extern bool			netlink_send_newroute(int, const fm_address_prefix_t *);
 
 #endif /* FREEMAP_ROUTING_H */

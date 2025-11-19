@@ -26,6 +26,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <assert.h>
+#include <errno.h>
 
 #include "freemap.h"
 #include "addresses.h"
@@ -257,6 +258,59 @@ nlattr_get_hwaddress(struct nlattr *nla, struct sockaddr_ll *ret)
 	memcpy(ret->sll_addr, (nla + 1), alen);
 
 	return true;
+}
+
+static bool
+nlattr_add_bytes(fm_buffer_t *req, int type, const void *data, unsigned int len)
+{
+	unsigned int padded = ((len + 3) & ~3);
+	struct nlattr *nla;
+
+	if (!(nla = fm_buffer_push(req, 4 + padded)))
+		return false;
+	nla->nla_type = type;
+	nla->nla_len = 4 + padded;
+	memcpy(nla + 1, data, len);
+
+	return true;
+}
+
+static bool
+nlattr_add_addr(fm_buffer_t *req, int type, const fm_address_t *addr)
+{
+	const unsigned char *data;
+	unsigned int nbits;
+
+	if (!(data = fm_address_get_raw_addr(addr, &nbits)))
+		return false;
+
+	return nlattr_add_bytes(req, type, data, nbits / 8);
+}
+
+static bool
+nlattr_add_addr_with_mask(fm_buffer_t *req, int type, const fm_address_t *addr, unsigned int pfxlen)
+{
+	const unsigned char *data;
+	unsigned int nbits, k;
+	unsigned char masked_addr[16], mask;
+
+	if (!(data = fm_address_get_raw_addr(addr, &nbits)))
+		return false;
+
+	assert(nbits <= 128);
+	memcpy(masked_addr, data, nbits / 8);
+
+	for (mask = 0xFF, k = 0; k < nbits; k += 8) {
+		if (k + 8 <= pfxlen)
+			/* nothing */;
+		else if (pfxlen <= k)
+			mask = 0;
+		else
+			mask = 0xFF << (pfxlen - k);
+		masked_addr[k / 8] &= mask;
+	}
+
+	return nlattr_add_bytes(req, type, masked_addr, nbits / 8);
 }
 
 static bool
@@ -711,4 +765,152 @@ bool
 netlink_build_routing_cache(int af)
 {
 	return netlink_dump_work(RTM_GETROUTE, af);
+}
+
+static fm_buffer_t *
+netlink_build_newaddr(int ifindex, const fm_address_t *addr, unsigned int prefixlen)
+{
+	fm_buffer_t *req;
+	struct ifaddrmsg *ifa;
+	struct nlmsghdr *nh;
+
+	req = fm_buffer_alloc(128);
+	memset(req->data, 0, req->size);
+
+	nh = nlmsg_begin(req, RTM_NEWADDR, NLM_F_REQUEST | NLM_F_ACK | NLM_F_EXCL | NLM_F_CREATE);
+
+	ifa = fm_buffer_push(req, sizeof(*ifa));
+
+	ifa->ifa_family = addr->family;
+	ifa->ifa_prefixlen = prefixlen;
+	ifa->ifa_scope = RT_SCOPE_UNIVERSE;
+	ifa->ifa_index = ifindex;
+
+	nlattr_add_addr(req, IFA_LOCAL, addr);
+	nlattr_add_addr(req, IFA_ADDRESS, addr);
+
+	nh->nlmsg_len = fm_buffer_len(req, nh);
+
+	return req;
+}
+
+static fm_buffer_t *
+netlink_build_newroute(int ifindex, const fm_address_prefix_t *prefix)
+{
+	fm_buffer_t *req;
+	struct rtmsg *rt;
+	struct nlmsghdr *nh;
+
+	req = fm_buffer_alloc(128);
+	memset(req->data, 0, req->size);
+
+	nh = nlmsg_begin(req, RTM_NEWROUTE, NLM_F_REQUEST | NLM_F_ACK | NLM_F_EXCL | NLM_F_CREATE);
+
+	rt = fm_buffer_push(req, sizeof(*rt));
+
+	rt->rtm_family = prefix->address.family;
+	rt->rtm_table = RT_TABLE_MAIN;
+	rt->rtm_type = RTN_UNICAST;
+	rt->rtm_src_len = 0;
+	rt->rtm_dst_len = prefix->pfxlen;
+	rt->rtm_protocol = RTPROT_STATIC;
+	rt->rtm_scope = RT_SCOPE_UNIVERSE;
+
+	nlattr_add_int(req, RTA_OIF, ifindex);
+	nlattr_add_addr_with_mask(req, RTA_DST, &prefix->address, prefix->pfxlen);
+
+	nh->nlmsg_len = fm_buffer_len(req, nh);
+
+	return req;
+}
+
+static int
+netlink_expect_error(int fd, const fm_buffer_t *req)
+{
+	unsigned int expect_seq;
+	const struct nlmsghdr *nh;
+	fm_buffer_t *resp;
+	int err = -EIO;
+
+	nh = fm_buffer_head(req);
+	expect_seq = nh->nlmsg_seq;
+
+	resp = fm_buffer_alloc(128);
+	while (true) {
+		struct nlmsgerr *nerr;
+
+		if (!netlink_recv(fd, resp))
+			break;
+
+		nh = fm_buffer_peek(resp, sizeof(*nh));
+		if (nh == NULL || nh->nlmsg_len > fm_buffer_available(resp))
+			break;
+
+		fm_buffer_pull(resp, sizeof(*nh));
+
+		if (nh->nlmsg_seq != expect_seq)
+			continue;
+
+		if (nh->nlmsg_type != NLMSG_ERROR) {
+			nl_debug("%s: unexpected msg type %d in response", __func__, nh->nlmsg_type);
+			break;
+		}
+
+		nerr = fm_buffer_peek(resp, sizeof(*nerr));
+		if (nerr == NULL)
+			break;
+
+		err = nerr->error;
+		break;
+	}
+
+	fm_buffer_free(resp);
+	return err;
+}
+
+static bool
+netlink_send_new(fm_buffer_t *req, const char *req_name)
+{
+	bool ok = false;
+	int fd, err;
+
+	if ((fd = netlink_open()) < 0)
+		goto done;
+
+	/* End with a NUL packet */
+	nlmsg_begin(req, 0, 0);
+
+	if (!netlink_send(fd, req->data, req->wpos))
+		goto done;
+
+	err = netlink_expect_error(fd, req);
+	if (err < 0) {
+		fm_log_error("%s: netlink answers %s", req_name, strerror(-err));
+	} else {
+		ok = true;
+	}
+
+done:
+	fm_buffer_free(req);
+	if (fd >= 0)
+		close(fd);
+	return ok;
+}
+
+bool
+netlink_send_newaddr(int ifindex, const fm_address_t *addr, unsigned int prefixlen)
+{
+	fm_buffer_t *req;
+
+	req = netlink_build_newaddr(ifindex, addr, prefixlen);
+	return netlink_send_new(req, "RTM_NEWADDR");
+}
+
+bool
+netlink_send_newroute(int ifindex, const fm_address_prefix_t *prefix)
+{
+	fm_buffer_t *req;
+
+	req = netlink_build_newroute(ifindex, prefix);
+	return netlink_send_new(req, "RTM_NEWROUTE");
 }
