@@ -63,6 +63,7 @@ typedef struct fm_fake_network_array {
 
 typedef struct fm_fake_config {
 	fm_string_array_t	addresses;
+	fm_string_array_t	backbone_pool;
 
 	fm_fake_router_t *	egress_router;
 

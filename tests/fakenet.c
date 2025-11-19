@@ -122,6 +122,7 @@ main(int argc, char **argv)
 
 	cfgpath = cmd->values[0];
 
+	memset(&config, 0, sizeof(config));
 	if (!fm_fake_config_load(&config, cfgpath))
 		fm_log_fatal("Cannot load configuration from %s", cfgpath);
 
@@ -437,7 +438,6 @@ fm_fake_network_build(fm_fake_config_t *config)
 
 	}
 
-	abort();
 	return ok;
 }
 
@@ -485,6 +485,7 @@ static fm_config_proc_t	fm_config_router_node = {
 static fm_config_proc_t	fm_config_doc_root = {
 	.attributes = {
 		{ "address",		offsetof(fm_fake_config_t, addresses),		FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
+		{ "backbone_pool",	offsetof(fm_fake_config_t, backbone_pool),	FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
 	},
 	.children = {
 		{ "network",		offsetof(fm_fake_config_t, networks),		&fm_config_network_node, .alloc_child = fm_fake_config_create_network },
