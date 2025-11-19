@@ -75,6 +75,44 @@ fm_address_parse(const char *addr_string, fm_address_t *ss)
 	    || fm_try_parse_ipv6_address(addr_string, (struct sockaddr_in6 *) ss);
 }
 
+/*
+ * Parse a prefix in add/len notation
+ */
+bool
+fm_address_prefix_parse(const char *addr_string, fm_address_prefix_t *prefix)
+{
+	char *addr_copy, *slash, *end;
+	unsigned int nbits;
+	bool ok = false;
+
+	memset(prefix, 0, sizeof(*prefix));
+
+	addr_copy = strdup(addr_string);
+	if (addr_copy == NULL)
+		return false;
+
+	if ((slash = strchr(addr_copy, '/')) == NULL)
+		goto out;
+
+	*slash++ = '\0';
+	if (!fm_address_parse(addr_copy, &prefix->address))
+		goto out;
+
+	nbits = strtoul(slash, &end, 0);
+	if (*end)
+		goto out;
+
+	if (nbits > fm_addrfamily_max_addrbits(prefix->address.family))
+		goto out;
+
+	prefix->pfxlen = nbits;
+
+	ok = true;
+out:
+	free(addr_copy);
+	return ok;
+}
+
 static unsigned char *
 fm_get_raw_addr(int af, fm_address_t *ss, unsigned int *nbits)
 {

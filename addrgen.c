@@ -173,6 +173,7 @@ fm_address_generator_address_eligible_any_state(const fm_address_t *address)
 
 /*
  * Parse a prefix in add/len notation
+ * FIXME: use fm_address_prefix_parse() instead
  */
 static bool
 fm_try_parse_cidr(const char *addr_string, fm_address_t *addr, unsigned int *nbits)

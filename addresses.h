@@ -27,8 +27,6 @@
 #include "freemap.h"
 #include "lists.h"
 
-typedef struct fm_address_prefix fm_address_prefix_t;
-
 struct fm_address_prefix {
 	/* This is the address we can route to.
 	 * For point-to-point devices like tunnels, this will be the host address
