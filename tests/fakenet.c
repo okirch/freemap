@@ -57,6 +57,7 @@ static bool		fm_fake_config_load(fm_fake_config_t *config, const char *path);
 static bool		fm_fakenet_configure_interface(fm_tunnel_t *tunnel, fm_fake_config_t *config);
 static bool		fm_fake_config_process(fm_fake_config_t *config, curly_node_t *);
 static bool		fm_fakenet_run(fm_tunnel_t *tunnel, const fm_fake_config_t *config);
+static bool		fm_fake_network_set_egress(fm_fake_config_t *config, const fm_tunnel_t *tunnel);
 static bool		fm_fake_network_build(fm_fake_config_t *config);
 static fm_fake_router_t *fm_fake_router_alloc(const char *name, fm_fake_router_array_t *array);
 
@@ -129,6 +130,10 @@ main(int argc, char **argv)
 	if (!(tunnel = fm_fakenet_attach_interface())
 	 || !fm_fakenet_configure_interface(tunnel, &config))
 		fm_log_fatal("Cannot create tunnel interface");
+
+	if (!fm_fake_network_set_egress(&config, tunnel)
+	 || !fm_fake_network_build(&config))
+		fm_log_fatal("Cannot build fake network");
 
 	fm_fakenet_run(tunnel, &config);
 
@@ -251,14 +256,12 @@ fm_fakenet_configure_interface(fm_tunnel_t *tunnel, fm_fake_config_t *config)
 		return false;
 	}
 	tunnel->ifindex = ifr.ifr_ifindex;
-	printf("ifindex=%u\n", ifr.ifr_ifindex);
 
 	if (ioctl(fd, SIOCGIFFLAGS, &ifr) < 0) {
 		fm_log_error("failed to get flags for %s: %m", tunnel->ifname);
 		return false;
 	}
 
-	printf("ifflags=0x%x\n", ifr.ifr_flags);
 	ifr.ifr_flags |= IFF_UP;
 
 	if (ioctl(fd, SIOCSIFFLAGS, &ifr) < 0) {
@@ -288,6 +291,11 @@ fm_fakenet_configure_interface(fm_tunnel_t *tunnel, fm_fake_config_t *config)
 					pfxlen, tunnel->ifname);
 			return false;
 		}
+
+		if (prefix.address.family == AF_INET && tunnel->ipv4_address.family == AF_UNSPEC)
+			tunnel->ipv4_address = prefix.address;
+		else if (prefix.address.family == AF_INET6 && tunnel->ipv6_address.family == AF_UNSPEC)
+			tunnel->ipv6_address = prefix.address;
 
 		fm_log_debug("%s: added address %s/%u", tunnel->ifname,
 					fm_address_format(&prefix.address),
@@ -325,9 +333,6 @@ fm_fake_config_load(fm_fake_config_t *config, const char *path)
 
 	curly_node_free(top);
 
-	if (rv)
-		rv = fm_fake_network_build(config);
-
 	return rv;
 }
 
@@ -347,6 +352,47 @@ fm_fake_router_alloc(const char *name, fm_fake_router_array_t *array)
 	array->entries[array->count++] = router;
 
 	return router;
+}
+
+static fm_address_t *
+fm_fake_router_addr(fm_fake_router_t *router, int family)
+{
+	if (family == AF_INET)
+		return &router->ipv4_address;
+	if (family == AF_INET6)
+		return &router->ipv6_address;
+	return NULL;
+}
+
+static bool
+fm_fake_router_has_address(fm_fake_router_t *router, int family)
+{
+	const fm_address_t *addr;
+
+	if (!(addr = fm_fake_router_addr(router, family)))
+		return false;
+	return addr->family == family;
+}
+
+static const fm_address_t *
+fm_fake_router_get_address(fm_fake_router_t *router, int family)
+{
+	return fm_fake_router_addr(router, family);
+}
+
+static bool
+fm_fake_router_set_address(fm_fake_router_t *router, int family, const fm_address_t *new_addr)
+{
+	if (new_addr->family != family)
+		return false;
+
+	if (family == AF_INET)
+		router->ipv4_address = *new_addr;
+	else if (family == AF_INET6)
+		router->ipv6_address = *new_addr;
+	else
+		return false;
+	return true;
 }
 
 static void
@@ -395,17 +441,159 @@ fm_fake_router_find(const fm_fake_config_t *config, const char *name, unsigned i
 }
 
 /*
+ * Make sure router has a suitable address assigned
+ */
+static fm_fake_address_pool_t *
+fm_fake_address_pool_alloc(const fm_address_prefix_t *prefix)
+{
+	fm_fake_address_pool_t *pool;
+	const unsigned char *raw_addr;
+	unsigned int nbits, value_bits;
+
+	if (!(raw_addr = fm_address_get_raw_addr(&prefix->address, &nbits))
+	 || nbits > 128
+	 || prefix->pfxlen >= nbits)
+		return NULL;
+
+	pool = calloc(1, sizeof(*pool));
+	pool->family = prefix->address.family;
+	pool->pfxlen = prefix->pfxlen;
+	pool->addrbits = nbits;
+	pool->shift = 0;
+	memcpy(pool->raw_addr, raw_addr, nbits / 8);
+
+	if (prefix->address.family == AF_INET6) {
+		if (prefix->pfxlen >= 64)
+			return NULL;
+		value_bits = 64 - prefix->pfxlen;
+		pool->shift = 64;
+
+		memset(pool->raw_addr + 8, 0, 8);
+		pool->raw_addr[15] = 0x1;
+	} else {
+		value_bits = nbits - prefix->pfxlen;
+		pool->shift = 0;
+	}
+
+	if (value_bits > 16)
+		value_bits = 16;
+	pool->max_value = (1 << value_bits) - 1;
+
+	return pool;
+}
+
+static bool
+fm_fake_address_pool_get_next(fm_fake_address_pool_t *pool, fm_address_t *addr)
+{
+	unsigned char raw_addr[16];
+	unsigned int k;
+	uint32_t value;
+
+	if (pool->next_value >= pool->max_value)
+		return false;
+
+	value = pool->next_value++;
+
+	memcpy(raw_addr, pool->raw_addr, pool->addrbits / 8);
+
+	k = (pool->addrbits - pool->shift) / 8;
+	raw_addr[--k] |= value & 0xFF;
+
+	value >>= 8;
+	raw_addr[--k] |= value & 0xFF;
+
+	fm_address_set_raw_addr(addr, pool->family, raw_addr, pool->addrbits / 8);
+
+	return true;
+}
+
+static bool
+fm_fake_router_assign_addresses(fm_fake_router_t *router, int family, struct hlist_head *pool_head)
+{
+	fm_address_t new_addr;
+
+	while (router && !fm_fake_router_has_address(router, family)) {
+		fm_fake_address_pool_t *pool;
+		hlist_iterator_t iter;
+		bool found = false;
+
+		hlist_iterator_init(&iter, pool_head);
+		while (!found && (pool = hlist_iterator_next(&iter)) != NULL) {
+			if (pool->family == family)
+				found = fm_fake_address_pool_get_next(pool, &new_addr);
+		}
+
+		if (!found)
+			return false;
+
+		fm_log_debug("router %s assign address %s", router->config.name, fm_address_format(&new_addr));
+		fm_fake_router_set_address(router, family, &new_addr);
+
+		router = router->prev;
+	}
+
+	return true;
+}
+
+/*
  * Given the configuration setup, try to build the network in-memory
  */
 static bool
+fm_fake_network_set_egress(fm_fake_config_t *config, const fm_tunnel_t *tunnel)
+{
+	fm_fake_router_t *router;
+
+	if (config->egress_router != NULL)
+		return true;
+
+	router = fm_fake_router_alloc("egress", &config->routers);
+	router->ipv4_address = tunnel->ipv4_address;
+	router->ipv6_address = tunnel->ipv6_address;
+	router->label = 1;
+	router->ttl = 1;
+
+	config->egress_router = router;
+	return true;
+}
+
+static bool
+fm_fake_network_create_backbone_pools(const fm_string_array_t *array, struct hlist_head *head)
+{
+	hlist_insertion_iterator_t tail;
+	unsigned int i;
+
+	hlist_insertion_iterator_init(&tail, head);
+	for (i = 0; i < array->count; ++i) {
+		const char *addrstring = array->entries[i];
+		fm_address_prefix_t prefix;
+		fm_fake_address_pool_t *pool;
+
+		if (!fm_address_prefix_parse(addrstring, &prefix)) {
+			fm_log_error("Unable to parse backbone pool prefix %s", addrstring);
+			continue;
+		}
+
+		if ((pool = fm_fake_address_pool_alloc(&prefix)) == NULL)
+			continue;
+
+		hlist_insertion_iterator_insert_and_advance(&tail, &pool->link);
+	}
+
+	return true;
+}
+
+static bool
 fm_fake_network_build(fm_fake_config_t *config)
 {
-	unsigned int i, router_label = 1;
+	unsigned int i, router_label = 16;
 	bool ok = true;
 
 	config->egress_router = fm_fake_router_alloc("egress", &config->routers);
 	config->egress_router->label = router_label++;
 	config->egress_router->ttl = 1;
+
+	if (!fm_fake_network_create_backbone_pools(&config->backbone_pool, &config->bpool))
+		return false;
 
 	for (i = 0; i < config->networks.count; ++i) {
 		fm_fake_network_t *net = config->networks.entries[i];
@@ -425,15 +613,23 @@ fm_fake_network_build(fm_fake_config_t *config)
 		}
 
 		net->router = fm_fake_router_find(config, net->config.router, router_label++);
-		if (net->router == NULL)
+		if (net->router == NULL) {
 			ok = false;
+			continue;
+		}
+
+		fm_fake_router_assign_addresses(net->router, net->prefix.address.family, &config->bpool);
 
 		{
 			fm_fake_router_t *router;
 
 			fm_log_debug("network %s", net->config.address);
-			for (router = net->router; router; router = router->prev)
-				fm_log_debug("  %u %s", router->ttl, router->config.name);
+			for (router = net->router; router; router = router->prev) {
+				const fm_address_t *addr = fm_fake_router_get_address(router, net->prefix.address.family);
+
+				fm_log_debug("  %u %s; addr=%s", router->ttl, router->config.name, 
+						fm_address_format(addr));
+			}
 		}
 
 	}

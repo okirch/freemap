@@ -20,6 +20,7 @@
 
 #include "freemap.h"
 #include "addresses.h"
+#include "lists.h"
 
 typedef struct fm_fake_network_config {
 	char *			address;
@@ -35,7 +36,8 @@ typedef struct fm_fake_router_config {
 
 typedef struct fm_fake_router	fm_fake_router_t;
 struct fm_fake_router {
-	fm_address_t		address;
+	fm_address_t		ipv4_address;
+	fm_address_t		ipv6_address;
 	fm_fake_router_t *	prev;
 
 	unsigned int		ttl;
@@ -61,6 +63,19 @@ typedef struct fm_fake_network_array {
 	fm_fake_network_t **	entries;
 } fm_fake_network_array_t;
 
+typedef struct fm_fake_address_pool {
+	struct hlist		link;
+
+	int			family;
+
+	unsigned int		pfxlen;
+	unsigned int		addrbits;
+	unsigned int		shift;
+	unsigned int		next_value;
+	unsigned int		max_value;
+	unsigned char		raw_addr[16];
+} fm_fake_address_pool_t;
+
 typedef struct fm_fake_config {
 	fm_string_array_t	addresses;
 	fm_string_array_t	backbone_pool;
@@ -69,12 +84,17 @@ typedef struct fm_fake_config {
 
 	fm_fake_router_array_t	routers;
 	fm_fake_network_array_t	networks;
+
+	struct hlist_head	bpool;
 } fm_fake_config_t;
 
 typedef struct fm_tunnel {
 	char *			ifname;
 	int			fd;
 	int			ifindex;
+
+	fm_address_t		ipv4_address;
+	fm_address_t		ipv6_address;
 } fm_tunnel_t;
 
 #endif /* FREEMAP_FAKENET_H */
