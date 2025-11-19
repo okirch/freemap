@@ -30,7 +30,7 @@ struct fm_parsed_hdr;
 typedef const struct fm_protocol_handler {
 	int			proto_id;
 	unsigned int		recv_alloc;
-	void			(*setup)(fm_pkt_t *, void *);
+	void			(*display)(const fm_pkt_t *, const struct fm_parsed_hdr *);
 	bool			(*dissect)(fm_pkt_t *, struct fm_parsed_hdr *, unsigned int *);
 } fm_protocol_handler_t;
 

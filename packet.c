@@ -22,6 +22,7 @@
 #include <linux/if_packet.h>
 #include <linux/if_arp.h>
 #include <linux/errqueue.h>
+#include <arpa/inet.h>
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
 #include <netinet/tcp.h>
@@ -49,14 +50,21 @@ static bool			fm_proto_icmp_dissect(fm_pkt_t *, fm_parsed_hdr_t *, unsigned int 
 static bool			fm_proto_tcp_dissect(fm_pkt_t *, fm_parsed_hdr_t *, unsigned int *);
 static bool			fm_proto_udp_dissect(fm_pkt_t *, fm_parsed_hdr_t *, unsigned int *);
 
+static void			fm_proto_eth_display(const fm_pkt_t *, const fm_parsed_hdr_t *);
+static void			fm_proto_arp_display(const fm_pkt_t *, const fm_parsed_hdr_t *);
+static void			fm_proto_ip_display(const fm_pkt_t *, const fm_parsed_hdr_t *);
+static void			fm_proto_tcp_display(const fm_pkt_t *, const fm_parsed_hdr_t *);
+static void			fm_proto_udp_display(const fm_pkt_t *, const fm_parsed_hdr_t *);
+static void			fm_proto_icmp_display(const fm_pkt_t *, const fm_parsed_hdr_t *);
+
 static fm_protocol_handler_t	fm_protocol_handlers[] = {
-	{ FM_PROTO_IP,		INFO_SIZE(ip),		NULL,	fm_proto_ip_dissect	},
-	{ FM_PROTO_IPV6,	INFO_SIZE(ip),		NULL,	fm_proto_ip_dissect	},
-	{ FM_PROTO_ARP,		INFO_SIZE(arp),		NULL,	fm_proto_arp_dissect	},
-	{ FM_PROTO_TCP,		INFO_SIZE(tcp),		NULL,	fm_proto_tcp_dissect	},
-	{ FM_PROTO_UDP,		INFO_SIZE(udp),		NULL,	fm_proto_udp_dissect	},
-	{ FM_PROTO_ICMP,	INFO_SIZE(icmp),	NULL,	fm_proto_icmp_dissect	},
-	{ FM_LINK_PROTO_ETHER,	INFO_SIZE(eth),		NULL,	fm_proto_eth_dissect	},
+	{ FM_PROTO_IP,		INFO_SIZE(ip),		fm_proto_ip_display,	fm_proto_ip_dissect	},
+	{ FM_PROTO_IPV6,	INFO_SIZE(ip),		fm_proto_ip_display,	fm_proto_ip_dissect	},
+	{ FM_PROTO_ARP,		INFO_SIZE(arp),		fm_proto_arp_display,	fm_proto_arp_dissect	},
+	{ FM_PROTO_TCP,		INFO_SIZE(tcp),		fm_proto_tcp_display,	fm_proto_tcp_dissect	},
+	{ FM_PROTO_UDP,		INFO_SIZE(udp),		fm_proto_udp_display,	fm_proto_udp_dissect	},
+	{ FM_PROTO_ICMP,	INFO_SIZE(icmp),	fm_proto_icmp_display,	fm_proto_icmp_dissect	},
+	{ FM_LINK_PROTO_ETHER,	INFO_SIZE(eth),		fm_proto_eth_display,	fm_proto_eth_dissect	},
 	{ FM_PROTO_NONE }
 };
 
@@ -172,9 +180,14 @@ fm_packet_parser_inspect(fm_packet_parser_t *parser, fm_pkt_t *pkt)
 		if (!h->dissect(pkt, cooked->headers[k], &next_proto))
 			goto trash;
 
-		debugmsg("  parsed %s header, next proto %s",
-				fm_protocol_id_to_string(h->proto_id),
-				fm_protocol_id_to_string(next_proto));
+		if (fm_debug_facilities & FM_DEBUG_FACILITY_PACKET) {
+			if (h->display)
+				h->display(pkt, cooked->headers[k]);
+			else
+				debugmsg("  parsed %s header, next proto %s",
+						fm_protocol_id_to_string(h->proto_id),
+						fm_protocol_id_to_string(next_proto));
+		}
 	}
 
 	pkt->parsed = cooked;
@@ -219,9 +232,21 @@ fm_proto_eth_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_pro
 	if (!fm_raw_packet_pull_eth_hdr(pkt, &hdr->eth))
 		return false;
 
-	fm_log_debug("%s: next_proto=%u", __func__, hdr->eth.next_proto);
 	*next_proto = hdr->eth.next_proto;
 	return true;
+}
+
+void
+fm_proto_eth_display(const fm_pkt_t *pkt, const fm_parsed_hdr_t *hdr)
+{
+	const fm_eth_header_info_t *info = &hdr->eth;
+
+	fm_log_debug("  eth %02x:%02x:%02x:%02x:%02x:%02x -> %02x:%02x:%02x:%02x:%02x:%02x; next proto=%s",
+			info->src_addr[0], info->src_addr[1], info->src_addr[2],
+			info->src_addr[3], info->src_addr[4], info->src_addr[5],
+			info->dst_addr[0], info->dst_addr[1], info->dst_addr[2],
+			info->dst_addr[3], info->dst_addr[4], info->dst_addr[5],
+			fm_protocol_id_to_string(info->next_proto));
 }
 
 bool
@@ -263,6 +288,18 @@ fm_proto_ip_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_prot
 	return true;
 }
 
+void
+fm_proto_ip_display(const fm_pkt_t *pkt, const fm_parsed_hdr_t *hdr)
+{
+	const fm_ip_header_info_t *info = &hdr->ip;
+	unsigned int k;
+
+	fm_log_debug("  ip %s -> %s, next_proto=%s",
+			fm_address_format(&info->src_addr),
+			fm_address_format(&info->dst_addr),
+			fm_protocol_id_to_string(info->ipproto));
+}
+
 bool
 fm_proto_arp_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_proto)
 {
@@ -271,6 +308,27 @@ fm_proto_arp_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_pro
 
 	*next_proto = FM_PROTO_NONE;
 	return true;
+}
+
+void
+fm_proto_arp_display(const fm_pkt_t *pkg, const fm_parsed_hdr_t *hdr)
+{
+	const fm_arp_header_info_t *info = &hdr->arp;
+
+	if (info->op == ARPOP_REQUEST)
+		fm_log_debug("  arp request: who-has %s tell %s",
+				inet_ntoa(info->dst_ipaddr),
+				inet_ntoa(info->src_ipaddr));
+	else if (info->op == ARPOP_REPLY)
+		fm_log_debug("  arp request: %s is at %02x:%02x:%02x:%02x:%02x:%02x",
+				inet_ntoa(info->src_ipaddr),
+				info->src_hwaddr[0], info->src_hwaddr[1], info->src_hwaddr[2],
+				info->src_hwaddr[3], info->src_hwaddr[4], info->src_hwaddr[5]);
+	else
+		fm_log_debug("  arp message %u: dst=%s src=%s",
+				info->op,
+				inet_ntoa(info->dst_ipaddr),
+				inet_ntoa(info->src_ipaddr));
 }
 
 bool
@@ -283,6 +341,15 @@ fm_proto_tcp_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_pro
 	return true;
 }
 
+void
+fm_proto_tcp_display(const fm_pkt_t *pkt, const fm_parsed_hdr_t *hdr)
+{
+	const fm_tcp_header_info_t *info = &hdr->tcp;
+
+	fm_log_debug("  tcp %u -> %u, flags=0x%x", 
+			info->src_port, info->dst_port, info->flags);
+}
+
 bool
 fm_proto_udp_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_proto)
 {
@@ -291,6 +358,15 @@ fm_proto_udp_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_pro
 
 	*next_proto = FM_PROTO_NONE;
 	return true;
+}
+
+void
+fm_proto_udp_display(const fm_pkt_t *pkt, const fm_parsed_hdr_t *hdr)
+{
+	const fm_udp_header_info_t *info = &hdr->udp;
+
+	fm_log_debug("  udp %u -> %u", 
+			info->src_port, info->dst_port);
 }
 
 bool
@@ -314,6 +390,15 @@ fm_proto_icmp_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_pr
 		*next_proto = FM_PROTO_NONE;
 
 	return true;
+}
+
+void
+fm_proto_icmp_display(const fm_pkt_t *pkt, const fm_parsed_hdr_t *hdr)
+{
+	const fm_icmp_header_info_t *info = &hdr->icmp;
+
+	fm_log_debug("  icmp type %u/code %u",
+			info->type, info->code);
 }
 
 /*
