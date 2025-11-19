@@ -39,9 +39,16 @@ typedef struct fm_eth_header_info {
 /*
  * IP header information
  */
+#define FM_IP_MAX_EXTENSIONS	4
 typedef struct fm_ip_header_info {
 	fm_address_t		src_addr, dst_addr;
 	int			ipproto;
+	unsigned int		num_ext_headers;
+	struct fm_ip_extension_hdr {
+		int		ipproto;
+		unsigned int	len;
+		void *		data;
+	} ext_header[FM_IP_MAX_EXTENSIONS];
 } fm_ip_header_info_t;
 
 /*

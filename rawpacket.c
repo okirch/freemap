@@ -232,6 +232,44 @@ fm_raw_packet_pull_ipv4_hdr(fm_buffer_t *bp, fm_ip_header_info_t *info)
 }
 
 static bool
+fm_raw_packet_pull_ipv6_extension(fm_buffer_t *bp, fm_ip_header_info_t *info)
+{
+	struct fm_ip_extension_hdr *ext;
+	unsigned char *raw;
+
+	if (info->num_ext_headers >= FM_IP_MAX_EXTENSIONS)
+		return false;
+
+	switch (info->ipproto) {
+	case IPPROTO_HOPOPTS:
+	case IPPROTO_ROUTING:
+	case IPPROTO_FRAGMENT:
+	case IPPROTO_ICMPV6:
+	case IPPROTO_DSTOPTS:
+	case IPPROTO_MH:
+		break;
+	default:
+		return false;
+	}
+
+	if (!(raw = fm_buffer_peek(bp, 8))
+	 || !(raw = fm_buffer_pull(bp, raw[1] + 8)))
+		return false;
+
+	fm_log_debug("found extension header %d len %u next %u",
+			info->ipproto, raw[1] + 8, raw[0]);
+
+	ext = &info->ext_header[info->num_ext_headers++];
+	ext->ipproto = info->ipproto;
+	ext->data = raw + 2;
+	ext->len = raw[1] + 8 - 2;
+
+	info->ipproto = raw[0];
+
+	return true;
+}
+
+static bool
 fm_raw_packet_pull_ipv6_hdr(fm_buffer_t *bp, fm_ip_header_info_t *info)
 {
 	const struct ip6_hdr *ip = (const struct ip6_hdr *) fm_buffer_pull(bp, sizeof(struct ip6_hdr));
@@ -248,6 +286,9 @@ fm_raw_packet_pull_ipv6_hdr(fm_buffer_t *bp, fm_ip_header_info_t *info)
 
 	fm_address_set_ipv6(&info->src_addr, &ip->ip6_src);
 	fm_address_set_ipv6(&info->dst_addr, &ip->ip6_dst);
+
+	while (fm_raw_packet_pull_ipv6_extension(bp, info))
+		;
 
 	return true;
 }

@@ -298,6 +298,12 @@ fm_proto_ip_display(const fm_pkt_t *pkt, const fm_parsed_hdr_t *hdr)
 			fm_address_format(&info->src_addr),
 			fm_address_format(&info->dst_addr),
 			fm_protocol_id_to_string(info->ipproto));
+
+	for (k = 0; k < info->num_ext_headers; ++k) {
+		const struct fm_ip_extension_hdr *ext = &info->ext_header[k];
+
+		fm_log_debug("    ext hdr proto=%d len=%u", ext->ipproto, ext->len);
+	}
 }
 
 bool
