@@ -149,6 +149,10 @@ fm_parsed_pkt_free(fm_parsed_pkt_t *cooked)
 	free(cooked);
 }
 
+/*
+ * Parse a packet, given an explicit stack of protocols we expect to see.
+ * If we see something different, we punt.
+ */
 fm_parsed_pkt_t *
 fm_packet_parser_inspect(fm_packet_parser_t *parser, fm_pkt_t *pkt)
 {
@@ -183,6 +187,74 @@ fm_packet_parser_inspect(fm_packet_parser_t *parser, fm_pkt_t *pkt)
 		if (fm_debug_facilities & FM_DEBUG_FACILITY_PACKET) {
 			if (h->display)
 				h->display(pkt, cooked->headers[k]);
+			else
+				debugmsg("  parsed %s header, next proto %s",
+						fm_protocol_id_to_string(h->proto_id),
+						fm_protocol_id_to_string(next_proto));
+		}
+	}
+
+	pkt->parsed = cooked;
+	debugmsg("  success.");
+	return cooked;
+
+trash:
+	debugmsg("  failed.");
+	free(cooked);
+	return NULL;
+}
+
+/*
+ * Parse a packet, detecting the next layer as we go.
+ */
+fm_parsed_pkt_t *
+fm_packet_parser_inspect_any(fm_pkt_t *pkt, unsigned int next_proto)
+{
+	unsigned int header_space, allocated;
+	fm_parsed_pkt_t *cooked;
+	unsigned char *headers;
+	unsigned int k;
+
+	/* Allocate space for at least 5 headers */
+	header_space = 5 * sizeof(fm_parsed_hdr_t);
+
+	/* If debug facility data is enabled, no need to print the packet a second
+	 * time. */
+	if ((fm_debug_facilities & (FM_DEBUG_FACILITY_PACKET|FM_DEBUG_FACILITY_DATA)) == FM_DEBUG_FACILITY_PACKET
+	 && fm_debug_level > 1)
+		fm_buffer_dump(pkt->payload, __func__);
+
+	cooked = calloc(1, sizeof(*cooked) + header_space);
+	headers = (unsigned char *) (cooked + 1);
+	allocated = 0;
+
+	for (k = 0; k < FM_PARSED_PACKET_MAX_PROTOS; ++k) {
+		fm_protocol_handler_t *h;
+		fm_parsed_hdr_t *hdr;
+
+		h = fm_packet_parser_select(next_proto);
+		if (h == NULL)
+			break;
+
+		if (header_space - allocated < h->recv_alloc)
+			break;
+
+		hdr = (fm_parsed_hdr_t *) (headers + allocated);
+		hdr->proto_id = next_proto;
+
+		cooked->headers[k] = hdr;
+		allocated += h->recv_alloc;
+
+		if (!h->dissect(pkt, cooked->headers[k], &next_proto)) {
+			debugmsg("  failed to parse %s header (%u bytes)",
+					fm_protocol_id_to_string(h->proto_id),
+					fm_buffer_available(pkt->payload));
+			goto trash;
+		}
+
+		if (fm_debug_facilities & FM_DEBUG_FACILITY_PACKET) {
+			if (h->display)
+				h->display(pkt, hdr);
 			else
 				debugmsg("  parsed %s header, next proto %s",
 						fm_protocol_id_to_string(h->proto_id),
