@@ -40,7 +40,7 @@ fm_buffer_available(const fm_buffer_t *pkt)
 	return pkt->wpos - pkt->rpos;
 }
 
-static inline const void *
+static inline void *
 fm_buffer_tail(fm_buffer_t *pkt)
 {
 	return pkt->data + pkt->wpos;
@@ -101,6 +101,28 @@ fm_buffer_pull(fm_buffer_t *pkt, size_t len)
 	if (ret != NULL)
 		pkt->rpos += len;
 	return ret;
+}
+
+static inline bool
+fm_buffer_get16(fm_buffer_t *pkt, uint16_t *ret)
+{
+	const uint16_t *data;
+
+	if (!(data = fm_buffer_pull(pkt, sizeof(*data))))
+		return false;
+	*ret = *data;
+	return true;
+}
+
+static inline bool
+fm_buffer_get32(fm_buffer_t *pkt, uint32_t *ret)
+{
+	const uint32_t *data;
+
+	if (!(data = fm_buffer_pull(pkt, sizeof(*data))))
+		return false;
+	*ret = *data;
+	return true;
 }
 
 static inline unsigned int
