@@ -4,7 +4,10 @@ ALL	= \
 	  fakenet
 
 fakenet_OBJS = \
-	  main.o
+	  main.o \
+	  interface.o \
+	  build.o \
+	  config.o
 
 all:	$(ALL)
 

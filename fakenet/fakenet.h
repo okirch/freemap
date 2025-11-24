@@ -97,4 +97,20 @@ typedef struct fm_tunnel {
 	fm_address_t		ipv6_address;
 } fm_tunnel_t;
 
+/* Primitives */
+extern fm_fake_network_t *	fm_fake_network_alloc(fm_fake_network_array_t *);
+extern fm_fake_router_t *	fm_fake_router_alloc(const char *, fm_fake_router_array_t *);
+extern fm_address_t *		fm_fake_router_addr(fm_fake_router_t *, int family);
+extern bool			fm_fake_router_has_address(fm_fake_router_t *router, int family);
+extern const fm_address_t *	fm_fake_router_get_address(fm_fake_router_t *router, int family);
+extern bool			fm_fake_router_set_address(fm_fake_router_t *router, int family, const fm_address_t *new_addr);
+
+extern bool			fm_fake_config_load(fm_fake_config_t *config, const char *path);
+extern bool			fm_fake_network_build(fm_fake_config_t *config);
+extern bool			fm_fake_network_set_egress(fm_fake_config_t *config, const fm_tunnel_t *tunnel);
+
+extern fm_tunnel_t *		fm_fakenet_attach_interface(void);
+extern bool			fm_fakenet_configure_interface(fm_tunnel_t *tunnel, fm_fake_config_t *config);
+extern bool			fm_fakenet_run(fm_tunnel_t *tunnel, const fm_fake_config_t *config);
+
 #endif /* FREEMAP_FAKENET_H */
