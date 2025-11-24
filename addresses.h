@@ -105,6 +105,9 @@ extern bool			fm_create_local_address_enumerator(const char *, fm_target_manager
 extern bool			fm_address_array_append_unique(fm_address_array_t *array, const fm_address_t *addr);
 extern void			fm_address_prefix_array_append(fm_address_prefix_array_t *array, const fm_address_prefix_t *pfx);
 
+extern bool			fm_address_prefix_match_address(const fm_address_prefix_t *prefix, const fm_address_t *addr,
+						const unsigned char *raw_mask, unsigned int raw_mask_len);
+
 static inline unsigned int
 fm_addrfamily_max_addrbits(int af)
 {

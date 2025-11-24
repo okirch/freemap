@@ -424,6 +424,46 @@ fm_address_equal(const fm_address_t *a, const fm_address_t *b, bool with_port)
 }
 
 bool
+fm_address_prefix_match_address(const fm_address_prefix_t *prefix, const fm_address_t *addr,
+			const unsigned char *raw_mask, unsigned int raw_mask_len)
+{
+	const unsigned char *raw_addr1, *raw_addr2;
+	unsigned char tmp_raw_mask[16];
+	unsigned int addr_bits, noctets;
+	unsigned int k, xor = 0;
+
+	if (prefix->address.family != addr->family)
+		return false;
+
+	/* default route */
+	if (prefix->pfxlen == 0)
+		return true;
+
+	raw_addr1 = fm_address_get_raw_addr(addr, &addr_bits);
+	if (raw_addr1 == NULL)
+		return false;
+
+	raw_addr2 = fm_address_get_raw_addr(&prefix->address, NULL);
+	if (raw_addr2 == NULL)
+		return false;
+
+	if (raw_mask == NULL) {
+		if (!fm_address_mask_from_prefixlen(prefix->address.family, prefix->pfxlen, tmp_raw_mask, sizeof(tmp_raw_mask)))
+			return false;
+		raw_mask = tmp_raw_mask;
+	}
+
+	if (prefix->pfxlen > addr_bits)
+		return false; /* you're weird */
+
+	noctets = (prefix->pfxlen + 7) / 8;
+	for (k = 0; k < noctets && xor == 0; ++k)
+		xor = raw_mask[k] & (raw_addr1[k] ^ raw_addr2[k]);
+
+	return (xor == 0);
+}
+
+bool
 fm_address_array_append_unique(fm_address_array_t *array, const fm_address_t *address)
 {
 	unsigned int i;
