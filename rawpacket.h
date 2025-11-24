@@ -66,6 +66,16 @@ typedef struct fm_arp_header_info {
 } fm_arp_header_info_t;
 
 /*
+ * ICMP type info
+ */
+typedef const struct fm_icmp_msg_type {
+	const char *		desc;
+	int			v4_type, v4_code;
+	int			v6_type, v6_code;
+	bool			with_seq_id;
+} fm_icmp_msg_type_t;
+
+/*
  * The ICMP header info covers both ICMPv4 and ICMPv6.
  * v6 types and codes are mapped to their v4 counterparts where posssible.
  */
@@ -74,6 +84,8 @@ typedef struct fm_icmp_header_info {
 	unsigned char		v4_type, v4_code;
 	uint16_t		seq;
 	uint16_t		id;
+
+	fm_icmp_msg_type_t *	msg_type;
 
 	bool			include_error_pkt;
 } fm_icmp_header_info_t;
@@ -146,6 +158,8 @@ extern bool		fm_raw_packet_pull_arp_header(fm_buffer_t *bp, fm_arp_header_info_t
 
 extern bool		fm_icmp_header_is_host_unreachable(const fm_icmp_header_info_t *icmp_info);
 extern void		fm_raw_packet_map_icmpv6_codes(fm_icmp_header_info_t *icmp_info, unsigned int type, unsigned int code);
+extern fm_icmp_msg_type_t *fm_icmp_msg_type_by_name(const char *name);
+extern fm_icmp_msg_type_t *fm_icmp_msg_type_get_reply(fm_icmp_msg_type_t *req);
 
 extern bool		fm_ipv6_transport_csum_partial(fm_csum_partial_t *, const fm_address_t *, const fm_address_t *, unsigned int next_header);
 

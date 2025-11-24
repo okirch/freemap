@@ -503,6 +503,90 @@ fm_raw_packet_pull_udp_header(fm_buffer_t *bp, fm_udp_header_info_t *udp_info)
 	return true;
 }
 
+/*
+ * I don't want to distinguish between v4 and v6 in upper layer code,
+ * so what we'll do here is translate ICMPv6 code/type combinations
+ * to what resembles them most closely in v4.
+ */
+static fm_icmp_msg_type_t	fm_icmp_msg_type[] = {
+	{ "net-unreach",	ICMP_DEST_UNREACH, ICMP_NET_UNREACH, ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_NOROUTE, },
+	{ "host-unreach",	ICMP_DEST_UNREACH, ICMP_HOST_UNREACH, ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_ADDR },
+	{ "port-unreach",	ICMP_DEST_UNREACH, ICMP_PORT_UNREACH, ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_NOPORT },
+	{ "frag-needed",	ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED, ICMP6_PACKET_TOO_BIG, -1 },
+	{ "ttl-exceeded",	ICMP_TIME_EXCEEDED, ICMP_EXC_TTL, ICMP6_TIME_EXCEEDED, ICMP6_TIME_EXCEED_TRANSIT },
+	{ "fragtime-exceeded",	ICMP_TIME_EXCEEDED, ICMP_EXC_FRAGTIME, ICMP6_TIME_EXCEEDED, ICMP6_TIME_EXCEED_REASSEMBLY },
+	{ "param-problem",	ICMP_PARAMETERPROB, 0, ICMP6_PARAM_PROB, 0 },
+	{ "echo-request",	ICMP_ECHO, 0, ICMP6_ECHO_REQUEST, 0, .with_seq_id = true },
+	{ "echo-reply",		ICMP_ECHOREPLY, 0, ICMP6_ECHO_REPLY, 0, .with_seq_id = true },
+	{ "timestamp-request",	ICMP_TIMESTAMP, 0, -1, 0, .with_seq_id = true },
+	{ "timestamp-reply",	ICMP_TIMESTAMPREPLY, 0, -1, 0, .with_seq_id = true },
+	{ "info-request",	ICMP_INFO_REQUEST, 0, -1, 0, .with_seq_id = true },
+	{ "info-reply",		ICMP_INFO_REPLY, 0, -1, 0, .with_seq_id = true },
+
+	{ NULL }
+};
+
+static fm_icmp_msg_type_t *
+fm_icmp_msg_type_get_v4(unsigned int type, unsigned int code)
+{
+	fm_icmp_msg_type_t *info;
+
+	for (info = fm_icmp_msg_type; info->desc != NULL; ++info) {
+		if (info->v4_type == type && (info->v4_code < 0 || info->v4_code == code))
+			return info;
+	}
+
+	return NULL;
+}
+
+static fm_icmp_msg_type_t *
+fm_icmp_msg_type_get_v6(unsigned int type, unsigned int code)
+{
+	fm_icmp_msg_type_t *info;
+
+	for (info = fm_icmp_msg_type; info->desc != NULL; ++info) {
+		if (info->v6_type == type && (info->v6_code < 0 || info->v6_code == code))
+			return info;
+	}
+
+	return NULL;
+}
+
+fm_icmp_msg_type_t *
+fm_icmp_msg_type_get_reply(fm_icmp_msg_type_t *req)
+{
+	switch (req->v4_type) {
+	case ICMP_ECHO:
+		return fm_icmp_msg_type_get_v4(ICMP_ECHOREPLY, req->v4_code);
+
+	case ICMP_TIMESTAMP:
+		return fm_icmp_msg_type_get_v4(ICMP_TIMESTAMPREPLY, req->v4_code);
+
+	case ICMP_INFO_REQUEST:
+		return fm_icmp_msg_type_get_v4(ICMP_INFO_REPLY, req->v4_code);
+	}
+
+	return NULL;
+
+}
+
+/*
+ * This should be used by the icmp probing code to translate strings like "echo" into the corresponding
+ * request and reply types. Simply call this function with "foo-request" and "foo-reply" for
+ * foo in "echo", "timestamp", etc.
+ */
+fm_icmp_msg_type_t *
+fm_icmp_msg_type_by_name(const char *name)
+{
+	fm_icmp_msg_type_t *info;
+
+	for (info = fm_icmp_msg_type; info->desc != NULL; ++info) {
+		if (!strcmp(info->desc, name))
+			return info;
+	}
+	return NULL;
+}
+
 bool
 fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info)
 {
@@ -518,6 +602,8 @@ fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info
 
 	icmp_info->v4_type = ih->icmp_type;
 	icmp_info->v4_code = ih->icmp_code;
+
+	icmp_info->msg_type = fm_icmp_msg_type_get_v4(ih->icmp_type, ih->icmp_code);
 
 	switch (ih->icmp_type) {
 	case ICMP_DEST_UNREACH:
@@ -564,40 +650,17 @@ fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info
 	return true;
 }
 
-/*
- * I don't want to distinguish between v4 and v6 in upper layer code,
- * so what we'll do here is translate ICMPv6 code/type combinations
- * to what resembles them most closely in v4.
- */
 void
 fm_raw_packet_map_icmpv6_codes(fm_icmp_header_info_t *icmp_info, unsigned int type, unsigned int code)
 {
-	static int codemap[][5] = {
-		{ ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_NOROUTE, ICMP_DEST_UNREACH, ICMP_NET_UNREACH },
-		{ ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_ADDR, ICMP_DEST_UNREACH, ICMP_HOST_UNREACH },
-		{ ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_NOPORT, ICMP_DEST_UNREACH, ICMP_PORT_UNREACH },
-		{ ICMP6_PACKET_TOO_BIG, -1, ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED },
-		{ ICMP6_TIME_EXCEEDED, ICMP6_TIME_EXCEED_TRANSIT, ICMP_TIME_EXCEEDED, ICMP_EXC_TTL },
-		{ ICMP6_TIME_EXCEEDED, ICMP6_TIME_EXCEED_REASSEMBLY, ICMP_TIME_EXCEEDED, ICMP_EXC_FRAGTIME },
-		{ ICMP6_PARAM_PROB, -1, ICMP_PARAMETERPROB, 0 },
-		{ ICMP6_ECHO_REQUEST, -1, ICMP_ECHO, 0 },
-		{ ICMP6_ECHO_REPLY, -1, ICMP_ECHOREPLY, 0 },
-		{ -1 }
-	};
-	unsigned int i;
-
-	for (i = 0; codemap[i][0] >= 0; ++i) {
-		if (codemap[i][0] != type)
-			continue;
-		if (codemap[i][1] >= 0 && codemap[i][1] != code)
-			continue;
-		icmp_info->v4_type = codemap[i][2];
-		icmp_info->v4_code = codemap[i][3];
-		return;
+	icmp_info->msg_type = fm_icmp_msg_type_get_v6(type, code);
+	if (icmp_info->msg_type != NULL) {
+		icmp_info->v4_type = icmp_info->msg_type->v4_type;
+		icmp_info->v4_code = icmp_info->msg_type->v4_code;
+	} else {
+		icmp_info->v4_type = 0xFF;
+		icmp_info->v4_code = 0xFF;
 	}
-
-	icmp_info->v4_type = 0xFF;
-	icmp_info->v4_code = 0xFF;
 }
 
 bool
