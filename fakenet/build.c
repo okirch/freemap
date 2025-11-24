@@ -422,6 +422,55 @@ fm_fake_config_get_service(const fm_fake_config_t *config, const char *name)
 	return NULL;
 }
 
+fm_fake_network_t *
+fm_fake_config_get_network_by_addr(const fm_fake_config_t *config, const fm_address_t *addr)
+{
+	unsigned int i;
+
+	for (i = 0; i < config->networks.count; ++i) {
+		fm_fake_network_t *net = config->networks.entries[i];
+
+		if (fm_address_prefix_match_address(&net->prefix, addr, net->prefix_mask, (net->prefix.pfxlen + 7) / 8))
+			return net;
+	}
+
+	return NULL;
+}
+
+fm_fake_host_t *
+fm_fake_network_get_host_by_addr(const fm_fake_network_t *net, const fm_address_t *addr)
+{
+	unsigned int i;
+
+	for (i = 0; i < net->hosts.count; ++i) {
+		fm_fake_host_t *host = net->hosts.entries[i];
+
+		if (fm_address_equal(&host->address, addr, false))
+			return host;
+	}
+
+	return NULL;
+}
+
+fm_fake_host_t *
+fm_fake_config_get_host_by_addr(const fm_fake_config_t *config, const fm_address_t *addr)
+{
+	fm_fake_network_t *net = NULL;
+	unsigned int i;
+
+	if (!(net = fm_fake_config_get_network_by_addr(config, addr)))
+		return NULL;
+
+	for (i = 0; i < net->hosts.count; ++i) {
+		fm_fake_host_t *host = net->hosts.entries[i];
+
+		if (fm_address_equal(&host->address, addr, false))
+			return host;
+	}
+
+	return NULL;
+}
+
 /*
  * Chase service names
  */
@@ -625,6 +674,7 @@ fm_fake_network_build_hosts(fm_fake_network_t *net, const fm_fake_config_t *conf
 		}
 
 		host->ttl = net->router->ttl + 1;
+		host->network = net;
 	}
 
 	return ok;
@@ -668,6 +718,12 @@ fm_fake_network_build(fm_fake_config_t *config)
 
 		if (!fm_address_prefix_parse(net->name, &net->prefix)) {
 			fm_log_error("network %s: cannot parse prefix", net->name);
+			ok = false;
+			continue;
+		}
+
+		if (!fm_address_mask_from_prefixlen(net->prefix.address.family, net->prefix.pfxlen, net->prefix_mask, sizeof(net->prefix_mask))) {
+			fm_log_error("network %s: cannot build prefix mask", net->name);
 			ok = false;
 			continue;
 		}

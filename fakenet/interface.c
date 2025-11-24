@@ -19,6 +19,7 @@
 #include <linux/if_tun.h>
 #include <sys/ioctl.h>
 #include <net/if.h>
+#include <netinet/ip_icmp.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -32,12 +33,13 @@
 #include "protocols.h"
 #include "socket.h"
 #include "routing.h"
+#include "rawpacket.h"
 #include "packet.h"
 #include "buffer.h"
 #include "logging.h"
 
 
-static void		fm_fakenet_receive(fm_parsed_pkt_t *cooked);
+static fm_buffer_t *		fm_fakenet_receive(fm_parsed_pkt_t *cooked, const fm_fake_config_t *config, fm_buffer_t *payload);
 
 /*
  * Create the tunnel interface that we will serve.
@@ -161,6 +163,7 @@ fm_fakenet_run(fm_tunnel_t *tunnel, const fm_fake_config_t *config)
 		fm_pkt_t pkt;
 		unsigned int next_proto;
 		fm_parsed_pkt_t *cooked;
+		fm_buffer_t *reply;
 		int n;
 
 		bp->rpos = bp->wpos = 0;
@@ -210,7 +213,23 @@ fm_fakenet_run(fm_tunnel_t *tunnel, const fm_fake_config_t *config)
 			continue;
 
 		/* Get the IP header, find the destination network, and possibly the host */
-		fm_fakenet_receive(cooked);
+		reply = fm_fakenet_receive(cooked, config, pkt.payload);
+		if (reply != NULL) {
+			uint16_t *frame;
+
+			assert(reply->rpos == 4);
+			reply->rpos = 0;
+			frame = (uint16_t *) reply->data;
+			frame[0] = htons(0);
+			frame[1] = htons(ptype);
+
+			if (fm_debug_facilities & FM_DEBUG_FACILITY_DATA) {
+				fm_buffer_dump(reply, "sending response");
+			}
+
+			write(tunnel->fd, fm_buffer_head(reply), fm_buffer_available(reply));
+			fm_buffer_free(reply);
+		}
 
 		free(cooked);
 	}
@@ -218,7 +237,120 @@ fm_fakenet_run(fm_tunnel_t *tunnel, const fm_fake_config_t *config)
 	return true;
 }
 
-static void
-fm_fakenet_receive(fm_parsed_pkt_t *cooked)
+static fm_buffer_t *
+fm_fake_host_prepare_response(fm_fake_host_t *host, const fm_ip_header_info_t *ip, unsigned int transport_len, fm_ip_header_info_t *reply_info)
 {
+	fm_buffer_t *reply;
+
+	memset(reply_info, 0, sizeof(*reply_info));
+	reply_info->src_addr = ip->dst_addr;
+	reply_info->dst_addr = ip->src_addr;
+	reply_info->ipproto = ip->ipproto;
+	reply_info->ttl = 64;
+	reply_info->tos = 0;
+
+	reply = fm_buffer_alloc(128);
+	reply->rpos = reply->wpos = 4;
+
+	if (!fm_raw_packet_add_ip_header(reply, reply_info, transport_len)) {
+		fm_buffer_free(reply);
+		return NULL;
+	}
+
+	return reply;
+}
+
+static fm_buffer_t *
+fm_fake_host_receive_icmp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_ip_header_info_t *ip, const fm_icmp_header_info_t *icmp, fm_buffer_t *payload)
+{
+	fm_buffer_t *reply;
+	fm_ip_header_info_t ip_reply_info;
+	fm_icmp_header_info_t icmp_reply_info;
+	fm_icmp_msg_type_t *reply_type;
+	unsigned int transport_len = 0;
+
+	if (icmp->msg_type == NULL) {
+		fm_log_debug("   unidentified ICMP packet");
+		return NULL;
+	}
+
+	fm_log_debug("   ICMP %s packet", icmp->msg_type->desc);
+
+	reply_type = fm_icmp_msg_type_get_reply(icmp->msg_type);
+	if (reply_type == NULL)
+		return NULL;
+
+	/* For now, all I can do is ping */
+	if (reply_type->v4_type != ICMP_ECHOREPLY)
+		return NULL;
+
+	transport_len = 8 + fm_buffer_available(payload);
+
+	reply = fm_fake_host_prepare_response(host, ip, transport_len, &ip_reply_info);
+	if (reply == NULL)
+		return NULL;
+
+	icmp_reply_info = *icmp;
+	icmp_reply_info.msg_type = reply_type;
+
+	if (!fm_raw_packet_add_icmp_header(reply, &icmp_reply_info, &ip_reply_info, payload)) {
+		fm_buffer_free(reply);
+		return NULL;
+	}
+
+	return reply;
+}
+
+static fm_buffer_t *
+fm_fake_host_receive(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_ip_header_info_t *ip, fm_buffer_t *payload)
+{
+	fm_parsed_hdr_t *hdr;
+
+	if (!(hdr = fm_parsed_packet_next_header(cooked)))
+		return NULL; /* no next protocol that we'd understand; or just an IPv6 packet with extension headers */
+
+	switch (hdr->proto_id) {
+	case FM_PROTO_ICMP:
+		return fm_fake_host_receive_icmp(host, cooked, ip, &hdr->icmp, payload);
+	}
+
+	return NULL;
+}
+
+static fm_buffer_t *
+fm_fakenet_receive(fm_parsed_pkt_t *cooked, const fm_fake_config_t *config, fm_buffer_t *payload)
+{
+	fm_parsed_hdr_t *hdr;
+	fm_fake_network_t *net;
+	fm_fake_host_t *host;
+	fm_buffer_t *reply;
+
+	if (!(hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_IP)))
+		return NULL;
+
+	net = fm_fake_config_get_network_by_addr(config, &hdr->ip.dst_addr);
+	if (net == NULL)
+		return NULL; /* We don't know you. FIXME: we should provide more realistic routing. */
+
+	/* TBD: perform filtering along the way */
+
+	if (hdr->ip.ttl <= net->router->ttl) {
+		/* TBD: find the proper router, send time exceeded */
+		return NULL;
+	}
+
+	host = fm_fake_network_get_host_by_addr(net, &hdr->ip.dst_addr);
+	if (host == NULL)
+		return NULL;
+
+	fm_log_debug("packet to %s (net %s)", host->name, host->network->name);
+
+	/* TBD: perform filtering at the host */
+
+	reply = fm_fake_host_receive(host, cooked, &hdr->ip, payload);
+	if (reply == NULL)
+		return reply;
+
+	/* TBD: compute a suitable delay */
+	return reply;
 }
