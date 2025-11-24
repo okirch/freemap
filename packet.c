@@ -300,6 +300,18 @@ fm_parsed_packet_find_next(fm_parsed_pkt_t *cooked, unsigned int proto_id)
 	return NULL;
 }
 
+fm_parsed_hdr_t *
+fm_parsed_packet_next_header(fm_parsed_pkt_t *cooked)
+{
+	unsigned int k = cooked->next_header;
+
+	if (k >= cooked->num_headers)
+		return NULL;
+
+	cooked->next_header += 1;
+	return cooked->headers[k];
+}
+
 bool
 fm_proto_eth_dissect(fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_proto)
 {

@@ -47,6 +47,7 @@ extern fm_pkt_t *		fm_packet_parser_allocate(const fm_packet_parser_t *, int, un
 extern fm_parsed_pkt_t *	fm_packet_parser_inspect(fm_packet_parser_t *, fm_pkt_t *);
 extern fm_parsed_pkt_t *	fm_packet_parser_inspect_any(fm_pkt_t *pkt, unsigned int next_proto);
 extern fm_parsed_pkt_t *	fm_packet_synthetic_parse(fm_packet_parser_t *parser, fm_pkt_t *pkt);
-extern struct fm_parsed_hdr *fm_parsed_packet_find_next(fm_parsed_pkt_t *, unsigned int proto_id);
+extern struct fm_parsed_hdr *	fm_parsed_packet_find_next(fm_parsed_pkt_t *, unsigned int proto_id);
+extern struct fm_parsed_hdr *	fm_parsed_packet_next_header(fm_parsed_pkt_t *);
 
 #endif /* FREEMAP_PACKET_H */
