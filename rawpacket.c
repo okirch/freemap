@@ -227,6 +227,7 @@ fm_raw_packet_pull_ipv4_hdr(fm_buffer_t *bp, fm_ip_header_info_t *info)
 	fm_address_set_ipv4(&info->src_addr, ip->saddr);
 	fm_address_set_ipv4(&info->dst_addr, ip->daddr);
 	info->ipproto = ip->protocol;
+	info->ttl = ip->ttl;
 
 	return true;
 }
@@ -284,6 +285,7 @@ fm_raw_packet_pull_ipv6_hdr(fm_buffer_t *bp, fm_ip_header_info_t *info)
 	/* We do not yet unwrap all those next headers; we expect the transport header to follow
 	 * the IPv6 header right away. */
 	info->ipproto = ip->ip6_nxt;
+	info->ttl = ip->ip6_hops;
 
 	fm_address_set_ipv6(&info->src_addr, &ip->ip6_src);
 	fm_address_set_ipv6(&info->dst_addr, &ip->ip6_dst);
@@ -359,7 +361,6 @@ fm_ipv4_transport_csum_partial(fm_csum_partial_t *cp, const fm_address_t *src_ad
 	return true;
 }
 
-
 /*
  * Add network header to packet
  */
@@ -369,7 +370,7 @@ fm_raw_packet_add_network_header(fm_buffer_t *bp, const fm_address_t *src_addr, 
 				unsigned int transport_len)
 {
 	if (src_addr->family != dst_addr->family) {
-		fm_log_error("%s: incompatible network protocols", __func__);
+		fm_log_error("%s: incompatible src/dst address", __func__);
 		return false;
 	}
 
@@ -381,6 +382,12 @@ fm_raw_packet_add_network_header(fm_buffer_t *bp, const fm_address_t *src_addr, 
 
 	fm_log_error("%s: unsupported network protocol %u", __func__, dst_addr->family);
 	return false;
+}
+
+bool
+fm_raw_packet_add_ip_header(fm_buffer_t *bp, const fm_ip_header_info_t *ip, unsigned int transport_len)
+{
+	return fm_raw_packet_add_network_header(bp, &ip->src_addr, &ip->dst_addr, ip->ipproto, ip->ttl, ip->tos, transport_len);
 }
 
 /*
@@ -711,6 +718,72 @@ fm_raw_packet_pull_icmpv6_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_in
 
 	return true;
 }
+
+/*
+ * Add an ICMP header (IPv4/v6 agnostic)
+ */
+bool
+fm_raw_packet_add_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info, const fm_ip_header_info_t *ip_info, const fm_buffer_t *data)
+{
+	fm_icmp_msg_type_t *msg_type;
+	unsigned int hdrlen = 4;
+
+	if ((msg_type = icmp_info->msg_type) == NULL)
+		return false;
+
+	if (msg_type->with_seq_id)
+		hdrlen += 4;
+
+	if (ip_info->ipproto == IPPROTO_ICMP) {
+		struct icmp *icmph;
+
+		icmph = fm_buffer_push(bp, hdrlen);
+		icmph->icmp_type = msg_type->v4_type;
+		icmph->icmp_code = msg_type->v4_code >= 0? msg_type->v4_code : 0;
+		icmph->icmp_cksum = 0;
+		if (msg_type->with_seq_id) {
+			icmph->icmp_id = htons(icmp_info->id);
+			icmph->icmp_seq = htons(icmp_info->seq);
+		}
+
+		if (data && fm_buffer_available(data)) {
+			if (!fm_buffer_append(bp, fm_buffer_head(data), fm_buffer_available(data)))
+				return false;
+			hdrlen += fm_buffer_available(data);
+		}
+
+                icmph->icmp_cksum = in_csum(icmph, hdrlen);
+	} else
+	if (ip_info->ipproto == IPPROTO_ICMPV6) {
+		fm_csum_partial_t csum = { 0 };
+		struct icmp6_hdr *icmph;
+
+		icmph = fm_buffer_push(bp, hdrlen);
+		icmph->icmp6_type = msg_type->v6_type;
+		icmph->icmp6_code = msg_type->v6_code >= 0? msg_type->v6_code : 0;
+		icmph->icmp6_cksum = 0;
+		if (msg_type->with_seq_id) {
+			icmph->icmp6_id = htons(icmp_info->id);
+			icmph->icmp6_seq = htons(icmp_info->seq);
+		}
+
+		if (!fm_ipv6_transport_csum_partial(&csum, &ip_info->src_addr, &ip_info->dst_addr, IPPROTO_ICMPV6))
+			return false;
+
+		/* Add the length field to the IPv6 pseudo header */
+		fm_csum_partial_u16(&csum, hdrlen);
+
+		/* Add the ICMP header for checksumming */
+		fm_csum_partial_update(&csum, icmph, hdrlen);
+
+		icmph->icmp6_cksum = fm_csum_fold(&csum);
+	} else {
+		return false;
+	}
+
+	return true;
+}
+
 
 /*
  * Check whether an ICMP error marks the resource as unreachable.

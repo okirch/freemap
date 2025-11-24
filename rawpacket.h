@@ -43,6 +43,7 @@ typedef struct fm_eth_header_info {
 typedef struct fm_ip_header_info {
 	fm_address_t		src_addr, dst_addr;
 	int			ipproto;
+	unsigned int		ttl, tos;
 	unsigned int		num_ext_headers;
 	struct fm_ip_extension_hdr {
 		int		ipproto;
@@ -146,6 +147,8 @@ extern bool		fm_raw_packet_add_ipv6_header(fm_buffer_t *bp, const fm_address_t *
 extern bool		fm_raw_packet_add_network_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
 					int ipproto, unsigned int ttl, unsigned int tos,
 					unsigned int transport_len);
+extern bool		fm_raw_packet_add_ip_header(fm_buffer_t *bp, const fm_ip_header_info_t *ip, unsigned int transport_len);
+extern bool		fm_raw_packet_add_icmp_header(fm_buffer_t *, fm_icmp_header_info_t *, const fm_ip_header_info_t *, const fm_buffer_t *data);
 extern bool		fm_raw_packet_pull_eth_hdr(fm_pkt_t *pkt, fm_eth_header_info_t *info);
 extern bool		fm_raw_packet_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_header_info_t *info);
 extern bool		fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
