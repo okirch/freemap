@@ -22,47 +22,6 @@
 #include "addresses.h"
 #include "lists.h"
 
-typedef struct fm_fake_network_config {
-	char *			address;
-	char *			router;
-} fm_fake_network_config_t;
-
-typedef struct fm_fake_router_config {
-	char *			name;
-	char *			address;
-	char *			prev_name;
-} fm_fake_router_config_t;
-
-
-typedef struct fm_fake_router	fm_fake_router_t;
-struct fm_fake_router {
-	fm_address_t		ipv4_address;
-	fm_address_t		ipv6_address;
-	fm_fake_router_t *	prev;
-
-	unsigned int		ttl;
-	unsigned int		label;		/* used for loop detection only */
-
-	fm_fake_router_config_t	config;
-};
-
-typedef struct fm_fake_network {
-	fm_address_prefix_t	prefix;
-	fm_fake_router_t *	router;
-
-	fm_fake_network_config_t config;
-} fm_fake_network_t;
-
-typedef struct fm_fake_router_array {
-	unsigned int		count;
-	fm_fake_router_t **	entries;
-} fm_fake_router_array_t;
-
-typedef struct fm_fake_network_array {
-	unsigned int		count;
-	fm_fake_network_t **	entries;
-} fm_fake_network_array_t;
-
 typedef struct fm_fake_address_pool {
 	struct hlist		link;
 
@@ -76,6 +35,109 @@ typedef struct fm_fake_address_pool {
 	unsigned char		raw_addr[16];
 } fm_fake_address_pool_t;
 
+typedef struct fm_fake_router_config {
+	char *			name;
+	char *			address;
+	char *			prev_name;
+} fm_fake_router_config_t;
+
+typedef struct fm_fake_router	fm_fake_router_t;
+struct fm_fake_router {
+	fm_address_t		ipv4_address;
+	fm_address_t		ipv6_address;
+	fm_fake_router_t *	prev;
+
+	unsigned int		ttl;
+	unsigned int		label;		/* used for loop detection only */
+
+	fm_fake_router_config_t	config;
+};
+
+typedef struct fm_fake_port {
+	unsigned short		proto_id;
+	unsigned short		port;		/* a value of 0 means assign a random port in the 512..1023 range */
+} fm_fake_port_t;
+
+typedef struct fm_fake_port_array {
+	unsigned int		count;
+	fm_fake_port_t *	entries;
+} fm_fake_port_array_t;
+
+typedef struct fm_fake_service {
+	char *			name;
+
+	fm_fake_port_array_t	ports;		/* resolved */
+
+	fm_string_array_t	cfg_ports;
+	fm_string_array_t	cfg_requires;
+} fm_fake_service_t;
+
+typedef struct fm_fake_service_array {
+	unsigned int		count;
+	fm_fake_service_t **	entries;
+} fm_fake_service_array_t;
+
+typedef struct fm_fake_host_profile {
+	char *			name;
+	fm_fake_service_array_t	services;	/* resolved */
+
+	fm_string_array_t	cfg_services;	/* names from config file */
+} fm_fake_host_profile_t;
+
+typedef struct fm_fake_host_profile_array {
+	unsigned int		count;
+	fm_fake_host_profile_t **entries;
+} fm_fake_host_profile_array_t;
+
+typedef struct fm_fake_host_group {
+	char *			name;
+	char *			cfg_profile;
+	unsigned int		cfg_count;
+} fm_fake_host_group_t;
+
+typedef struct fm_fake_host_group_array {
+	unsigned int		count;
+	fm_fake_host_group_t **entries;
+} fm_fake_host_group_array_t;
+
+typedef struct fm_fake_host {
+	char *			name;
+	fm_address_t		address;
+
+	unsigned int		ttl;
+	fm_fake_port_array_t	ports;
+
+	char *			cfg_profile;
+} fm_fake_host_t;
+
+typedef struct fm_fake_host_array {
+	unsigned int		count;
+	fm_fake_host_t **	entries;
+} fm_fake_host_array_t;
+
+typedef struct fm_fake_network {
+	char *			name;		/* set from config */
+	char *			router_name;	/* set from config */
+
+	fm_address_prefix_t	prefix;
+	fm_fake_router_t *	router;
+
+	fm_fake_host_group_array_t cfg_host_groups;
+
+	fm_fake_address_pool_t *host_address_pool;
+	fm_fake_host_array_t	hosts;
+} fm_fake_network_t;
+
+typedef struct fm_fake_router_array {
+	unsigned int		count;
+	fm_fake_router_t **	entries;
+} fm_fake_router_array_t;
+
+typedef struct fm_fake_network_array {
+	unsigned int		count;
+	fm_fake_network_t **	entries;
+} fm_fake_network_array_t;
+
 typedef struct fm_fake_config {
 	fm_string_array_t	addresses;
 	fm_string_array_t	backbone_pool;
@@ -84,6 +146,8 @@ typedef struct fm_fake_config {
 
 	fm_fake_router_array_t	routers;
 	fm_fake_network_array_t	networks;
+	fm_fake_service_array_t	services;
+	fm_fake_host_profile_array_t host_profiles;
 
 	struct hlist_head	bpool;
 } fm_fake_config_t;
@@ -100,10 +164,18 @@ typedef struct fm_tunnel {
 /* Primitives */
 extern fm_fake_network_t *	fm_fake_network_alloc(fm_fake_network_array_t *);
 extern fm_fake_router_t *	fm_fake_router_alloc(const char *, fm_fake_router_array_t *);
+extern fm_fake_service_t *	fm_fake_service_alloc(fm_fake_service_array_t *array);
+extern fm_fake_host_profile_t *	fm_fake_host_profile_alloc(fm_fake_host_profile_array_t *array);
+extern fm_fake_host_group_t *	fm_fake_host_group_alloc(fm_fake_host_group_array_t *array);
+extern fm_fake_host_t *		fm_fake_host_alloc(fm_fake_host_array_t *array);
+
 extern fm_address_t *		fm_fake_router_addr(fm_fake_router_t *, int family);
 extern bool			fm_fake_router_has_address(fm_fake_router_t *router, int family);
 extern const fm_address_t *	fm_fake_router_get_address(fm_fake_router_t *router, int family);
 extern bool			fm_fake_router_set_address(fm_fake_router_t *router, int family, const fm_address_t *new_addr);
+
+extern void			fm_fake_service_array_append(fm_fake_service_array_t *, fm_fake_service_t *);
+extern bool			fm_fake_service_array_contains(fm_fake_service_array_t *, const fm_fake_service_t *);
 
 extern bool			fm_fake_config_load(fm_fake_config_t *config, const char *path);
 extern bool			fm_fake_network_build(fm_fake_config_t *config);

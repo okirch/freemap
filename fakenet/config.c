@@ -47,10 +47,8 @@ static void *
 fm_fake_config_create_network(curly_node_t *node, void *data)
 {
 	fm_fake_network_array_t *array = data;
-	fm_fake_network_t *net;
 
-	net = fm_fake_network_alloc(array);
-	return &net->config;
+	return fm_fake_network_alloc(array);
 }
 
 static void *
@@ -63,18 +61,84 @@ fm_fake_config_create_router(curly_node_t *node, void *data)
 	return &router->config;
 }
 
-static fm_config_proc_t	fm_config_network_node = {
-	.name = ATTRIB_STRING(fm_fake_network_config_t, address),
+static void *
+fm_fake_config_create_service(curly_node_t *node, void *data)
+{
+	fm_fake_service_array_t *array = data;
+
+	return fm_fake_service_alloc(array);
+}
+
+static void *
+fm_fake_config_create_host_profile(curly_node_t *node, void *data)
+{
+	fm_fake_host_profile_array_t *array = data;
+
+	return fm_fake_host_profile_alloc(array);
+}
+
+static void *
+fm_fake_config_create_host_group(curly_node_t *node, void *data)
+{
+	fm_fake_host_group_array_t *array = data;
+
+	return fm_fake_host_group_alloc(array);
+}
+
+static void *
+fm_fake_config_create_host(curly_node_t *node, void *data)
+{
+	fm_fake_host_array_t *array = data;
+
+	return fm_fake_host_alloc(array);
+}
+
+static fm_config_proc_t	fm_config_host_node = {
+	.name = ATTRIB_STRING(fm_fake_host_t, name),
 	.attributes = {
-		{ "router",		offsetof(fm_fake_network_config_t, router),		FM_CONFIG_ATTR_TYPE_STRING },
+		{ "profile",		offsetof(fm_fake_host_t, cfg_profile),		FM_CONFIG_ATTR_TYPE_STRING },
 	},
+};
+
+static fm_config_proc_t	fm_config_host_group_node = {
+	.name = ATTRIB_STRING(fm_fake_host_group_t, name),
+	.attributes = {
+		{ "profile",		offsetof(fm_fake_host_group_t, cfg_profile),	FM_CONFIG_ATTR_TYPE_STRING },
+		{ "count",		offsetof(fm_fake_host_group_t, cfg_count),	FM_CONFIG_ATTR_TYPE_INT },
+	},
+};
+
+static fm_config_proc_t	fm_config_network_node = {
+	.name = ATTRIB_STRING(fm_fake_network_t, name),
+	.attributes = {
+		{ "router",		offsetof(fm_fake_network_t, router_name),	FM_CONFIG_ATTR_TYPE_STRING },
+	},
+	.children = {
+		{ "host-group",		offsetof(fm_fake_network_t, cfg_host_groups),	&fm_config_host_group_node, .alloc_child = fm_fake_config_create_host_group },
+		{ "host",		offsetof(fm_fake_network_t, hosts),		&fm_config_host_node, .alloc_child = fm_fake_config_create_host },
+	}
 };
 
 static fm_config_proc_t	fm_config_router_node = {
 	.name = ATTRIB_STRING(fm_fake_router_config_t, name),
 	.attributes = {
-		{ "address",		offsetof(fm_fake_router_config_t, address),		FM_CONFIG_ATTR_TYPE_STRING },
-		{ "previous",		offsetof(fm_fake_router_config_t, prev_name),		FM_CONFIG_ATTR_TYPE_STRING },
+		{ "address",		offsetof(fm_fake_router_config_t, address),	FM_CONFIG_ATTR_TYPE_STRING },
+		{ "previous",		offsetof(fm_fake_router_config_t, prev_name),	FM_CONFIG_ATTR_TYPE_STRING },
+	},
+};
+
+static fm_config_proc_t	fm_config_service_node = {
+	.name = ATTRIB_STRING(fm_fake_service_t, name),
+	.attributes = {
+		{ "ports",		offsetof(fm_fake_service_t, cfg_ports),		FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
+		{ "requires",		offsetof(fm_fake_service_t, cfg_requires),	FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
+	},
+};
+
+static fm_config_proc_t	fm_config_host_profile_node = {
+	.name = ATTRIB_STRING(fm_fake_host_profile_t, name),
+	.attributes = {
+		{ "services",		offsetof(fm_fake_host_profile_t, cfg_services),	FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
 	},
 };
 
@@ -86,6 +150,8 @@ static fm_config_proc_t	fm_config_doc_root = {
 	.children = {
 		{ "network",		offsetof(fm_fake_config_t, networks),		&fm_config_network_node, .alloc_child = fm_fake_config_create_network },
 		{ "router",		offsetof(fm_fake_config_t, routers),		&fm_config_router_node, .alloc_child = fm_fake_config_create_router },
+		{ "service",		offsetof(fm_fake_config_t, services),		&fm_config_service_node, .alloc_child = fm_fake_config_create_service },
+		{ "host-profile",	offsetof(fm_fake_config_t, host_profiles),	&fm_config_host_profile_node, .alloc_child = fm_fake_config_create_host_profile },
 	},
 };
 

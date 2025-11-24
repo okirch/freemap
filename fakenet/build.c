@@ -109,6 +109,94 @@ fm_fake_network_alloc(fm_fake_network_array_t *array)
 	return network;
 }
 
+fm_fake_service_t *
+fm_fake_service_alloc(fm_fake_service_array_t *array)
+{
+	fm_fake_service_t *service;
+
+	service = calloc(1, sizeof(*service));
+
+	maybe_realloc_array(array->entries, array->count, 4);
+	array->entries[array->count++] = service;
+
+	return service;
+}
+
+fm_fake_host_profile_t *
+fm_fake_host_profile_alloc(fm_fake_host_profile_array_t *array)
+{
+	fm_fake_host_profile_t *profile;
+
+	profile = calloc(1, sizeof(*profile));
+
+	maybe_realloc_array(array->entries, array->count, 4);
+	array->entries[array->count++] = profile;
+
+	return profile;
+}
+
+fm_fake_host_group_t *
+fm_fake_host_group_alloc(fm_fake_host_group_array_t *array)
+{
+	fm_fake_host_group_t *group;
+
+	group = calloc(1, sizeof(*group));
+
+	maybe_realloc_array(array->entries, array->count, 4);
+	array->entries[array->count++] = group;
+
+	return group;
+}
+
+fm_fake_host_t *
+fm_fake_host_alloc(fm_fake_host_array_t *array)
+{
+	fm_fake_host_t *host;
+
+	host = calloc(1, sizeof(*host));
+
+	maybe_realloc_array(array->entries, array->count, 4);
+	array->entries[array->count++] = host;
+
+	return host;
+}
+
+fm_fake_port_t *
+fm_fake_port_array_add(fm_fake_port_array_t *array, unsigned int proto_id, unsigned int port)
+{
+	fm_fake_port_t *port_obj;
+
+	maybe_realloc_array(array->entries, array->count, 4);
+	port_obj = &array->entries[array->count++];
+	memset(port_obj, 0, sizeof(*port_obj));
+
+	port_obj->proto_id = proto_id;
+	port_obj->port = port;
+
+	return port_obj;
+}
+
+void
+fm_fake_service_array_append(fm_fake_service_array_t *array, fm_fake_service_t *service)
+{
+	maybe_realloc_array(array->entries, array->count, 4);
+	array->entries[array->count++] = service;
+}
+
+bool
+fm_fake_service_array_contains(fm_fake_service_array_t *array, const fm_fake_service_t *service)
+{
+	unsigned int i;
+
+	for (i = 0; i < array->count; ++i) {
+		if (array->entries[i] == service)
+			return true;
+	}
+
+	return false;
+}
+
+
 /*
  * Follow the chain of routers
  */
@@ -188,6 +276,8 @@ fm_fake_address_pool_alloc(const fm_address_prefix_t *prefix)
 		value_bits = 16;
 	pool->max_value = (1 << value_bits) - 1;
 
+	pool->next_value = 1;
+
 	return pool;
 }
 
@@ -197,6 +287,9 @@ fm_fake_address_pool_get_next(fm_fake_address_pool_t *pool, fm_address_t *addr)
 	unsigned char raw_addr[16];
 	unsigned int k;
 	uint32_t value;
+
+	if (pool == NULL)
+		return false;
 
 	if (pool->next_value >= pool->max_value)
 		return false;
@@ -276,7 +369,7 @@ fm_fake_router_assign_addresses(fm_fake_router_t *router, int family, struct hli
 }
 
 /*
- * Given the configuration setup, try to build the network in-memory
+ * Configure our "egress" router.
  */
 bool
 fm_fake_network_set_egress(fm_fake_config_t *config, const fm_tunnel_t *tunnel)
@@ -297,6 +390,247 @@ fm_fake_network_set_egress(fm_fake_config_t *config, const fm_tunnel_t *tunnel)
 }
 
 /*
+ * Query host profiles, services etc
+ */
+static fm_fake_host_profile_t *
+fm_fake_config_get_profile(const fm_fake_config_t *config, const char *name)
+{
+	unsigned int i;
+
+	for (i = 0; i < config->host_profiles.count; ++i) {
+		fm_fake_host_profile_t *profile = config->host_profiles.entries[i];
+
+		if (!strcmp(profile->name, name))
+			return profile;
+	}
+
+	return NULL;
+}
+
+static fm_fake_service_t *
+fm_fake_config_get_service(const fm_fake_config_t *config, const char *name)
+{
+	unsigned int i;
+
+	for (i = 0; i < config->services.count; ++i) {
+		fm_fake_service_t *service = config->services.entries[i];
+
+		if (!strcmp(service->name, name))
+			return service;
+	}
+
+	return NULL;
+}
+
+/*
+ * Chase service names
+ */
+static bool
+fm_fake_config_resolve_services(const char *context_type, const char *context_name, const fm_string_array_t *name_array, const fm_fake_config_t *config, fm_fake_service_array_t *result)
+{
+	fm_fake_service_t *service;
+	unsigned int i;
+	bool ok = true;
+
+	for (i = 0; i < name_array->count; ++i) {
+		const char *service_name = name_array->entries[i];
+
+		service = fm_fake_config_get_service(config, service_name);
+		if (service == NULL) {
+			fm_log_error("%s %s references unknown service name %s", context_type, context_name, service_name);
+			return false;
+		}
+
+		if (fm_fake_service_array_contains(result, service))
+			continue;
+
+		fm_fake_service_array_append(result, service);
+
+		if (!fm_fake_config_resolve_services("service", service->name, &service->cfg_requires, config, result))
+			ok = false;
+	}
+
+	return ok;
+}
+
+static bool
+fm_fake_config_resolve_profile(fm_fake_host_profile_t *profile, const fm_fake_config_t *config)
+{
+	return fm_fake_config_resolve_services("host-profile", profile->name, &profile->cfg_services, config, &profile->services);
+}
+
+/*
+ * Parse port spec
+ */
+static inline fm_fake_port_t *
+fm_fake_port_parse(const char *portspec, fm_fake_port_array_t *port_array)
+{
+	int proto_id, port;
+	const char *end;
+
+	if (!strncmp(portspec, "udp/", 4)) {
+		proto_id = FM_PROTO_UDP;
+	} else
+	if (!strncmp(portspec, "tcp/", 4)) {
+		proto_id = FM_PROTO_TCP;
+	} else {
+		return NULL;
+	}
+
+	if (!strcmp(portspec + 4, "priv")) {
+		port = 0;
+	} else {
+		port = strtoul(portspec + 4, (char **) &end, 0);
+		if (*end)
+			return NULL;
+
+		if (port <= 0 || 65535 < port)
+			return NULL;
+	}
+
+	return fm_fake_port_array_add(port_array, proto_id, port);
+}
+
+static bool
+fm_fake_config_resolve_service(fm_fake_service_t *service)
+{
+	unsigned int i;
+	bool ok = true;
+
+	for (i = 0; i < service->cfg_ports.count; ++i) {
+		char *portspec = service->cfg_ports.entries[i];
+
+		if (!fm_fake_port_parse(portspec, &service->ports)) {
+			fm_log_error("service %s: cannot parse port spec %s", service->name, portspec);
+			ok = false;
+		}
+	}
+
+	return ok;
+}
+
+static void
+fm_fake_host_add_services(fm_fake_host_t *host, fm_fake_service_array_t *services)
+{
+	unsigned int i, j, priv_port = 1023;
+
+	for (i = 0; i < services->count; ++i) {
+		const fm_fake_service_t *service = services->entries[i];
+
+		for (j = 0; j < service->ports.count; ++j) {
+			const fm_fake_port_t *port = &service->ports.entries[j];
+			unsigned short port_num;
+
+			if ((port_num = port->port) == 0)
+				port_num = priv_port--; /* FIXME: check for used ports */
+
+			fm_fake_port_array_add(&host->ports, port->proto_id, port_num);
+		}
+	}
+}
+
+static const char *
+fm_fake_port_array_render(const fm_fake_port_array_t *array)
+{
+	static char buf[1024];
+	unsigned int k, pos = 0;
+
+	if (array->count == 0)
+		return "(no ports)";
+
+	for (k = 0; k < array->count; ++k) {
+		const fm_fake_port_t *port = &array->entries[k];
+
+		if (pos && pos < sizeof(buf))
+			buf[pos++] = ' ';
+
+		snprintf(buf + pos, sizeof(buf) - pos, "%s/%u", fm_protocol_id_to_string(port->proto_id), port->port);
+		pos += strlen(buf + pos);
+	}
+
+	return buf;
+}
+
+/*
+ * Build the list of hosts for a given network
+ */
+static bool
+fm_fake_network_build_hosts(fm_fake_network_t *net, const fm_fake_config_t *config)
+{
+	unsigned int i, j;
+	bool ok = true;
+
+	/* You can have a single host entry within a network: 
+	 *  host blah {
+	 *	profile "mailserver";
+	 *  }
+	 * This will create host "blah" and use the ports specified by the given profile.
+	 */
+	for (i = 0; i < net->hosts.count; ++i) {
+		fm_fake_host_t *host = net->hosts.entries[i];
+		fm_fake_host_profile_t *profile;
+
+		if (host->cfg_profile == NULL)
+			continue;
+
+		profile = fm_fake_config_get_profile(config, host->cfg_profile);
+		if (profile == NULL) {
+			fm_log_error("net %s host %s uses unknown profile %s", net->name, host->name, host->cfg_profile);
+			continue;
+		}
+
+		fm_fake_host_add_services(host, &profile->services);
+	}
+
+	/* You can also define a host group within a network: 
+	 *  host-group blah {
+	 *	profile "linux-desktop";
+	 *	count 12;
+	 *  }
+	 * This will create hosts blah0, blah1, ... blah11 using the specified profile.
+	 */
+	for (i = 0; i < net->cfg_host_groups.count; ++i) {
+		fm_fake_host_group_t *group = net->cfg_host_groups.entries[i];
+		fm_fake_host_profile_t *profile;
+		unsigned int index = 0;
+
+		if (group->cfg_count == 0)
+			continue;
+
+		/* A host group does not necessarily have a profile; it could be just a
+		 * host that answers to pings */
+		if (group->cfg_profile != NULL) {
+			profile = fm_fake_config_get_profile(config, group->cfg_profile);
+			if (profile == NULL)
+				fm_log_error("net %s host-group %s uses unknown profile %s", net->name, group->name, group->cfg_profile);
+		}
+
+		for (j = 0; j < group->cfg_count; ++j) {
+			fm_fake_host_t *host;
+
+			host = fm_fake_host_alloc(&net->hosts);
+			asprintf(&host->name, "%s%u", group->name, index++);
+			if (profile != NULL)
+				fm_fake_host_add_services(host, &profile->services);
+		}
+	}
+
+	for (i = 0; i < net->hosts.count; ++i) {
+		fm_fake_host_t *host = net->hosts.entries[i];
+
+		if (host->address.family == AF_UNSPEC
+		 && !fm_fake_address_pool_get_next(net->host_address_pool, &host->address)) {
+			fm_log_error("net %s: cannot assign address to host %s", net->name, host->name);
+			ok = false;
+		}
+
+		host->ttl = net->router->ttl + 1;
+	}
+
+	return ok;
+}
+
+/*
  * Given the configuration setup, try to build the network in-memory
  */
 bool
@@ -312,24 +646,38 @@ fm_fake_network_build(fm_fake_config_t *config)
 	if (!fm_fake_network_create_backbone_pools(&config->backbone_pool, &config->bpool))
 		return false;
 
+	for (i = 0; i < config->host_profiles.count; ++i) {
+		fm_fake_host_profile_t *profile = config->host_profiles.entries[i];
+
+		if (!fm_fake_config_resolve_profile(profile, config))
+			ok = false;
+	}
+
+	for (i = 0; i < config->services.count; ++i) {
+		fm_fake_service_t *service = config->services.entries[i];
+
+		if (!fm_fake_config_resolve_service(service))
+			ok = false;
+	}
+
 	for (i = 0; i < config->networks.count; ++i) {
 		fm_fake_network_t *net = config->networks.entries[i];
 
 		/* can't happen */
-		assert(net->config.address != NULL);
+		assert(net->name != NULL);
 
-		if (!fm_address_prefix_parse(net->config.address, &net->prefix)) {
-			fm_log_error("network %s: cannot parse prefix", net->config.address);
+		if (!fm_address_prefix_parse(net->name, &net->prefix)) {
+			fm_log_error("network %s: cannot parse prefix", net->name);
 			ok = false;
 			continue;
 		}
 
-		if (net->config.router == NULL) {
-			fm_log_error("network %s: no router specified", net->config.address);
+		if (net->router_name == NULL) {
+			fm_log_error("network %s: no router specified", net->name);
 			continue;
 		}
 
-		net->router = fm_fake_router_build_chain(config, net->config.router, router_label++);
+		net->router = fm_fake_router_build_chain(config, net->router_name, router_label++);
 		if (net->router == NULL) {
 			ok = false;
 			continue;
@@ -337,15 +685,29 @@ fm_fake_network_build(fm_fake_config_t *config)
 
 		fm_fake_router_assign_addresses(net->router, net->prefix.address.family, &config->bpool);
 
+		/* Set up the host address pool and allocate hosts */
+		net->host_address_pool = fm_fake_address_pool_alloc(&net->prefix);
+
+		if (!fm_fake_network_build_hosts(net, config))
+			ok = false;
+
 		{
 			fm_fake_router_t *router;
+			unsigned k;
 
-			fm_log_debug("network %s", net->config.address);
+			fm_log_debug("network %s", net->name);
 			for (router = net->router; router; router = router->prev) {
 				const fm_address_t *addr = fm_fake_router_get_address(router, net->prefix.address.family);
 
 				fm_log_debug("  %u %s; addr=%s", router->ttl, router->config.name, 
 						fm_address_format(addr));
+			}
+
+			for (k = 0; k < net->hosts.count; ++k) {
+				fm_fake_host_t *host = net->hosts.entries[k];
+
+				fm_log_debug("    host %s (%s): %s", host->name, fm_address_format(&host->address),
+						fm_fake_port_array_render(&host->ports));
 			}
 		}
 
