@@ -245,6 +245,8 @@ fm_packet_parser_inspect_any(fm_pkt_t *pkt, unsigned int next_proto)
 		cooked->headers[k] = hdr;
 		allocated += h->recv_alloc;
 
+		cooked->num_headers = k + 1;
+
 		if (!h->dissect(pkt, cooked->headers[k], &next_proto)) {
 			debugmsg("  failed to parse %s header (%u bytes)",
 					fm_protocol_id_to_string(h->proto_id),
