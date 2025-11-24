@@ -57,6 +57,7 @@ static bool		fm_fake_config_load(fm_fake_config_t *config, const char *path);
 static bool		fm_fakenet_configure_interface(fm_tunnel_t *tunnel, fm_fake_config_t *config);
 static bool		fm_fake_config_process(fm_fake_config_t *config, curly_node_t *);
 static bool		fm_fakenet_run(fm_tunnel_t *tunnel, const fm_fake_config_t *config);
+static void		fm_fakenet_receive(fm_parsed_pkt_t *cooked);
 static bool		fm_fake_network_set_egress(fm_fake_config_t *config, const fm_tunnel_t *tunnel);
 static bool		fm_fake_network_build(fm_fake_config_t *config);
 static fm_fake_router_t *fm_fake_router_alloc(const char *name, fm_fake_router_array_t *array);
@@ -230,6 +231,9 @@ fm_fakenet_run(fm_tunnel_t *tunnel, const fm_fake_config_t *config)
 		if (cooked == NULL)
 			continue;
 
+		/* Get the IP header, find the destination network, and possibly the host */
+		fm_fakenet_receive(cooked);
+
 		free(cooked);
 	}
 
@@ -313,6 +317,10 @@ fm_fakenet_configure_interface(fm_tunnel_t *tunnel, fm_fake_config_t *config)
 	return true;
 }
 
+static void
+fm_fakenet_receive(fm_parsed_pkt_t *cooked)
+{
+}
 
 static bool
 fm_fake_config_load(fm_fake_config_t *config, const char *path)

@@ -49,6 +49,7 @@ clean::
 	rm -f $(LIB) *.o
 
 all clean::
+	make -C fakenet $@
 	make -C tests $@
 
 test: $(LIB)
