@@ -50,6 +50,8 @@ struct fm_fake_router {
 	unsigned int		ttl;
 	unsigned int		label;		/* used for loop detection only */
 
+	struct fm_fake_delay *	link_delay;
+
 	fm_fake_router_config_t	config;
 };
 
@@ -158,7 +160,7 @@ typedef struct fm_fake_response {
 	struct hlist		link;
 
 	double			when;
-	fm_buffer_t *		payload;
+	fm_buffer_t *		packet;
 } fm_fake_response_t;
 
 typedef struct fm_tunnel {
@@ -197,5 +199,8 @@ extern bool			fm_fake_network_set_egress(fm_fake_config_t *config, const fm_tunn
 extern fm_tunnel_t *		fm_fakenet_attach_interface(void);
 extern bool			fm_fakenet_configure_interface(fm_tunnel_t *tunnel, fm_fake_config_t *config);
 extern bool			fm_fakenet_run(fm_tunnel_t *tunnel, const fm_fake_config_t *config);
+
+extern double			fm_gaussian(double mu, double sigma);
+extern double			fm_n_gaussians(unsigned int nsamples, double mu, double sigma);
 
 #endif /* FREEMAP_FAKENET_H */

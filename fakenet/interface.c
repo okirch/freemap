@@ -18,6 +18,7 @@
 #include <linux/if_ether.h>
 #include <linux/if_tun.h>
 #include <sys/ioctl.h>
+#include <sys/poll.h>
 #include <net/if.h>
 #include <netinet/ip_icmp.h>
 #include <string.h>
@@ -39,7 +40,7 @@
 #include "logging.h"
 
 
-static fm_buffer_t *		fm_fakenet_receive(fm_parsed_pkt_t *cooked, const fm_fake_config_t *config, fm_buffer_t *payload);
+static fm_fake_response_t *		fm_fakenet_receive(fm_parsed_pkt_t *cooked, const fm_fake_config_t *config, fm_buffer_t *payload);
 
 /*
  * Create the tunnel interface that we will serve.
@@ -152,9 +153,66 @@ fm_fakenet_configure_interface(fm_tunnel_t *tunnel, fm_fake_config_t *config)
 	return true;
 }
 
+static void
+fm_fakenet_transmit(fm_tunnel_t *tunnel, fm_fake_response_t *resp)
+{
+	fm_buffer_t *packet = resp->packet;
+
+	hlist_remove(&resp->link);
+
+	write(tunnel->fd, fm_buffer_head(packet), fm_buffer_available(packet));
+	fm_buffer_free(packet);
+	free(resp);
+}
+
+static void
+fm_fakenet_doio(fm_tunnel_t *tunnel, fm_buffer_t *recvbuf, struct hlist_head *send_queue)
+{
+	double now, expires;
+	hlist_iterator_t iter;
+	long timeout;
+
+	recvbuf->rpos = recvbuf->wpos = 0;
+
+	while (true) {
+		fm_fake_response_t *resp;
+
+		now = fm_time_now();
+		expires = now + 10;
+
+		hlist_iterator_init(&iter, send_queue);
+		while ((resp = hlist_iterator_next(&iter)) != NULL) {
+			if (resp->when <= now)
+				fm_fakenet_transmit(tunnel, resp);
+			else if (resp->when <= expires)
+				expires = resp->when;
+		}
+
+		timeout = (expires - now) / 1000;
+
+		if (timeout >= 0) {
+			struct pollfd pfd;
+			int n;
+
+			pfd.fd = tunnel->fd;
+			pfd.events = POLLIN;
+
+			if (poll(&pfd, 1, timeout) == 1) {
+				n = read(tunnel->fd, fm_buffer_tail(recvbuf), fm_buffer_tailroom(recvbuf));
+				if (n < 0)
+					fm_log_fatal("read: %m");
+
+				recvbuf->wpos += n;
+				return;
+			}
+		}
+	}
+}
+
 bool
 fm_fakenet_run(fm_tunnel_t *tunnel, const fm_fake_config_t *config)
 {
+	struct hlist_head send_queue = { 0 };
 	fm_buffer_t *bp;
 
 	bp = fm_buffer_alloc(8192);
@@ -163,18 +221,9 @@ fm_fakenet_run(fm_tunnel_t *tunnel, const fm_fake_config_t *config)
 		fm_pkt_t pkt;
 		unsigned int next_proto;
 		fm_parsed_pkt_t *cooked;
-		fm_buffer_t *reply;
-		int n;
+		fm_fake_response_t *resp;
 
-		bp->rpos = bp->wpos = 0;
-
-		n = read(tunnel->fd, fm_buffer_tail(bp), fm_buffer_tailroom(bp));
-		if (n < 0) {
-			fm_log_fatal("read: %m");
-			return false;
-		}
-
-		bp->wpos += n;
+		fm_fakenet_doio(tunnel, bp, &send_queue);
 
 		if (!fm_buffer_get16(bp, &flags)
 		 || !fm_buffer_get16(bp, &ptype))
@@ -213,25 +262,43 @@ fm_fakenet_run(fm_tunnel_t *tunnel, const fm_fake_config_t *config)
 			continue;
 
 		/* Get the IP header, find the destination network, and possibly the host */
-		reply = fm_fakenet_receive(cooked, config, pkt.payload);
-		if (reply != NULL) {
+		resp = fm_fakenet_receive(cooked, config, pkt.payload);
+		if (resp != NULL) {
+			fm_buffer_t *packet = resp->packet;
 			uint16_t *frame;
 
-			assert(reply->rpos == 4);
-			reply->rpos = 0;
-			frame = (uint16_t *) reply->data;
+			assert(packet->rpos == 4);
+			packet->rpos = 0;
+			frame = (uint16_t *) packet->data;
 			frame[0] = htons(0);
 			frame[1] = htons(ptype);
 
 			if (fm_debug_facilities & FM_DEBUG_FACILITY_DATA) {
-				fm_buffer_dump(reply, "sending response");
+				fm_buffer_dump(packet, "queuing response");
 			}
 
-			write(tunnel->fd, fm_buffer_head(reply), fm_buffer_available(reply));
-			fm_buffer_free(reply);
+			hlist_insert(&send_queue, &resp->link);
 		}
 
 		free(cooked);
+
+		{
+			hlist_iterator_t iter;
+			double now = fm_time_now();
+
+			hlist_iterator_init(&iter, &send_queue);
+			while ((resp = hlist_iterator_next(&iter)) != NULL) {
+				if (resp->when <= now) {
+					fm_buffer_t *packet = resp->packet;
+
+					hlist_remove(&resp->link);
+
+					write(tunnel->fd, fm_buffer_head(packet), fm_buffer_available(packet));
+					fm_buffer_free(packet);
+					free(resp);
+				}
+			}
+		}
 	}
 
 	return true;
@@ -317,13 +384,43 @@ fm_fake_host_receive(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_ip_
 	return NULL;
 }
 
-static fm_buffer_t *
+/*
+ * Compute a delay that emulates the rtt along the path
+ */
+static double
+fm_fake_host_delay(const fm_fake_host_t *host)
+{
+	double delay = 0;
+	fm_fake_router_t *router;
+	unsigned int nstd = 0;
+
+	/* Delay on the target network: mu = 0.1ms, sigma = 0.05ms */
+	delay = fm_n_gaussians(2, 1e-4, 5e-5);
+
+	for (router = host->network->router; router->prev; router = router->prev) {
+		if (router->link_delay) {
+			abort();
+		} else {
+			nstd += 2;
+		}
+	}
+
+	/* Standard link delay is 1ms, sigma = .1ms */
+	if (nstd)
+		delay += fm_n_gaussians(nstd, 1e-3, 5e-4);
+
+	fm_log_debug("%s(nstd=%u) = %f ms", __func__, nstd, delay * 1000);
+	return delay;
+}
+
+static fm_fake_response_t *
 fm_fakenet_receive(fm_parsed_pkt_t *cooked, const fm_fake_config_t *config, fm_buffer_t *payload)
 {
 	fm_parsed_hdr_t *hdr;
 	fm_fake_network_t *net;
 	fm_fake_host_t *host;
 	fm_buffer_t *reply;
+	fm_fake_response_t *resp;
 
 	if (!(hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_IP)))
 		return NULL;
@@ -349,8 +446,10 @@ fm_fakenet_receive(fm_parsed_pkt_t *cooked, const fm_fake_config_t *config, fm_b
 
 	reply = fm_fake_host_receive(host, cooked, &hdr->ip, payload);
 	if (reply == NULL)
-		return reply;
+		return NULL;
 
-	/* TBD: compute a suitable delay */
-	return reply;
+	resp = calloc(1, sizeof(*resp));
+	resp->when = fm_time_now() + fm_fake_host_delay(host);
+	resp->packet = reply;
+	return resp;
 }

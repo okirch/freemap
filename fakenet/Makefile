@@ -1,4 +1,4 @@
-CFLAGS	= -Wall -I.. -g -lcurlies
+CFLAGS	= -Wall -I.. -g -lcurlies -lm
 
 ALL	= \
 	  fakenet
@@ -7,7 +7,8 @@ fakenet_OBJS = \
 	  main.o \
 	  interface.o \
 	  build.o \
-	  config.o
+	  config.o \
+	  random.o
 
 all:	$(ALL)
 
