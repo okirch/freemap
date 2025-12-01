@@ -430,20 +430,24 @@ fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, cons
 	unsigned int len;
 
 	if (src_addr->family == AF_INET && dst_addr->family == AF_INET) {
-		tcp_info->src_port = ((struct sockaddr_in *) src_addr)->sin_port;
-		tcp_info->dst_port = ((struct sockaddr_in *) dst_addr)->sin_port;
+		if (tcp_info->src_port == 0)
+			tcp_info->src_port = ntohs(((struct sockaddr_in *) src_addr)->sin_port);
+		if (tcp_info->dst_port == 0)
+			tcp_info->dst_port = ntohs(((struct sockaddr_in *) dst_addr)->sin_port);
 	} else
 	if (src_addr->family == AF_INET6 && dst_addr->family == AF_INET6) {
-		tcp_info->src_port = ((struct sockaddr_in6 *) src_addr)->sin6_port;
-		tcp_info->dst_port = ((struct sockaddr_in6 *) dst_addr)->sin6_port;
+		if (tcp_info->src_port == 0)
+			tcp_info->src_port = ntohs(((struct sockaddr_in6 *) src_addr)->sin6_port);
+		if (tcp_info->dst_port == 0)
+			tcp_info->dst_port = ntohs(((struct sockaddr_in6 *) dst_addr)->sin6_port);
 	} else
 		return false;
 
 	th = fm_buffer_push(bp, sizeof(*th));
 	memset(th, 0, sizeof(*th));
 
-	th->th_sport = tcp_info->src_port;
-	th->th_dport = tcp_info->dst_port;
+	th->th_sport = htons(tcp_info->src_port);
+	th->th_dport = htons(tcp_info->dst_port);
 
 	th->th_seq = tcp_info->seq;
 	th->th_ack = tcp_info->ack_seq;

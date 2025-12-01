@@ -384,6 +384,7 @@ fm_tcp_build_raw_packet(const fm_tcp_control_t *tcp, uint16_t dst_port, fm_targe
 					20 /* standard TCP header length */))
 		goto failed;
 
+	/* This grabs the port numbers from the network address arguments */
 	if (!fm_raw_packet_add_tcp_header(payload, &target_control->local_address, &dst_addr, &hdrinfo, 0))
 		goto failed;
 
