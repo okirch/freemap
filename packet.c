@@ -150,6 +150,38 @@ fm_parsed_pkt_free(fm_parsed_pkt_t *cooked)
 }
 
 /*
+ * Inspect a single protocol layer
+ */
+static bool
+fm_parsed_hdr_inspect(fm_protocol_handler_t *h, fm_pkt_t *pkt, fm_parsed_hdr_t *hdr, unsigned int *next_proto)
+{
+	fm_buffer_t *payload = pkt->payload;
+
+	hdr->raw.data = fm_buffer_head(payload);
+	hdr->raw.tot_len = fm_buffer_available(payload);
+
+	if (!h->dissect(pkt, hdr, next_proto)) {
+		debugmsg("  failed to parse %s header (%u bytes)",
+				fm_protocol_id_to_string(h->proto_id),
+				fm_buffer_available(payload));
+		return false;
+	}
+
+	hdr->raw.hdr_len = hdr->raw.tot_len - fm_buffer_available(payload);
+
+	if (fm_debug_facilities & FM_DEBUG_FACILITY_PACKET) {
+		if (h->display)
+			h->display(pkt, hdr);
+		else
+			debugmsg("  parsed %s header, next proto %s",
+					fm_protocol_id_to_string(h->proto_id),
+					fm_protocol_id_to_string(*next_proto));
+	}
+
+	return true;
+}
+
+/*
  * Parse a packet, given an explicit stack of protocols we expect to see.
  * If we see something different, we punt.
  */
@@ -181,17 +213,8 @@ fm_packet_parser_inspect(fm_packet_parser_t *parser, fm_pkt_t *pkt)
 		if (next_proto != h->proto_id)
 			goto trash;
 
-		if (!h->dissect(pkt, cooked->headers[k], &next_proto))
+		if (!fm_parsed_hdr_inspect(h, pkt, cooked->headers[k], &next_proto))
 			goto trash;
-
-		if (fm_debug_facilities & FM_DEBUG_FACILITY_PACKET) {
-			if (h->display)
-				h->display(pkt, cooked->headers[k]);
-			else
-				debugmsg("  parsed %s header, next proto %s",
-						fm_protocol_id_to_string(h->proto_id),
-						fm_protocol_id_to_string(next_proto));
-		}
 	}
 
 	pkt->parsed = cooked;
@@ -247,21 +270,8 @@ fm_packet_parser_inspect_any(fm_pkt_t *pkt, unsigned int next_proto)
 
 		cooked->num_headers = k + 1;
 
-		if (!h->dissect(pkt, cooked->headers[k], &next_proto)) {
-			debugmsg("  failed to parse %s header (%u bytes)",
-					fm_protocol_id_to_string(h->proto_id),
-					fm_buffer_available(pkt->payload));
+		if (!fm_parsed_hdr_inspect(h, pkt, cooked->headers[k], &next_proto))
 			goto trash;
-		}
-
-		if (fm_debug_facilities & FM_DEBUG_FACILITY_PACKET) {
-			if (h->display)
-				h->display(pkt, hdr);
-			else
-				debugmsg("  parsed %s header, next proto %s",
-						fm_protocol_id_to_string(h->proto_id),
-						fm_protocol_id_to_string(next_proto));
-		}
 	}
 
 	pkt->parsed = cooked;
@@ -380,9 +390,10 @@ fm_proto_ip_display(const fm_pkt_t *pkt, const fm_parsed_hdr_t *hdr)
 	const fm_ip_header_info_t *info = &hdr->ip;
 	unsigned int k;
 
-	fm_log_debug("  ip %s -> %s, next_proto=%s",
+	fm_log_debug("  ip %s -> %s, ttl=%u, next_proto=%s",
 			fm_address_format(&info->src_addr),
 			fm_address_format(&info->dst_addr),
+			info->ttl,
 			fm_protocol_id_to_string(info->ipproto));
 
 	for (k = 0; k < info->num_ext_headers; ++k) {

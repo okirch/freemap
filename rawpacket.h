@@ -116,6 +116,12 @@ typedef struct fm_tcp_header_info {
 
 typedef struct fm_parsed_hdr {
 	unsigned int		proto_id;
+
+	struct {
+		const void *	data;
+		unsigned int	hdr_len;
+		unsigned int	tot_len;
+	} raw;
 	union {
 		unsigned char	data[1];
 		fm_eth_header_info_t eth;
