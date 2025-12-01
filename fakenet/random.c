@@ -92,7 +92,6 @@ fm_n_gaussians(unsigned int nsamples, double mu, double sigma)
 	}
 
 	lthresh = -mu / sigma;
-	fm_log_debug("lthresh=%f", 1000 * lthresh);
 
 	n_times_mu = nsamples * mu;
 
@@ -102,7 +101,6 @@ fm_n_gaussians(unsigned int nsamples, double mu, double sigma)
 		samp = samples[k].z0;
 		if (samp < lthresh)
 			samp = lthresh;
-		fm_log_debug("  samp=%f ms", 1000 *samp);
 		result += samp;
 
 		if (false && nsamples) {
