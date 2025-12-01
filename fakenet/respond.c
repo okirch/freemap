@@ -29,6 +29,7 @@
 
 
 static double		fm_fake_host_delay(const fm_fake_host_t *host);
+static double		fm_fake_router_delay(const fm_fake_router_t *router);
 
 void
 fm_fake_respoonse_free(fm_fake_response_t *resp)
@@ -134,16 +135,11 @@ fm_fake_host_receive(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_ip_
  * Compute a delay that emulates the rtt along the path
  */
 static double
-fm_fake_host_delay(const fm_fake_host_t *host)
+fm_fake_router_delay(const fm_fake_router_t *router)
 {
-	double delay = 0;
-	fm_fake_router_t *router;
 	unsigned int nstd = 0;
 
-	/* Delay on the target network: mu = 0.1ms, sigma = 0.05ms */
-	delay = fm_n_gaussians(2, 1e-4, 5e-5);
-
-	for (router = host->network->router; router->prev; router = router->prev) {
+	for (; router; router = router->prev) {
 		if (router->link_delay) {
 			abort();
 		} else {
@@ -152,10 +148,19 @@ fm_fake_host_delay(const fm_fake_host_t *host)
 	}
 
 	/* Standard link delay is 1ms, sigma = .1ms */
-	if (nstd)
-		delay += fm_n_gaussians(nstd, 1e-3, 5e-4);
+	return fm_n_gaussians(nstd, 1e-3, 5e-4);
+}
 
-	fm_log_debug("%s(nstd=%u) = %f ms", __func__, nstd, delay * 1000);
+static double
+fm_fake_host_delay(const fm_fake_host_t *host)
+{
+	double delay = 0;
+
+	/* Delay on the target network: mu = 0.1ms, sigma = 0.05ms */
+	delay = fm_n_gaussians(2, 1e-4, 5e-5);
+
+	delay += fm_fake_router_delay(host->network->router);
+
 	return delay;
 }
 
