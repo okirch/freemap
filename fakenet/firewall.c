@@ -173,3 +173,13 @@ fm_fake_firewall_parse_rule(fm_fake_firewall_t *firewall, const char *rule_spec)
 
 	return true;
 }
+
+/*
+ * Firewall to inspect an incoming packet
+ * returns one of ALLOW, DROP, REJECT.
+ */
+int
+fm_firewall_inspect_packet(const fm_fake_firewall_t *firewall, fm_parsed_pkt_t *cooked, const fm_parsed_hdr_t *hip)
+{
+	return FM_FAKE_FW_ALLOW;
+}

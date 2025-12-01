@@ -373,6 +373,16 @@ fm_fake_router_ttl_exceeded(fm_fake_router_t *router, fm_parsed_pkt_t *cooked, c
 }
 
 /*
+ * Firewall tells us to reject an incoming packet
+ */
+static fm_fake_response_t *
+fm_fake_router_reject_packet(fm_fake_router_t *router, fm_parsed_pkt_t *cooked, const fm_parsed_hdr_t *hip, int fwaction)
+{
+	fm_log_error("%s: not yet implemented", __func__);
+	return NULL;
+}
+
+/*
  * Compute a delay that emulates the rtt along the path
  */
 static double
@@ -419,7 +429,19 @@ fm_fakenet_process_packet(fm_parsed_pkt_t *cooked, const fm_fake_config_t *confi
 	if (net == NULL)
 		return NULL; /* We don't know you. FIXME: we should provide more realistic routing. */
 
-	/* TBD: perform filtering along the way */
+	/* packet filtering. for now, only the ingress routers will actually perform
+	 * filtering; the backbone routers will pass on everything without bothering.
+	 */
+	if (net->router->firewall != NULL) {
+		int fwaction;
+
+		fwaction = fm_firewall_inspect_packet(net->router->firewall, cooked, hip);
+		if (fwaction == FM_FAKE_FW_DROP)
+			return NULL;
+
+		if (fwaction != FM_FAKE_FW_ALLOW)
+			return fm_fake_router_reject_packet(net->router, cooked, hip, fwaction);
+	}
 
 	if (hip->ip.ttl <= net->router->ttl) {
 		/* find the proper router, send time exceeded */

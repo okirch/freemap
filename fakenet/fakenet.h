@@ -239,8 +239,11 @@ extern fm_fake_host_t *		fm_fake_host_alloc(fm_fake_host_array_t *array);
 extern fm_fake_fwconfig_t *	fm_fake_firewall_alloc(fm_fake_fwconfig_array_t *array);
 extern fm_fake_filter_rule_t *	fm_fake_filter_rule_alloc(fm_fake_filter_rule_array_t *array);
 
+struct fm_parsed_hdr;
+
 extern void			fm_fake_firewall_publish_port(fm_fake_firewall_t *, const fm_address_t *, const fm_fake_port_t *);
 extern bool			fm_fake_firewall_parse_rule(fm_fake_firewall_t *firewall, const char *rule_spec);
+extern int			fm_firewall_inspect_packet(const fm_fake_firewall_t *firewall, fm_parsed_pkt_t *cooked, const struct fm_parsed_hdr *hip);
 
 extern fm_fake_network_t *	fm_fake_config_get_network_by_addr(const fm_fake_config_t *, const fm_address_t *);
 extern fm_fake_host_t *		fm_fake_config_get_host_by_addr(const fm_fake_config_t *, const fm_address_t *);
