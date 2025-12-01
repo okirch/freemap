@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <fcntl.h>
+#include <libgen.h>
 #include <unistd.h>
 #include <mcheck.h>
 
@@ -109,6 +110,46 @@ fm_fake_config_set_rate(curly_node_t *node, void *attr_data, const curly_attr_t 
 	return true;
 }
 
+/*
+ * Process an include statement. This does not "set" anything, it loads the referenced
+ * file and processes it
+ */
+static bool
+fm_fake_config_include(curly_node_t *node, void *attr_data, const curly_attr_t *attr)
+{
+	fm_config_t *config = attr_data;
+	char *including_filename, *dname;
+	unsigned int i;
+	bool ok = true;
+
+	including_filename = strdup(curly_node_get_source_file(node));
+	if (!(dname = dirname(including_filename))) {
+		free(including_filename);
+		return false;
+	}
+
+	for (i = 0; i < curly_attr_get_count(attr) && ok; ++i) {
+		char *include_filename = NULL;
+		const char *relative_name;
+
+		relative_name = curly_attr_get_value(attr, i);
+		if (relative_name == NULL)
+			continue;
+		if (relative_name[0] != '/') {
+			asprintf(&include_filename, "%s/%s", dname, relative_name);
+			relative_name = include_filename;
+		}
+
+		fm_log_debug("Processing included file %s", relative_name);
+		ok = fm_fake_config_load(config, relative_name);
+
+		drop_string(&include_filename);
+	}
+
+	drop_string(&including_filename);
+	return ok;
+}
+
 static fm_config_proc_t	fm_config_host_node = {
 	.name = ATTRIB_STRING(fm_fake_host_t, name),
 	.attributes = {
@@ -161,6 +202,7 @@ static fm_config_proc_t	fm_config_host_profile_node = {
 
 static fm_config_proc_t	fm_config_doc_root = {
 	.attributes = {
+		{ "include",		0,						FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = fm_fake_config_include },
 		{ "address",		offsetof(fm_fake_config_t, addresses),		FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
 		{ "backbone_pool",	offsetof(fm_fake_config_t, backbone_pool),	FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
 	},
