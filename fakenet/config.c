@@ -93,6 +93,22 @@ fm_fake_config_create_host(curly_node_t *node, void *data)
 	return fm_fake_host_alloc(array);
 }
 
+static bool
+fm_fake_config_set_rate(curly_node_t *node, void *attr_data, const curly_attr_t *attr)
+{
+	const char *value = curly_attr_get_value(attr, 0);
+	fm_ratelimit_t *rl = attr_data;
+	unsigned int pps;
+	char *end;
+
+	pps = strtoul(value, &end, 0);
+	if (*end)
+		return false;
+
+	fm_ratelimit_init(rl, pps, pps);
+	return true;
+}
+
 static fm_config_proc_t	fm_config_host_node = {
 	.name = ATTRIB_STRING(fm_fake_host_t, name),
 	.attributes = {
@@ -139,6 +155,7 @@ static fm_config_proc_t	fm_config_host_profile_node = {
 	.name = ATTRIB_STRING(fm_fake_host_profile_t, name),
 	.attributes = {
 		{ "services",		offsetof(fm_fake_host_profile_t, cfg_services),	FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
+		{ "icmp_ratelimit",	offsetof(fm_fake_host_profile_t, icmp_rate),	FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = fm_fake_config_set_rate },
 	},
 };
 

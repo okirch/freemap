@@ -49,6 +49,7 @@ struct fm_fake_router {
 
 	unsigned int		ttl;
 	unsigned int		label;		/* used for loop detection only */
+	fm_ratelimit_t		icmp_rate;
 
 	struct fm_fake_delay *	link_delay;
 
@@ -82,6 +83,7 @@ typedef struct fm_fake_service_array {
 typedef struct fm_fake_host_profile {
 	char *			name;
 	fm_fake_service_array_t	services;	/* resolved */
+	fm_ratelimit_t		icmp_rate;
 
 	fm_string_array_t	cfg_services;	/* names from config file */
 } fm_fake_host_profile_t;

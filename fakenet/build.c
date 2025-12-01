@@ -96,9 +96,20 @@ fm_fake_router_set_address(fm_fake_router_t *router, int family, const fm_addres
 	return true;
 }
 
+static void
+fm_fake_router_apply_profile(fm_fake_router_t *router, const fm_fake_host_profile_t *profile)
+{
+	if (router->icmp_rate.rate == 0)
+		router->icmp_rate = profile->icmp_rate;
+}
+
 static bool
 fm_fake_router_apply_defaults(fm_fake_router_t *router, const fm_fake_config_t *config)
 {
+	if (config->default_profile)
+		fm_fake_router_apply_profile(router, config->default_profile);
+	if (config->default_router_profile)
+		fm_fake_router_apply_profile(router, config->default_router_profile);
 	return true;
 }
 
@@ -586,10 +597,17 @@ fm_fake_host_add_services(fm_fake_host_t *host, const fm_fake_service_array_t *s
 
 /*
  * Apply profile(s) to hosts
+ * Some settings accumulate (eg the list of services), while others get overwritten
+ * by more specific settings (eg the ICMP rate limit will be defined by the following,
+ * in order of decreasing precedence):
+ *   - profiles specified by a host or host-group
+ *   - default host profile
+ *   - default profile
  */
 static void
 fm_fake_host_apply_profile(fm_fake_host_t *host, const fm_fake_host_profile_t *profile)
 {
+	host->icmp_rate = profile->icmp_rate;
 	fm_fake_host_add_services(host, &profile->services);
 }
 
@@ -663,6 +681,8 @@ fm_fake_network_build_hosts(fm_fake_network_t *net, const fm_fake_config_t *conf
 	for (i = 0; i < net->hosts.count; ++i) {
 		fm_fake_host_t *host = net->hosts.entries[i];
 
+		host->network = net;
+
 		fm_fake_host_apply_defaults(host, config);
 
 		if (!fm_fake_host_apply_profiles(host, &host->cfg_profile, config))
@@ -708,7 +728,8 @@ fm_fake_network_build_hosts(fm_fake_network_t *net, const fm_fake_config_t *conf
 		host->ttl = net->router->ttl + 1;
 		host->network = net;
 
-		fm_ratelimit_init(&host->icmp_rate, 20, 20);
+		if (host->icmp_rate.rate == 0)
+			fm_ratelimit_init(&host->icmp_rate, 20, 20);
 	}
 
 	return ok;
