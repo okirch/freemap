@@ -28,9 +28,20 @@
 #include "logging.h"
 
 
-static fm_buffer_t *
+static double		fm_fake_host_delay(const fm_fake_host_t *host);
+
+void
+fm_fake_respoonse_free(fm_fake_response_t *resp)
+{
+	hlist_remove(&resp->link);
+	fm_buffer_free(resp->packet);
+	free(resp);
+}
+
+static fm_fake_response_t *
 fm_fake_host_prepare_response(fm_fake_host_t *host, const fm_ip_header_info_t *ip, unsigned int transport_len, fm_ip_header_info_t *reply_info)
 {
+	fm_fake_response_t *resp;
 	fm_buffer_t *reply;
 
 	memset(reply_info, 0, sizeof(*reply_info));
@@ -48,13 +59,17 @@ fm_fake_host_prepare_response(fm_fake_host_t *host, const fm_ip_header_info_t *i
 		return NULL;
 	}
 
-	return reply;
+	resp = calloc(1, sizeof(*resp));
+	resp->when = fm_time_now() + fm_fake_host_delay(host);
+	resp->packet = reply;
+
+	return resp;
 }
 
-static fm_buffer_t *
+static fm_fake_response_t *
 fm_fake_host_receive_icmp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_ip_header_info_t *ip, const fm_icmp_header_info_t *icmp, fm_buffer_t *payload)
 {
-	fm_buffer_t *reply;
+	fm_fake_response_t *resp;
 	fm_ip_header_info_t ip_reply_info;
 	fm_icmp_header_info_t icmp_reply_info;
 	fm_icmp_msg_type_t *reply_type;
@@ -84,22 +99,22 @@ fm_fake_host_receive_icmp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const f
 
 	transport_len = 8 + fm_buffer_available(payload);
 
-	reply = fm_fake_host_prepare_response(host, ip, transport_len, &ip_reply_info);
-	if (reply == NULL)
+	resp = fm_fake_host_prepare_response(host, ip, transport_len, &ip_reply_info);
+	if (resp == NULL)
 		return NULL;
 
 	icmp_reply_info = *icmp;
 	icmp_reply_info.msg_type = reply_type;
 
-	if (!fm_raw_packet_add_icmp_header(reply, &icmp_reply_info, &ip_reply_info, payload)) {
-		fm_buffer_free(reply);
+	if (!fm_raw_packet_add_icmp_header(resp->packet, &icmp_reply_info, &ip_reply_info, payload)) {
+		fm_fake_respoonse_free(resp);
 		return NULL;
 	}
 
-	return reply;
+	return resp;
 }
 
-static fm_buffer_t *
+static fm_fake_response_t *
 fm_fake_host_receive(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_ip_header_info_t *ip, fm_buffer_t *payload)
 {
 	fm_parsed_hdr_t *hdr;
@@ -150,8 +165,6 @@ fm_fakenet_process_packet(fm_parsed_pkt_t *cooked, const fm_fake_config_t *confi
 	fm_parsed_hdr_t *hdr;
 	fm_fake_network_t *net;
 	fm_fake_host_t *host;
-	fm_buffer_t *reply;
-	fm_fake_response_t *resp;
 
 	if (!(hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_IP)))
 		return NULL;
@@ -175,13 +188,6 @@ fm_fakenet_process_packet(fm_parsed_pkt_t *cooked, const fm_fake_config_t *confi
 
 	/* TBD: perform filtering at the host */
 
-	reply = fm_fake_host_receive(host, cooked, &hdr->ip, payload);
-	if (reply == NULL)
-		return NULL;
-
-	resp = calloc(1, sizeof(*resp));
-	resp->when = fm_time_now() + fm_fake_host_delay(host);
-	resp->packet = reply;
-	return resp;
+	return fm_fake_host_receive(host, cooked, &hdr->ip, payload);
 }
 
