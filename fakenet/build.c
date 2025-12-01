@@ -179,7 +179,7 @@ fm_fake_host_alloc(fm_fake_host_array_t *array)
 }
 
 fm_fake_port_t *
-fm_fake_port_array_add(fm_fake_port_array_t *array, unsigned int proto_id, unsigned int port)
+fm_fake_port_array_add(fm_fake_port_array_t *array, unsigned int proto_id, unsigned int port, bool publish)
 {
 	fm_fake_port_t *port_obj;
 
@@ -189,6 +189,7 @@ fm_fake_port_array_add(fm_fake_port_array_t *array, unsigned int proto_id, unsig
 
 	port_obj->proto_id = proto_id;
 	port_obj->port = port;
+	port_obj->publish = publish;
 
 	return port_obj;
 }
@@ -560,7 +561,7 @@ fm_fake_port_parse(const char *portspec, fm_fake_port_array_t *port_array)
 			return NULL;
 	}
 
-	return fm_fake_port_array_add(port_array, proto_id, port);
+	return fm_fake_port_array_add(port_array, proto_id, port, false);
 }
 
 static bool
@@ -582,7 +583,7 @@ fm_fake_config_resolve_service(fm_fake_service_t *service)
 }
 
 static void
-fm_fake_host_add_services(fm_fake_host_t *host, const fm_fake_service_array_t *services)
+fm_fake_host_add_services(fm_fake_host_t *host, const fm_fake_service_array_t *services, bool publish)
 {
 	unsigned int i, j, priv_port = 1023;
 
@@ -596,7 +597,7 @@ fm_fake_host_add_services(fm_fake_host_t *host, const fm_fake_service_array_t *s
 			if ((port_num = port->port) == 0)
 				port_num = priv_port--; /* FIXME: check for used ports */
 
-			fm_fake_port_array_add(&host->ports, port->proto_id, port_num);
+			fm_fake_port_array_add(&host->ports, port->proto_id, port_num, publish);
 		}
 	}
 }
@@ -611,19 +612,19 @@ fm_fake_host_add_services(fm_fake_host_t *host, const fm_fake_service_array_t *s
  *   - default profile
  */
 static void
-fm_fake_host_apply_profile(fm_fake_host_t *host, const fm_fake_host_profile_t *profile)
+fm_fake_host_apply_profile(fm_fake_host_t *host, const fm_fake_host_profile_t *profile, bool publish)
 {
 	host->icmp_rate = profile->icmp_rate;
-	fm_fake_host_add_services(host, &profile->services);
+	fm_fake_host_add_services(host, &profile->services, publish);
 }
 
 static void
 fm_fake_host_apply_defaults(fm_fake_host_t *host, const fm_fake_config_t *config)
 {
 	if (config->default_profile)
-		fm_fake_host_apply_profile(host, config->default_profile);
+		fm_fake_host_apply_profile(host, config->default_profile, false);
 	if (config->default_host_profile)
-		fm_fake_host_apply_profile(host, config->default_host_profile);
+		fm_fake_host_apply_profile(host, config->default_host_profile, false);
 }
 
 static bool
@@ -634,6 +635,12 @@ fm_fake_host_apply_profiles(fm_fake_host_t *host, const fm_string_array_t *names
 	for (i = 0; i < names->count; ++i) {
 		const char *name = names->entries[i];
 		fm_fake_host_profile_t *profile;
+		bool publish = false;
+
+		if (!strncmp(name, "public:", 7)) {
+			publish = true;
+			name += 7;
+		}
 
 		profile = fm_fake_config_get_profile(config, name);
 		if (profile == NULL) {
@@ -641,7 +648,7 @@ fm_fake_host_apply_profiles(fm_fake_host_t *host, const fm_string_array_t *names
 			return false;
 		}
 
-		fm_fake_host_apply_profile(host, profile);
+		fm_fake_host_apply_profile(host, profile, publish);
 	}
 
 	return true;

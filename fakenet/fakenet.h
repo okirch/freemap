@@ -59,6 +59,7 @@ struct fm_fake_router {
 typedef struct fm_fake_port {
 	unsigned short		proto_id;
 	unsigned short		port;		/* a value of 0 means assign a random port in the 512..1023 range */
+	bool			publish;
 } fm_fake_port_t;
 
 typedef struct fm_fake_port_array {
