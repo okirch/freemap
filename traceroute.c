@@ -61,7 +61,7 @@ fm_topo_state_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const
 	topo->params = *params;
 
 	if (topo->params.port == 0)
-		topo->params.port = 65534; /* make this configurable */
+		topo->params.port = 65534; /* make this configurable. The IANA reserved port is 33434; the traceroute cmd uses 80 for TCP... */
 	if (topo->params.retries <= FM_RTT_SAMPLES_WANTED)
 		topo->params.retries = FM_RTT_SAMPLES_WANTED;
 
