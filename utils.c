@@ -138,6 +138,12 @@ fm_parse_port_range(const char *s, fm_port_range_t *range)
 {
 	const char *end;
 
+	if (!strcmp(s, "unpriv")) {
+		range->first = 1024;
+		range->last = 65535;
+		return true;
+	}
+
 	range->first = strtoul(s, (char **) &end, 0);
 	range->last = range->first;
 
