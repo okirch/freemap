@@ -675,6 +675,8 @@ fm_fake_network_build_hosts(fm_fake_network_t *net, const fm_fake_config_t *conf
 
 		host->ttl = net->router->ttl + 1;
 		host->network = net;
+
+		fm_ratelimit_init(&host->icmp_rate, 20, 20);
 	}
 
 	return ok;

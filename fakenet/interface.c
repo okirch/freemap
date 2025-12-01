@@ -333,6 +333,13 @@ fm_fake_host_receive_icmp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const f
 	if (reply_type->v4_type != ICMP_ECHOREPLY)
 		return NULL;
 
+	/* We know we could send a response now. But should we? */
+	fm_ratelimit_update(&host->icmp_rate);
+	if (!fm_ratelimit_okay(&host->icmp_rate)) {
+		fm_log_debug("   dropped due to rate limit.");
+		return NULL;
+	}
+
 	transport_len = 8 + fm_buffer_available(payload);
 
 	reply = fm_fake_host_prepare_response(host, ip, transport_len, &ip_reply_info);

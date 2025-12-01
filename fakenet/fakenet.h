@@ -110,6 +110,8 @@ typedef struct fm_fake_host {
 	unsigned int		ttl;
 	fm_fake_port_array_t	ports;
 
+	fm_ratelimit_t		icmp_rate;
+
 	char *			cfg_profile;
 } fm_fake_host_t;
 
