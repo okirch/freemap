@@ -40,7 +40,7 @@ fm_fake_response_free(fm_fake_response_t *resp)
 }
 
 static fm_fake_response_t *
-fm_fake_host_prepare_response(fm_fake_host_t *host, const fm_ip_header_info_t *ip, unsigned int transport_len, fm_ip_header_info_t *reply_info)
+fm_fake_host_prepare_response(fm_fake_host_t *host, const fm_ip_header_info_t *ip, unsigned int transport_len, fm_ip_header_info_t *reply_info, bool send_error)
 {
 	fm_fake_response_t *resp;
 	fm_buffer_t *reply;
@@ -48,9 +48,19 @@ fm_fake_host_prepare_response(fm_fake_host_t *host, const fm_ip_header_info_t *i
 	memset(reply_info, 0, sizeof(*reply_info));
 	reply_info->src_addr = ip->dst_addr;
 	reply_info->dst_addr = ip->src_addr;
-	reply_info->ipproto = ip->ipproto;
 	reply_info->ttl = 64;
 	reply_info->tos = 0;
+
+	if (!send_error) {
+		reply_info->ipproto = ip->ipproto;
+	} else
+	if (ip->src_addr.family == AF_INET) {
+		reply_info->ipproto = IPPROTO_ICMP;
+	} else if (ip->src_addr.family == AF_INET6) {
+		reply_info->ipproto = IPPROTO_ICMPV6;
+	} else {
+		return NULL;
+	}
 
 	reply = fm_buffer_alloc(128);
 	reply->rpos = reply->wpos = 4;
@@ -105,6 +115,52 @@ fm_fake_router_prepare_response(fm_fake_router_t *router, const fm_ip_header_inf
 	return resp;
 }
 
+/*
+ * Host sends an ICMP error.
+ * It would be nice if we could share some of this code that between router and host, but this
+ * needs a rework of the data structures.
+ */
+static fm_fake_response_t *
+fm_fake_host_send_error(fm_fake_host_t *host, fm_icmp_msg_type_t *error_type, const fm_parsed_hdr_t *hdr)
+{
+	unsigned int snap_len;
+	fm_buffer_t *snap_buf;
+	fm_fake_response_t *resp;
+	fm_ip_header_info_t ip_reply_info;
+	fm_icmp_header_info_t icmp_reply_info = { 0 };
+
+	if (error_type == NULL) {
+		fm_log_error("%s: icmp message type is NULL", __func__);
+		return NULL;
+	}
+
+	fm_log_debug("  %s to send %s error", host->name, error_type->desc);
+
+	/* According to RFC, the original IP header + 64 bits of transport stuff */
+	snap_len = hdr->raw.hdr_len + 8;
+	if (snap_len > hdr->raw.tot_len)
+		snap_len = hdr->raw.tot_len;
+
+	resp = fm_fake_host_prepare_response(host, &hdr->ip, 8 + snap_len, &ip_reply_info, true);
+	if (resp == NULL)
+		return NULL;
+
+	snap_buf = fm_buffer_alloc(snap_len);
+	fm_buffer_append(snap_buf, hdr->raw.data, snap_len);
+
+	icmp_reply_info.msg_type = error_type;
+	if (!fm_raw_packet_add_icmp_header(resp->packet, &icmp_reply_info, &ip_reply_info, snap_buf)) {
+		fm_fake_response_free(resp);
+		fm_buffer_free(snap_buf);
+		return NULL;
+	}
+
+	fm_buffer_free(snap_buf);
+
+	return resp;
+}
+
+
 static fm_fake_response_t *
 fm_fake_host_receive_icmp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_ip_header_info_t *ip, const fm_icmp_header_info_t *icmp, fm_buffer_t *payload)
 {
@@ -138,7 +194,7 @@ fm_fake_host_receive_icmp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const f
 
 	transport_len = 8 + fm_buffer_available(payload);
 
-	resp = fm_fake_host_prepare_response(host, ip, transport_len, &ip_reply_info);
+	resp = fm_fake_host_prepare_response(host, ip, transport_len, &ip_reply_info, false);
 	if (resp == NULL)
 		return NULL;
 
@@ -153,17 +209,54 @@ fm_fake_host_receive_icmp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const f
 	return resp;
 }
 
-static fm_fake_response_t *
-fm_fake_host_receive(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_ip_header_info_t *ip, fm_buffer_t *payload)
+static const fm_fake_port_t *
+fm_fake_host_lookup_port(fm_fake_host_t *host, unsigned int proto_id, unsigned int port_num)
 {
-	fm_parsed_hdr_t *hdr;
+	unsigned int i;
 
-	if (!(hdr = fm_parsed_packet_next_header(cooked)))
+	for (i = 0; i < host->ports.count; ++i) {
+		const fm_fake_port_t *port = &host->ports.entries[i];
+
+		if (port->proto_id == proto_id && port->port == port_num)
+			return port;
+	}
+
+	return NULL;
+}
+
+static fm_fake_response_t *
+fm_fake_host_receive_udp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_parsed_hdr_t *hip, const fm_udp_header_info_t *udp, fm_buffer_t *payload)
+{
+	const fm_fake_port_t *port;
+
+	port = fm_fake_host_lookup_port(host, FM_PROTO_UDP, udp->dst_port);
+	if (port == NULL) {
+		fm_icmp_msg_type_t *error_type;
+
+		error_type = fm_icmp_msg_type_by_name("port-unreach");
+		return fm_fake_host_send_error(host, error_type, hip);
+	}
+
+	/* TODO: send something that looks like a response.
+	 * Since this is used only for testing a network scanner that doesn't pay attention to
+	 * what comes back, we just return a garbage packet */
+	return NULL;
+}
+
+static fm_fake_response_t *
+fm_fake_host_receive(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_parsed_hdr_t *hip, fm_buffer_t *payload)
+{
+	fm_parsed_hdr_t *htrans;
+
+	if (!(htrans = fm_parsed_packet_next_header(cooked)))
 		return NULL; /* no next protocol that we'd understand; or just an IPv6 packet with extension headers */
 
-	switch (hdr->proto_id) {
+	switch (htrans->proto_id) {
 	case FM_PROTO_ICMP:
-		return fm_fake_host_receive_icmp(host, cooked, ip, &hdr->icmp, payload);
+		return fm_fake_host_receive_icmp(host, cooked, &hip->ip, &htrans->icmp, payload);
+
+	case FM_PROTO_UDP:
+		return fm_fake_host_receive_udp(host, cooked, hip, &htrans->udp, payload);
 	}
 
 	return NULL;
@@ -274,25 +367,25 @@ fm_fake_host_delay(const fm_fake_host_t *host)
 fm_fake_response_t *
 fm_fakenet_process_packet(fm_parsed_pkt_t *cooked, const fm_fake_config_t *config, fm_buffer_t *payload)
 {
-	fm_parsed_hdr_t *hdr;
+	fm_parsed_hdr_t *hip;
 	fm_fake_network_t *net;
 	fm_fake_host_t *host;
 
-	if (!(hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_IP)))
+	if (!(hip = fm_parsed_packet_find_next(cooked, FM_PROTO_IP)))
 		return NULL;
 
-	net = fm_fake_config_get_network_by_addr(config, &hdr->ip.dst_addr);
+	net = fm_fake_config_get_network_by_addr(config, &hip->ip.dst_addr);
 	if (net == NULL)
 		return NULL; /* We don't know you. FIXME: we should provide more realistic routing. */
 
 	/* TBD: perform filtering along the way */
 
-	if (hdr->ip.ttl <= net->router->ttl) {
+	if (hip->ip.ttl <= net->router->ttl) {
 		/* find the proper router, send time exceeded */
-		return fm_fake_router_ttl_exceeded(net->router, cooked, hdr, payload);
+		return fm_fake_router_ttl_exceeded(net->router, cooked, hip, payload);
 	}
 
-	host = fm_fake_network_get_host_by_addr(net, &hdr->ip.dst_addr);
+	host = fm_fake_network_get_host_by_addr(net, &hip->ip.dst_addr);
 	if (host == NULL)
 		return NULL;
 
@@ -300,6 +393,6 @@ fm_fakenet_process_packet(fm_parsed_pkt_t *cooked, const fm_fake_config_t *confi
 
 	/* TBD: perform filtering at the host */
 
-	return fm_fake_host_receive(host, cooked, &hdr->ip, payload);
+	return fm_fake_host_receive(host, cooked, hip, payload);
 }
 
