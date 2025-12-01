@@ -96,14 +96,14 @@ fm_fake_config_create_host(curly_node_t *node, void *data)
 static fm_config_proc_t	fm_config_host_node = {
 	.name = ATTRIB_STRING(fm_fake_host_t, name),
 	.attributes = {
-		{ "profile",		offsetof(fm_fake_host_t, cfg_profile),		FM_CONFIG_ATTR_TYPE_STRING },
+		{ "profile",		offsetof(fm_fake_host_t, cfg_profile),		FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
 	},
 };
 
 static fm_config_proc_t	fm_config_host_group_node = {
 	.name = ATTRIB_STRING(fm_fake_host_group_t, name),
 	.attributes = {
-		{ "profile",		offsetof(fm_fake_host_group_t, cfg_profile),	FM_CONFIG_ATTR_TYPE_STRING },
+		{ "profile",		offsetof(fm_fake_host_group_t, cfg_profile),	FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
 		{ "count",		offsetof(fm_fake_host_group_t, cfg_count),	FM_CONFIG_ATTR_TYPE_INT },
 	},
 };

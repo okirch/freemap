@@ -93,7 +93,7 @@ typedef struct fm_fake_host_profile_array {
 
 typedef struct fm_fake_host_group {
 	char *			name;
-	char *			cfg_profile;
+	fm_string_array_t	cfg_profile;
 	unsigned int		cfg_count;
 } fm_fake_host_group_t;
 
@@ -112,7 +112,7 @@ typedef struct fm_fake_host {
 
 	fm_ratelimit_t		icmp_rate;
 
-	char *			cfg_profile;
+	fm_string_array_t	cfg_profile;
 } fm_fake_host_t;
 
 typedef struct fm_fake_host_array {

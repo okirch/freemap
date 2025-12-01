@@ -578,6 +578,27 @@ fm_fake_host_add_services(fm_fake_host_t *host, fm_fake_service_array_t *service
 	}
 }
 
+static bool
+fm_fake_host_apply_profiles(fm_fake_host_t *host, const fm_string_array_t *names, const fm_fake_config_t *config)
+{
+	unsigned int i;
+
+	for (i = 0; i < names->count; ++i) {
+		const char *name = names->entries[i];
+		fm_fake_host_profile_t *profile;
+
+		profile = fm_fake_config_get_profile(config, name);
+		if (profile == NULL) {
+			fm_log_error("net %s host %s uses unknown profile %s", host->network->name, host->name, name);
+			return false;
+		}
+
+		fm_fake_host_add_services(host, &profile->services);
+	}
+
+	return true;
+}
+
 static const char *
 fm_fake_port_array_render(const fm_fake_port_array_t *array)
 {
@@ -617,18 +638,9 @@ fm_fake_network_build_hosts(fm_fake_network_t *net, const fm_fake_config_t *conf
 	 */
 	for (i = 0; i < net->hosts.count; ++i) {
 		fm_fake_host_t *host = net->hosts.entries[i];
-		fm_fake_host_profile_t *profile;
 
-		if (host->cfg_profile == NULL)
-			continue;
-
-		profile = fm_fake_config_get_profile(config, host->cfg_profile);
-		if (profile == NULL) {
-			fm_log_error("net %s host %s uses unknown profile %s", net->name, host->name, host->cfg_profile);
-			continue;
-		}
-
-		fm_fake_host_add_services(host, &profile->services);
+		if (!fm_fake_host_apply_profiles(host, &host->cfg_profile, config))
+			ok = false;
 	}
 
 	/* You can also define a host group within a network: 
@@ -640,27 +652,19 @@ fm_fake_network_build_hosts(fm_fake_network_t *net, const fm_fake_config_t *conf
 	 */
 	for (i = 0; i < net->cfg_host_groups.count; ++i) {
 		fm_fake_host_group_t *group = net->cfg_host_groups.entries[i];
-		fm_fake_host_profile_t *profile;
 		unsigned int index = 0;
 
 		if (group->cfg_count == 0)
 			continue;
-
-		/* A host group does not necessarily have a profile; it could be just a
-		 * host that answers to pings */
-		if (group->cfg_profile != NULL) {
-			profile = fm_fake_config_get_profile(config, group->cfg_profile);
-			if (profile == NULL)
-				fm_log_error("net %s host-group %s uses unknown profile %s", net->name, group->name, group->cfg_profile);
-		}
 
 		for (j = 0; j < group->cfg_count; ++j) {
 			fm_fake_host_t *host;
 
 			host = fm_fake_host_alloc(&net->hosts);
 			asprintf(&host->name, "%s%u", group->name, index++);
-			if (profile != NULL)
-				fm_fake_host_add_services(host, &profile->services);
+
+			if (!fm_fake_host_apply_profiles(host, &group->cfg_profile, config))
+				ok = false;
 		}
 	}
 
