@@ -16,6 +16,7 @@
  */
 
 #include <netinet/ip_icmp.h>
+#include <netinet/tcp.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -244,6 +245,43 @@ fm_fake_host_receive_udp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm
 }
 
 static fm_fake_response_t *
+fm_fake_host_receive_tcp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_parsed_hdr_t *hip, const fm_tcp_header_info_t *tcp, fm_buffer_t *payload)
+{
+	const fm_fake_port_t *port = NULL;
+	fm_ip_header_info_t ip_reply_info;
+	fm_tcp_header_info_t tcp_reply_info;
+	unsigned int tcp_hdr_len = 20;
+	fm_fake_response_t *resp;
+
+	if ((tcp->flags & (TH_SYN|TH_ACK)) == TH_SYN)
+		port = fm_fake_host_lookup_port(host, FM_PROTO_TCP, tcp->dst_port);
+
+	if (port == NULL) {
+		tcp_reply_info.flags = TH_ACK|TH_RST;
+	} else {
+		tcp_reply_info.flags = TH_ACK|TH_SYN;
+	}
+
+	tcp_reply_info.seq = random();
+	tcp_reply_info.ack_seq = tcp->seq;
+	tcp_reply_info.src_port = tcp->dst_port;
+	tcp_reply_info.dst_port = tcp->src_port;
+
+	/* We currently don't do any options, so tcp hdrlen is 20 */
+
+	resp = fm_fake_host_prepare_response(host, &hip->ip, tcp_hdr_len, &ip_reply_info, false);
+	if (resp == NULL)
+		return NULL;
+
+	if (!fm_raw_packet_add_tcp_header(resp->packet, &ip_reply_info.src_addr, &ip_reply_info.dst_addr, &tcp_reply_info, 0)) {
+		fm_fake_response_free(resp);
+		return NULL;
+	}
+
+	return resp;
+}
+
+static fm_fake_response_t *
 fm_fake_host_receive(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_parsed_hdr_t *hip, fm_buffer_t *payload)
 {
 	fm_parsed_hdr_t *htrans;
@@ -257,6 +295,9 @@ fm_fake_host_receive(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_par
 
 	case FM_PROTO_UDP:
 		return fm_fake_host_receive_udp(host, cooked, hip, &htrans->udp, payload);
+
+	case FM_PROTO_TCP:
+		return fm_fake_host_receive_tcp(host, cooked, hip, &htrans->tcp, payload);
 	}
 
 	return NULL;
