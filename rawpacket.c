@@ -726,13 +726,13 @@ bool
 fm_raw_packet_add_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info, const fm_ip_header_info_t *ip_info, const fm_buffer_t *data)
 {
 	fm_icmp_msg_type_t *msg_type;
-	unsigned int hdrlen = 4;
+	unsigned int hdrlen = 8, datalen = 0;
 
 	if ((msg_type = icmp_info->msg_type) == NULL)
 		return false;
 
-	if (msg_type->with_seq_id)
-		hdrlen += 4;
+	if (data)
+		datalen = fm_buffer_available(data);
 
 	if (ip_info->ipproto == IPPROTO_ICMP) {
 		struct icmp *icmph;
@@ -744,15 +744,18 @@ fm_raw_packet_add_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info,
 		if (msg_type->with_seq_id) {
 			icmph->icmp_id = htons(icmp_info->id);
 			icmph->icmp_seq = htons(icmp_info->seq);
+		} else {
+			icmph->icmp_id = 0;
+			icmph->icmp_seq = 0;
 		}
 
-		if (data && fm_buffer_available(data)) {
-			if (!fm_buffer_append(bp, fm_buffer_head(data), fm_buffer_available(data)))
+		if (datalen != 0) {
+			if (!fm_buffer_append(bp, fm_buffer_head(data), datalen))
 				return false;
-			hdrlen += fm_buffer_available(data);
+			hdrlen += datalen;
 		}
 
-                icmph->icmp_cksum = in_csum(icmph, hdrlen);
+		icmph->icmp_cksum = in_csum(icmph, hdrlen);
 	} else
 	if (ip_info->ipproto == IPPROTO_ICMPV6) {
 		fm_csum_partial_t csum = { 0 };
@@ -765,6 +768,15 @@ fm_raw_packet_add_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info,
 		if (msg_type->with_seq_id) {
 			icmph->icmp6_id = htons(icmp_info->id);
 			icmph->icmp6_seq = htons(icmp_info->seq);
+		} else {
+			icmph->icmp6_id = 0;
+			icmph->icmp6_seq = 0;
+		}
+
+		if (datalen != 0) {
+			if (!fm_buffer_append(bp, fm_buffer_head(data), datalen))
+				return false;
+			hdrlen += datalen;
 		}
 
 		if (!fm_ipv6_transport_csum_partial(&csum, &ip_info->src_addr, &ip_info->dst_addr, IPPROTO_ICMPV6))
