@@ -96,6 +96,12 @@ fm_fake_router_set_address(fm_fake_router_t *router, int family, const fm_addres
 	return true;
 }
 
+static bool
+fm_fake_router_apply_defaults(fm_fake_router_t *router, const fm_fake_config_t *config)
+{
+	return true;
+}
+
 fm_fake_network_t *
 fm_fake_network_alloc(fm_fake_network_array_t *array)
 {
@@ -559,7 +565,7 @@ fm_fake_config_resolve_service(fm_fake_service_t *service)
 }
 
 static void
-fm_fake_host_add_services(fm_fake_host_t *host, fm_fake_service_array_t *services)
+fm_fake_host_add_services(fm_fake_host_t *host, const fm_fake_service_array_t *services)
 {
 	unsigned int i, j, priv_port = 1023;
 
@@ -578,6 +584,24 @@ fm_fake_host_add_services(fm_fake_host_t *host, fm_fake_service_array_t *service
 	}
 }
 
+/*
+ * Apply profile(s) to hosts
+ */
+static void
+fm_fake_host_apply_profile(fm_fake_host_t *host, const fm_fake_host_profile_t *profile)
+{
+	fm_fake_host_add_services(host, &profile->services);
+}
+
+static void
+fm_fake_host_apply_defaults(fm_fake_host_t *host, const fm_fake_config_t *config)
+{
+	if (config->default_profile)
+		fm_fake_host_apply_profile(host, config->default_profile);
+	if (config->default_host_profile)
+		fm_fake_host_apply_profile(host, config->default_host_profile);
+}
+
 static bool
 fm_fake_host_apply_profiles(fm_fake_host_t *host, const fm_string_array_t *names, const fm_fake_config_t *config)
 {
@@ -593,7 +617,7 @@ fm_fake_host_apply_profiles(fm_fake_host_t *host, const fm_string_array_t *names
 			return false;
 		}
 
-		fm_fake_host_add_services(host, &profile->services);
+		fm_fake_host_apply_profile(host, profile);
 	}
 
 	return true;
@@ -639,6 +663,8 @@ fm_fake_network_build_hosts(fm_fake_network_t *net, const fm_fake_config_t *conf
 	for (i = 0; i < net->hosts.count; ++i) {
 		fm_fake_host_t *host = net->hosts.entries[i];
 
+		fm_fake_host_apply_defaults(host, config);
+
 		if (!fm_fake_host_apply_profiles(host, &host->cfg_profile, config))
 			ok = false;
 	}
@@ -662,6 +688,8 @@ fm_fake_network_build_hosts(fm_fake_network_t *net, const fm_fake_config_t *conf
 
 			host = fm_fake_host_alloc(&net->hosts);
 			asprintf(&host->name, "%s%u", group->name, index++);
+
+			fm_fake_host_apply_defaults(host, config);
 
 			if (!fm_fake_host_apply_profiles(host, &group->cfg_profile, config))
 				ok = false;
@@ -709,11 +737,21 @@ fm_fake_network_build(fm_fake_config_t *config)
 			ok = false;
 	}
 
+	config->default_profile = fm_fake_config_get_profile(config, "default");
+	config->default_host_profile = fm_fake_config_get_profile(config, "default-host");
+	config->default_router_profile = fm_fake_config_get_profile(config, "default-router");
+
 	for (i = 0; i < config->services.count; ++i) {
 		fm_fake_service_t *service = config->services.entries[i];
 
 		if (!fm_fake_config_resolve_service(service))
 			ok = false;
+	}
+
+	for (i = 0; i < config->routers.count; ++i) {
+		fm_fake_router_t *router = config->routers.entries[i];
+
+		fm_fake_router_apply_defaults(router, config);
 	}
 
 	for (i = 0; i < config->networks.count; ++i) {

@@ -155,6 +155,10 @@ typedef struct fm_fake_config {
 	fm_fake_service_array_t	services;
 	fm_fake_host_profile_array_t host_profiles;
 
+	fm_fake_host_profile_t	*default_profile;
+	fm_fake_host_profile_t	*default_host_profile;
+	fm_fake_host_profile_t	*default_router_profile;
+
 	struct hlist_head	bpool;
 } fm_fake_config_t;
 
