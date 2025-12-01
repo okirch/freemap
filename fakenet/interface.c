@@ -281,24 +281,6 @@ fm_fakenet_run(fm_tunnel_t *tunnel, const fm_fake_config_t *config)
 		}
 
 		free(cooked);
-
-		{
-			hlist_iterator_t iter;
-			double now = fm_time_now();
-
-			hlist_iterator_init(&iter, &send_queue);
-			while ((resp = hlist_iterator_next(&iter)) != NULL) {
-				if (resp->when <= now) {
-					fm_buffer_t *packet = resp->packet;
-
-					hlist_remove(&resp->link);
-
-					write(tunnel->fd, fm_buffer_head(packet), fm_buffer_available(packet));
-					fm_buffer_free(packet);
-					free(resp);
-				}
-			}
-		}
 	}
 
 	return true;
