@@ -39,7 +39,10 @@ typedef struct fm_fake_router_config {
 	char *			name;
 	char *			address;
 	char *			prev_name;
+	char *			firewall;
 } fm_fake_router_config_t;
+
+typedef struct fm_fake_firewall	fm_fake_firewall_t;
 
 typedef struct fm_fake_router	fm_fake_router_t;
 struct fm_fake_router {
@@ -50,6 +53,8 @@ struct fm_fake_router {
 	unsigned int		ttl;
 	unsigned int		label;		/* used for loop detection only */
 	fm_ratelimit_t		icmp_rate;
+
+	fm_fake_firewall_t *	firewall;
 
 	struct fm_fake_delay *	link_delay;
 
@@ -113,6 +118,7 @@ typedef struct fm_fake_host {
 	unsigned int		ttl;
 	fm_fake_port_array_t	ports;
 
+	fm_fake_firewall_t *	firewall;
 	fm_ratelimit_t		icmp_rate;
 
 	fm_string_array_t	cfg_profile;
@@ -147,6 +153,16 @@ typedef struct fm_fake_network_array {
 	fm_fake_network_t **	entries;
 } fm_fake_network_array_t;
 
+typedef struct fm_fake_fwconfig {
+	char *			name;
+	fm_string_array_t	rules;
+} fm_fake_fwconfig_t;
+
+typedef struct fm_fake_fwconfig_array {
+	unsigned int		count;
+	fm_fake_fwconfig_t **	entries;
+} fm_fake_fwconfig_array_t;
+
 typedef struct fm_fake_config {
 	fm_string_array_t	addresses;
 	fm_string_array_t	backbone_pool;
@@ -157,6 +173,7 @@ typedef struct fm_fake_config {
 	fm_fake_network_array_t	networks;
 	fm_fake_service_array_t	services;
 	fm_fake_host_profile_array_t host_profiles;
+	fm_fake_fwconfig_array_t firewalls;
 
 	fm_fake_host_profile_t	*default_profile;
 	fm_fake_host_profile_t	*default_host_profile;
@@ -181,6 +198,37 @@ typedef struct fm_tunnel {
 	fm_address_t		ipv6_address;
 } fm_tunnel_t;
 
+/*
+ * Firewalling
+ */
+enum {
+	__FM_FAKE_FW_UNDEF = 0,
+	FM_FAKE_FW_DROP,
+	FM_FAKE_FW_ALLOW,
+	FM_FAKE_FW_REJECT,
+};
+typedef struct fm_fake_filter_rule {
+	int			action;
+	unsigned int		proto_id;
+	unsigned int		tcp_flag_mask;
+	unsigned int		tcp_flag_set;
+	const struct fm_icmp_msg_type *icmp_type;
+	fm_port_range_t		src_port_range;
+	fm_port_range_t		dst_port_range;
+
+	fm_address_t		dst_addr;
+} fm_fake_filter_rule_t;
+
+typedef struct fm_fake_filter_rule_array {
+	unsigned int		count;
+	fm_fake_filter_rule_t *	entries;
+} fm_fake_filter_rule_array_t;
+
+struct fm_fake_firewall {
+	char *			name;
+	fm_fake_filter_rule_array_t rules;
+};
+
 /* Primitives */
 extern fm_fake_network_t *	fm_fake_network_alloc(fm_fake_network_array_t *);
 extern fm_fake_router_t *	fm_fake_router_alloc(const char *, fm_fake_router_array_t *);
@@ -188,6 +236,11 @@ extern fm_fake_service_t *	fm_fake_service_alloc(fm_fake_service_array_t *array)
 extern fm_fake_host_profile_t *	fm_fake_host_profile_alloc(fm_fake_host_profile_array_t *array);
 extern fm_fake_host_group_t *	fm_fake_host_group_alloc(fm_fake_host_group_array_t *array);
 extern fm_fake_host_t *		fm_fake_host_alloc(fm_fake_host_array_t *array);
+extern fm_fake_fwconfig_t *	fm_fake_firewall_alloc(fm_fake_fwconfig_array_t *array);
+extern fm_fake_filter_rule_t *	fm_fake_filter_rule_alloc(fm_fake_filter_rule_array_t *array);
+
+extern void			fm_fake_firewall_publish_port(fm_fake_firewall_t *, const fm_address_t *, const fm_fake_port_t *);
+extern bool			fm_fake_firewall_parse_rule(fm_fake_firewall_t *firewall, const char *rule_spec);
 
 extern fm_fake_network_t *	fm_fake_config_get_network_by_addr(const fm_fake_config_t *, const fm_address_t *);
 extern fm_fake_host_t *		fm_fake_config_get_host_by_addr(const fm_fake_config_t *, const fm_address_t *);

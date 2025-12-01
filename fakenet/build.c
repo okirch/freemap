@@ -34,7 +34,6 @@
 #include "routing.h"
 #include "packet.h"
 #include "buffer.h"
-#include "filefmt.h"
 #include "logging.h"
 
 /*
@@ -446,6 +445,21 @@ fm_fake_config_get_service(const fm_fake_config_t *config, const char *name)
 	return NULL;
 }
 
+static fm_fake_fwconfig_t *
+fm_fake_config_get_firewall(const fm_fake_config_t *config, const char *name)
+{
+	unsigned int i;
+
+	for (i = 0; i < config->firewalls.count; ++i) {
+		fm_fake_fwconfig_t *firewall = config->firewalls.entries[i];
+
+		if (!strcmp(firewall->name, name))
+			return firewall;
+	}
+
+	return NULL;
+}
+
 fm_fake_network_t *
 fm_fake_config_get_network_by_addr(const fm_fake_config_t *config, const fm_address_t *addr)
 {
@@ -748,6 +762,53 @@ fm_fake_network_build_hosts(fm_fake_network_t *net, const fm_fake_config_t *conf
 	return ok;
 }
 
+static bool
+fm_fake_network_build_firewall(fm_fake_network_t *net, fm_fake_config_t *config)
+{
+	fm_fake_router_t *router = net->router;
+	fm_fake_fwconfig_t *fwconf;
+	fm_fake_firewall_t *firewall;
+	unsigned int i, j;
+
+	if (router->config.firewall == NULL)
+		return true;
+
+	fwconf = fm_fake_config_get_firewall(config, router->config.firewall);
+	if (fwconf == NULL) {
+		fm_log_error("net %s router %s references unknown firewall config %s",
+				net->name, router->config.name,
+				router->config.firewall);
+		return false;
+	}
+
+	firewall = calloc(1, sizeof(*firewall));
+	router->firewall = firewall;
+
+	firewall->name = strdup(fwconf->name);
+
+	/* loop over all hosts on this network, and if any of them hosts
+	 * a public service, punch a hole into the firewall for those. */
+	for (i = 0; i < net->hosts.count; ++i) {
+		fm_fake_host_t *host = net->hosts.entries[i];
+
+		for (j = 0; j < host->ports.count; ++j) {
+			fm_fake_port_t *port = &host->ports.entries[j];
+
+			if (port->publish)
+				fm_fake_firewall_publish_port(firewall, &host->address, port);
+		}
+	}
+
+	for (i = 0; i < fwconf->rules.count; ++i) {
+		const char *spec = fwconf->rules.entries[i];
+
+		if (!fm_fake_firewall_parse_rule(firewall, spec))
+			return false;
+	}
+
+	return true;
+}
+
 /*
  * Given the configuration setup, try to build the network in-memory
  */
@@ -823,6 +884,9 @@ fm_fake_network_build(fm_fake_config_t *config)
 		net->host_address_pool = fm_fake_address_pool_alloc(&net->prefix);
 
 		if (!fm_fake_network_build_hosts(net, config))
+			ok = false;
+
+		if (!fm_fake_network_build_firewall(net, config))
 			ok = false;
 
 		{

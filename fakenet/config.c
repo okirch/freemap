@@ -94,6 +94,14 @@ fm_fake_config_create_host(curly_node_t *node, void *data)
 	return fm_fake_host_alloc(array);
 }
 
+static void *
+fm_fake_config_create_firewall(curly_node_t *node, void *data)
+{
+	fm_fake_fwconfig_array_t *array = data;
+
+	return fm_fake_firewall_alloc(array);
+}
+
 static bool
 fm_fake_config_set_rate(curly_node_t *node, void *attr_data, const curly_attr_t *attr)
 {
@@ -117,7 +125,7 @@ fm_fake_config_set_rate(curly_node_t *node, void *attr_data, const curly_attr_t 
 static bool
 fm_fake_config_include(curly_node_t *node, void *attr_data, const curly_attr_t *attr)
 {
-	fm_config_t *config = attr_data;
+	fm_fake_config_t *config = attr_data;
 	char *including_filename, *dname;
 	unsigned int i;
 	bool ok = true;
@@ -181,6 +189,7 @@ static fm_config_proc_t	fm_config_router_node = {
 	.attributes = {
 		{ "address",		offsetof(fm_fake_router_config_t, address),	FM_CONFIG_ATTR_TYPE_STRING },
 		{ "previous",		offsetof(fm_fake_router_config_t, prev_name),	FM_CONFIG_ATTR_TYPE_STRING },
+		{ "firewall",		offsetof(fm_fake_router_config_t, firewall),	FM_CONFIG_ATTR_TYPE_STRING },
 	},
 };
 
@@ -200,6 +209,13 @@ static fm_config_proc_t	fm_config_host_profile_node = {
 	},
 };
 
+static fm_config_proc_t	fm_config_firewall_node = {
+	.name = ATTRIB_STRING(fm_fake_firewall_t, name),
+	.attributes = {
+		{ "rules",		offsetof(fm_fake_fwconfig_t, rules),		FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
+	},
+};
+
 static fm_config_proc_t	fm_config_doc_root = {
 	.attributes = {
 		{ "include",		0,						FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = fm_fake_config_include },
@@ -211,6 +227,7 @@ static fm_config_proc_t	fm_config_doc_root = {
 		{ "router",		offsetof(fm_fake_config_t, routers),		&fm_config_router_node, .alloc_child = fm_fake_config_create_router },
 		{ "service",		offsetof(fm_fake_config_t, services),		&fm_config_service_node, .alloc_child = fm_fake_config_create_service },
 		{ "host-profile",	offsetof(fm_fake_config_t, host_profiles),	&fm_config_host_profile_node, .alloc_child = fm_fake_config_create_host_profile },
+		{ "firewall",		offsetof(fm_fake_config_t, firewalls),		&fm_config_firewall_node, .alloc_child = fm_fake_config_create_firewall },
 	},
 };
 
