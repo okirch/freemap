@@ -188,7 +188,7 @@ fm_fakenet_doio(fm_tunnel_t *tunnel, fm_buffer_t *recvbuf, struct hlist_head *se
 				expires = resp->when;
 		}
 
-		timeout = (expires - now) / 1000;
+		timeout = (expires - now) * 1000;
 
 		if (timeout >= 0) {
 			struct pollfd pfd;
