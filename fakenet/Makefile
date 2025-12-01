@@ -6,6 +6,7 @@ ALL	= \
 fakenet_OBJS = \
 	  main.o \
 	  interface.o \
+	  respond.o \
 	  build.o \
 	  config.o \
 	  random.o

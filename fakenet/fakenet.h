@@ -207,6 +207,7 @@ extern bool			fm_fake_network_set_egress(fm_fake_config_t *config, const fm_tunn
 extern fm_tunnel_t *		fm_fakenet_attach_interface(void);
 extern bool			fm_fakenet_configure_interface(fm_tunnel_t *tunnel, fm_fake_config_t *config);
 extern bool			fm_fakenet_run(fm_tunnel_t *tunnel, const fm_fake_config_t *config);
+extern fm_fake_response_t *	fm_fakenet_process_packet(fm_parsed_pkt_t *cooked, const fm_fake_config_t *config, fm_buffer_t *payload);
 
 extern double			fm_gaussian(double mu, double sigma);
 extern double			fm_n_gaussians(unsigned int nsamples, double mu, double sigma);
