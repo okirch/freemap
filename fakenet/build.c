@@ -397,8 +397,14 @@ fm_fake_network_set_egress(fm_fake_config_t *config, const fm_tunnel_t *tunnel)
 		return true;
 
 	router = fm_fake_router_alloc("egress", &config->routers);
+#if 0
+	/* Do not just assign the local addresses of the tunnel to the egress router.
+	 * Otherwise, the traceroute response for TTL=1 will have the same
+	 * source and dest address.
+	 */
 	router->ipv4_address = tunnel->ipv4_address;
 	router->ipv6_address = tunnel->ipv6_address;
+#endif
 	router->label = 1;
 	router->ttl = 1;
 
