@@ -32,7 +32,7 @@ static double		fm_fake_host_delay(const fm_fake_host_t *host);
 static double		fm_fake_router_delay(const fm_fake_router_t *router);
 
 void
-fm_fake_respoonse_free(fm_fake_response_t *resp)
+fm_fake_response_free(fm_fake_response_t *resp)
 {
 	hlist_remove(&resp->link);
 	fm_buffer_free(resp->packet);
@@ -62,6 +62,44 @@ fm_fake_host_prepare_response(fm_fake_host_t *host, const fm_ip_header_info_t *i
 
 	resp = calloc(1, sizeof(*resp));
 	resp->when = fm_time_now() + fm_fake_host_delay(host);
+	resp->packet = reply;
+
+	return resp;
+}
+
+static fm_fake_response_t *
+fm_fake_router_prepare_response(fm_fake_router_t *router, const fm_ip_header_info_t *ip, unsigned int transport_len, fm_ip_header_info_t *reply_info)
+{
+	fm_fake_response_t *resp;
+	fm_buffer_t *reply;
+
+	memset(reply_info, 0, sizeof(*reply_info));
+
+	if (ip->src_addr.family == AF_INET) {
+		reply_info->src_addr = router->ipv4_address;
+		reply_info->ipproto = IPPROTO_ICMP;
+	} else if (ip->src_addr.family == AF_INET6) {
+		reply_info->src_addr = router->ipv6_address;
+		reply_info->ipproto = IPPROTO_ICMPV6;
+	}
+
+	if (reply_info->src_addr.family == AF_UNSPEC)
+		return NULL;
+
+	reply_info->dst_addr = ip->src_addr;
+	reply_info->ttl = 64;
+	reply_info->tos = 0;
+
+	reply = fm_buffer_alloc(128);
+	reply->rpos = reply->wpos = 4;
+
+	if (!fm_raw_packet_add_ip_header(reply, reply_info, transport_len)) {
+		fm_buffer_free(reply);
+		return NULL;
+	}
+
+	resp = calloc(1, sizeof(*resp));
+	resp->when = fm_time_now() + fm_fake_router_delay(router);
 	resp->packet = reply;
 
 	return resp;
@@ -108,7 +146,7 @@ fm_fake_host_receive_icmp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const f
 	icmp_reply_info.msg_type = reply_type;
 
 	if (!fm_raw_packet_add_icmp_header(resp->packet, &icmp_reply_info, &ip_reply_info, payload)) {
-		fm_fake_respoonse_free(resp);
+		fm_fake_response_free(resp);
 		return NULL;
 	}
 
@@ -129,6 +167,75 @@ fm_fake_host_receive(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_ip_
 	}
 
 	return NULL;
+}
+
+/*
+ * Router sends an ICMP error
+ */
+static fm_fake_response_t *
+fm_fake_router_send_error(fm_fake_router_t *router, fm_icmp_msg_type_t *error_type, const fm_parsed_hdr_t *hdr)
+{
+	unsigned int snap_len;
+	fm_buffer_t *snap_buf;
+	fm_fake_response_t *resp;
+	fm_ip_header_info_t ip_reply_info;
+	fm_icmp_header_info_t icmp_reply_info = { 0 };
+
+	if (error_type == NULL) {
+		fm_log_error("%s: icmp message type is NULL", __func__);
+		return NULL;
+	}
+
+	fm_log_debug("  %s to send %s error", router->config.name, error_type->desc);
+
+	/* According to RFC, the original IP header + 64 bits of transport stuff */
+	snap_len = hdr->raw.hdr_len + 8;
+	if (snap_len > hdr->raw.tot_len)
+		snap_len = hdr->raw.tot_len;
+
+	resp = fm_fake_router_prepare_response(router, &hdr->ip, 8 + snap_len, &ip_reply_info);
+	if (resp == NULL)
+		return NULL;
+
+	snap_buf = fm_buffer_alloc(snap_len);
+	fm_buffer_append(snap_buf, hdr->raw.data, snap_len);
+
+	icmp_reply_info.msg_type = error_type;
+	if (!fm_raw_packet_add_icmp_header(resp->packet, &icmp_reply_info, &ip_reply_info, snap_buf)) {
+		fm_fake_response_free(resp);
+		fm_buffer_free(snap_buf);
+		return NULL;
+	}
+
+	fm_buffer_free(snap_buf);
+
+	return resp;
+}
+
+/*
+ * We received a traceroute packet, and the TTL was not large enough to reach the destination
+ * host.
+ * The router argument passed to us is the ingress router of the destination network.
+ */
+static fm_fake_response_t *
+fm_fake_router_ttl_exceeded(fm_fake_router_t *router, fm_parsed_pkt_t *cooked, const fm_parsed_hdr_t *hdr, fm_buffer_t *payload)
+{
+	const fm_ip_header_info_t *ip = &hdr->ip;
+	unsigned int ttl = ip->ttl;
+	fm_icmp_msg_type_t *error_type;
+
+	while (ttl < router->ttl && router)
+		router = router->prev;
+
+	if (router == NULL) {
+		fm_log_warning("Weird, we do not seem to have a router for ttl %u", ttl);
+		return NULL;
+	}
+
+	/* In theory, we should modify the incoming IP header and set its TTL to 1,
+	 * plus update the checksum, yadda yadda yadda. Does anyone care? */
+	error_type = fm_icmp_msg_type_by_name("ttl-exceeded");
+	return fm_fake_router_send_error(router, error_type, hdr);
 }
 
 /*
@@ -181,8 +288,8 @@ fm_fakenet_process_packet(fm_parsed_pkt_t *cooked, const fm_fake_config_t *confi
 	/* TBD: perform filtering along the way */
 
 	if (hdr->ip.ttl <= net->router->ttl) {
-		/* TBD: find the proper router, send time exceeded */
-		return NULL;
+		/* find the proper router, send time exceeded */
+		return fm_fake_router_ttl_exceeded(net->router, cooked, hdr, payload);
 	}
 
 	host = fm_fake_network_get_host_by_addr(net, &hdr->ip.dst_addr);
