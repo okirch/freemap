@@ -49,6 +49,9 @@ static fm_extant_t *	fm_arp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt,
 
 static void		fm_arp_update_cache(const fm_arp_header_info_t *arp_info, fm_extant_t *extant, int ifindex);
 
+/* Global pool for ARP sockets */
+static fm_socket_pool_t	*fm_arp_socket_pool = NULL;
+
 /* Global extant map for all ARP related stuff */
 static fm_extant_map_t fm_arp_extant_map = FM_EXTANT_MAP_INIT;
 
@@ -70,8 +73,15 @@ FM_PROTOCOL_REGISTER(fm_arp_ops);
 static fm_socket_t *
 fm_arp_create_socket(fm_protocol_t *proto, int dummy)
 {
-	/* We probably never get here */
-	return fm_socket_create(PF_PACKET, SOCK_DGRAM, ntohs(ETH_P_ARP), proto);
+	fm_socket_t *sock;
+
+	/* We come here from fm_socket_pool_get_socket() */
+	sock = fm_socket_create(PF_PACKET, SOCK_DGRAM, ntohs(ETH_P_ARP), proto);
+	if (sock != NULL) {
+		fm_socket_install_data_parser(sock, FM_PROTO_ARP);
+	}
+
+	return sock;
 }
 
 /*
@@ -94,6 +104,9 @@ fm_arp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, cons
 
 	if (arp->params.retries == 0)
 		arp->params.retries = FM_ARP_PROBE_RETRIES;
+
+	if (fm_arp_socket_pool == NULL)
+		fm_arp_socket_pool = fm_socket_pool_create(proto, SOCK_DGRAM);
 
 	return arp;
 }
@@ -289,7 +302,7 @@ fm_arp_control_send(const fm_arp_control_t *arp, fm_target_control_t *target_con
 	src_lladdr = target_control->arp.src_lladdr;
 	((struct sockaddr_ll *) &src_lladdr)->sll_protocol = htons(ETH_P_ARP);
 
-	sock = fm_raw_socket_get((fm_address_t *) &src_lladdr, arp->proto, SOCK_DGRAM);
+	sock = fm_socket_pool_get_socket(fm_arp_socket_pool, (fm_address_t *) &src_lladdr);
 	if (sock == NULL) {
 		fm_log_error("Unable to create ARP socket for %s",
 				fm_address_format(&target->address));

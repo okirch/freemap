@@ -418,6 +418,9 @@ fm_address_equal(const fm_address_t *a, const fm_address_t *b, bool with_port)
 			return false;
 
 		return !memcmp(&sixa->sin6_addr, &sixb->sin6_addr, 16);
+	} else
+	if (a->family == AF_PACKET) {
+		return !memcmp(a, b, sizeof(struct sockaddr_ll));
 	}
 
 	return false;
