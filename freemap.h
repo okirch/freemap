@@ -48,7 +48,7 @@ extern void		fm_address_enumerator_destroy(fm_address_enumerator_t *);
 extern void		fm_address_enumerator_restart(fm_address_enumerator_t *, int);
 
 extern const char *	fm_address_format(const fm_address_t *);
-extern bool		fm_address_resolve(const char *addr_string, fm_address_array_t *);
+extern bool		fm_address_resolve(const char *addr_string, fm_address_array_t *, bool check_eligibility);
 extern bool		fm_address_parse(const char *addr_string, fm_address_t *addr);
 extern bool		fm_address_equal(const fm_address_t *, const fm_address_t *, bool with_port);
 extern bool		fm_address_prefix_parse(const char *addr_string, fm_address_prefix_t *prefix);

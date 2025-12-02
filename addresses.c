@@ -481,7 +481,7 @@ fm_address_array_append_unique(fm_address_array_t *array, const fm_address_t *ad
  * Helper functions for hostname resolution
  */
 bool
-fm_address_resolve(const char *hostname, fm_address_array_t *array)
+fm_address_resolve(const char *hostname, fm_address_array_t *array, bool check_eligibility)
 {
 	struct addrinfo hints, *result = NULL, *pos;
 	fm_address_t address;
@@ -489,7 +489,7 @@ fm_address_resolve(const char *hostname, fm_address_array_t *array)
 	int err;
 
 	if (fm_address_parse(hostname, &address)) {
-		if (!fm_address_generator_address_eligible(&address)) {
+		if (check_eligibility && !fm_address_generator_address_eligible(&address)) {
 			fm_log_warning("Ignoring address %s because it's from the wrong family", hostname);
 			return true;
 		}
@@ -517,7 +517,7 @@ fm_address_resolve(const char *hostname, fm_address_array_t *array)
 		memcpy(&address, pos->ai_addr, pos->ai_addrlen);
 
 		/* Skip address families we've been asked to ignore */
-		if (!fm_address_generator_address_eligible(&address))
+		if (check_eligibility && !fm_address_generator_address_eligible(&address))
 			continue;
 
 		/* If try_all is set, really try all addresses. Otherwise, use at

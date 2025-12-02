@@ -270,7 +270,7 @@ fm_create_simple_address_enumerator(const char *addr_string, fm_target_manager_t
 
 	simple = NEW_ADDRESS_ENUMERATOR(fm_simple_address_enumerator);
 
-	if (!fm_address_resolve(addr_string, &simple->addrs)) {
+	if (!fm_address_resolve(addr_string, &simple->addrs, false)) {
 		free(simple);
 		return false;
 	}
