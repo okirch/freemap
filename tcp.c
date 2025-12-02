@@ -185,6 +185,8 @@ fm_tcp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, cons
 	if (fm_tcp_socket_pool == NULL)
 		fm_tcp_socket_pool = fm_socket_pool_create(proto, SOCK_RAW);
 
+	tcp->src_port = fm_port_reserve(FM_PROTO_TCP);
+
 	return tcp;
 }
 
@@ -209,6 +211,10 @@ fm_tcp_control_init_target(const fm_tcp_control_t *tcp, fm_target_control_t *tar
 
 	if (!fm_socket_get_local_address(target_control->sock, &target_control->local_address))
 		fm_log_warning("TCP: unable to get local address: %m");
+
+	/* getsockname() will tell us the local port is 6 (aka IPPROTO_TCP).
+	 * Overwrite with the local port we reserved earlier. */
+	fm_address_set_port(&target_control->local_address, tcp->src_port);
 
 	return true;
 }

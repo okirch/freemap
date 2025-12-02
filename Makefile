@@ -17,6 +17,7 @@ OBJS	= projects.o \
 	  traceroute.o \
 	  ratelimit.o \
 	  addresses.o \
+	  ports.o \
 	  network.o \
 	  socket.o \
 	  packet.o \

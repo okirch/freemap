@@ -214,6 +214,8 @@ fm_udp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, cons
 	if (fm_udp_socket_pool == NULL)
 		fm_udp_socket_pool = fm_socket_pool_create(proto, SOCK_DGRAM);
 
+	udp->src_port = fm_port_reserve(FM_PROTO_UDP);
+
 	return udp;
 }
 
@@ -235,6 +237,10 @@ fm_udp_control_init_target(const fm_udp_control_t *udp, fm_target_control_t *tar
 
 	if (!fm_socket_get_local_address(target_control->sock, &target_control->local_address))
 		fm_log_warning("UDP: unable to get local address: %m");
+
+	/* getsockname() will tell us the local port is 17 (aka IPPROTO_UDP).
+	 * Overwrite with the local port we reserved earlier. */
+	fm_address_set_port(&target_control->local_address, udp->src_port);
 
 	return true;
 }
@@ -364,7 +370,7 @@ fm_udp_build_packet(const fm_udp_control_t *udp, fm_target_control_t *target_con
 	unsigned int data_len;
 
 	memset(&hdrinfo, 0, sizeof(hdrinfo));
-	hdrinfo.src_port = fm_address_get_port(&target_control->local_address);
+	hdrinfo.src_port = udp->src_port;
 	hdrinfo.dst_port = params->port;
 
 	/* Build the dest addr with port */
