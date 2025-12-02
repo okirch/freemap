@@ -403,26 +403,6 @@ fm_target_free(fm_target_t *target)
 {
 	drop_string(&target->id);
 
-	if (target->tcp_sock) {
-		fm_socket_free(target->tcp_sock);
-		target->tcp_sock = NULL;
-	}
-
-	if (target->udp_sock) {
-		fm_socket_free(target->udp_sock);
-		target->udp_sock = NULL;
-	}
-
-	if (target->raw_icmp4_sock) {
-		fm_socket_free(target->raw_icmp4_sock);
-		target->raw_icmp4_sock = NULL;
-	}
-
-	if (target->raw_icmp6_sock) {
-		fm_socket_free(target->raw_icmp6_sock);
-		target->raw_icmp6_sock = NULL;
-	}
-
 	/* destroy extant requests */
 
 	/* Release the host asset (meaning it can be unmapped) */

@@ -44,11 +44,6 @@ struct fm_target {
 	/* We do a routing lookup per target */
 	fm_routing_info_t	rtinfo;
 
-	fm_socket_t *		raw_icmp4_sock;
-	fm_socket_t *		raw_icmp6_sock;
-	fm_socket_t *		udp_sock;
-	fm_socket_t *		tcp_sock;
-
 	/* for now, just a boolean state: in progress vs done.
 	 * Maybe later we need 3 states or more. */
 	bool			scan_done;

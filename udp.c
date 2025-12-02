@@ -385,9 +385,8 @@ fm_udp_request_send(const fm_udp_control_t *udp, fm_target_control_t *target_con
 		param_copy.tos = param_value;
 	dst_port = param_copy.port;
 
-	if ((sock = target_control->sock) == NULL && (sock = udp->sock) == NULL) {
-		sock = fm_protocol_create_host_shared_socket(udp->proto, target);
-	}
+	if ((sock = target_control->sock) == NULL && (sock = udp->sock) == NULL)
+		return FM_SEND_ERROR;
 
 	if (sock == NULL) {
 		fm_log_error("Unable to create UDP socket for %s: %m", target->id);

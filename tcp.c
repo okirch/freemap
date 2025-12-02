@@ -196,7 +196,6 @@ fm_tcp_control_init_target(const fm_tcp_control_t *tcp, fm_target_control_t *tar
 	const fm_address_t *addr = &target->address;
 	fm_socket_t *sock = NULL;
 
-	/* For the time being, we create a single raw socket per target host */
 	sock = fm_tcp_create_shared_socket(tcp->proto, target);
 	if (sock == NULL) {
 		fm_log_error("could not create shared TCP socket for %s", target->id);

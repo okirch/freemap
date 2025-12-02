@@ -290,15 +290,6 @@ fm_protocol_create_socket(fm_protocol_t *proto, int ipproto)
 	return sock;
 }
 
-fm_socket_t *
-fm_protocol_create_host_shared_socket(fm_protocol_t *proto, fm_target_t *target)
-{
-	if (target == NULL || proto->create_host_shared_socket == NULL)
-		return NULL;
-
-	return proto->create_host_shared_socket(proto, target);
-}
-
 /*
  * locate extants
  */

@@ -318,7 +318,6 @@ fm_icmp_request_init_target(const fm_icmp_control_t *icmp, fm_target_control_t *
 	const fm_address_t *addr = &target->address;
 	fm_socket_t *sock = NULL;
 
-	/* For the time being, we create a single raw socket per target host */
 	sock = fm_icmp_create_shared_socket(icmp->proto, target);
 	if (sock == NULL)
 		return false;
