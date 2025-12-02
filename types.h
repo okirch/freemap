@@ -209,8 +209,6 @@ typedef struct fm_pkt_info {
 	int			ttl;
 	int			tos;
 
-	int			error_class;
-
 	struct sock_extended_err *ee;
 	const fm_address_t *	offender;
 	unsigned char		eebuf[256];
