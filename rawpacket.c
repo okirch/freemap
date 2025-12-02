@@ -245,7 +245,6 @@ fm_raw_packet_pull_ipv6_extension(fm_buffer_t *bp, fm_ip_header_info_t *info)
 	case IPPROTO_HOPOPTS:
 	case IPPROTO_ROUTING:
 	case IPPROTO_FRAGMENT:
-	case IPPROTO_ICMPV6:
 	case IPPROTO_DSTOPTS:
 	case IPPROTO_MH:
 	case 143: /* segment routing */
