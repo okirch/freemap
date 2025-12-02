@@ -95,6 +95,12 @@ typedef struct fm_icmp_header_info {
 typedef struct fm_udp_header_info {
 	uint16_t		src_port;
 	uint16_t		dst_port;
+
+	/* payload */
+	struct {
+		unsigned int	len;
+		const void *	data;
+	} payload;
 } fm_udp_header_info_t;
 
 typedef struct fm_tcp_header_info {
@@ -109,6 +115,12 @@ typedef struct fm_tcp_header_info {
 				opt_timestamps,
 				opt_sack,
 				opt_wscale;
+
+	/* payload */
+	struct {
+		unsigned int	len;
+		const void *	data;
+	} payload;
 
 	/* internal use only: */
 	uint16_t		src_port;
@@ -158,11 +170,10 @@ extern bool		fm_raw_packet_add_ip_header(fm_buffer_t *bp, const fm_ip_header_inf
 extern bool		fm_raw_packet_add_icmp_header(fm_buffer_t *, fm_icmp_header_info_t *, const fm_ip_header_info_t *, const fm_buffer_t *data);
 extern bool		fm_raw_packet_pull_eth_hdr(fm_pkt_t *pkt, fm_eth_header_info_t *info);
 extern bool		fm_raw_packet_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_header_info_t *info);
-extern bool		fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
-					fm_tcp_header_info_t *, unsigned int payload_len);
-extern bool		fm_raw_packet_add_udp_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
-					fm_udp_header_info_t *udp_info,
-					const void *payload, unsigned int payload_len);
+extern bool		fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_ip_header_info_t *ip_info,
+					const fm_tcp_header_info_t *tcp_info);
+extern bool		fm_raw_packet_add_udp_header(fm_buffer_t *bp, const fm_ip_header_info_t *ip_info,
+					const fm_udp_header_info_t *udp_info);
 extern bool		fm_raw_packet_pull_tcp_header(fm_buffer_t *bp, fm_tcp_header_info_t *tcp);
 extern bool		fm_raw_packet_pull_udp_header(fm_buffer_t *bp, fm_udp_header_info_t *udp);
 extern bool		fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp);
@@ -175,6 +186,18 @@ extern fm_icmp_msg_type_t *fm_icmp_msg_type_by_name(const char *name);
 extern fm_icmp_msg_type_t *fm_icmp_msg_type_get_reply(fm_icmp_msg_type_t *req);
 
 extern bool		fm_ipv6_transport_csum_partial(fm_csum_partial_t *, const fm_address_t *, const fm_address_t *, unsigned int next_header);
+
+/* These functions can be used to apply parameters before sending a packet.
+ * If the parameter is applicable, returns a pointer to a local (static) copy with the parameter applied.
+ * If the parameter is not applicable, just returns the pointer that was passed in.
+ */
+extern const fm_ip_header_info_t *fm_ip_header_info_finalize(const fm_ip_header_info_t *ip, int param_type, int param_value);
+extern const fm_tcp_header_info_t *fm_tcp_header_info_finalize(const fm_tcp_header_info_t *tcp, int param_type, int param_value);
+extern const fm_udp_header_info_t *fm_udp_header_info_finalize(const fm_udp_header_info_t *udp, int param_type, int param_value, const fm_buffer_t *payload);
+
+extern unsigned int	fm_ip_compute_len(const fm_ip_header_info_t *ip);
+extern unsigned int	fm_tcp_compute_len(const fm_tcp_header_info_t *tcp);
+extern unsigned int	fm_udp_compute_len(const fm_udp_header_info_t *udp);
 
 static inline fm_parsed_hdr_t *
 fm_parsed_packet_peek_next_header(fm_parsed_pkt_t *cooked)

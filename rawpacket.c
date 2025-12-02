@@ -39,6 +39,88 @@
 #include "utils.h"
 
 
+/* These functions can be used to apply parameters before sending a packet.
+ * If the parameter is applicable, returns a pointer to a local (static) copy with the parameter applied.
+ * If the parameter is not applicable, just returns the pointer that was passed in.
+ */
+const fm_ip_header_info_t *
+fm_ip_header_info_finalize(const fm_ip_header_info_t *ip, int param_type, int param_value)
+{
+	static fm_ip_header_info_t copy;
+
+	if (param_type == FM_PARAM_TYPE_TTL) {
+		copy = *ip;
+		copy.ttl = param_value;
+		return &copy;
+	}
+	if (param_type == FM_PARAM_TYPE_TOS) {
+		copy = *ip;
+		copy.tos = param_value;
+		return &copy;
+	}
+
+	return ip;
+}
+
+const fm_tcp_header_info_t *
+fm_tcp_header_info_finalize(const fm_tcp_header_info_t *tcp, int param_type, int param_value)
+{
+	static fm_tcp_header_info_t copy;
+
+	if (param_type == FM_PARAM_TYPE_PORT) {
+		copy = *tcp;
+		copy.dst_port = param_value;
+		return &copy;
+	}
+
+	return tcp;
+}
+
+unsigned int
+fm_tcp_compute_len(const fm_tcp_header_info_t *tcp)
+{
+	/* We don't do any TCP options yet, so it'll be just 20 bytes for the standard 
+	 * header + the payload */
+	return 20 + tcp->payload.len;
+}
+
+unsigned int
+fm_ip_compute_len(const fm_ip_header_info_t *ip)
+{
+	if (ip->dst_addr.family == AF_INET)
+		return 20; /* no options yet */
+
+	if (ip->dst_addr.family == AF_INET6)
+		return 40; /* option headers yet */
+
+	fm_log_fatal("%s: bad address family", __func__);
+	return 1024;
+}
+
+const fm_udp_header_info_t *
+fm_udp_header_info_finalize(const fm_udp_header_info_t *udp, int param_type, int param_value, const fm_buffer_t *payload)
+{
+	static fm_udp_header_info_t copy;
+
+	copy = *udp;
+
+	if (payload) {
+		copy.payload.len = fm_buffer_available(payload);
+		copy.payload.data = fm_buffer_head(payload);
+	}
+
+	if (param_type == FM_PARAM_TYPE_PORT)
+		copy.dst_port = param_value;
+
+	return &copy;
+}
+
+unsigned int
+fm_udp_compute_len(const fm_udp_header_info_t *udp)
+{
+	return 8 + udp->payload.len;
+}
+
 /*
  * Add link-level header to raw packet
  */
@@ -446,26 +528,14 @@ fm_raw_packet_udp_checksum(const fm_buffer_t *bp, const fm_address_t *src_addr, 
  * Add TCP header to packet
  */
 bool
-fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
-					fm_tcp_header_info_t *tcp_info, unsigned int payload_len)
+fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_ip_header_info_t *ip_info, const fm_tcp_header_info_t *tcp_info)
 {
 	struct tcphdr *th;
 	uint16_t window;
 	unsigned int len;
 
-	if (src_addr->family == AF_INET && dst_addr->family == AF_INET) {
-		if (tcp_info->src_port == 0)
-			tcp_info->src_port = ntohs(((struct sockaddr_in *) src_addr)->sin_port);
-		if (tcp_info->dst_port == 0)
-			tcp_info->dst_port = ntohs(((struct sockaddr_in *) dst_addr)->sin_port);
-	} else
-	if (src_addr->family == AF_INET6 && dst_addr->family == AF_INET6) {
-		if (tcp_info->src_port == 0)
-			tcp_info->src_port = ntohs(((struct sockaddr_in6 *) src_addr)->sin6_port);
-		if (tcp_info->dst_port == 0)
-			tcp_info->dst_port = ntohs(((struct sockaddr_in6 *) dst_addr)->sin6_port);
-	} else
-		return false;
+	assert(tcp_info->src_port != 0);
+	assert(tcp_info->dst_port != 0);
 
 	th = fm_buffer_push(bp, sizeof(*th));
 	memset(th, 0, sizeof(*th));
@@ -474,7 +544,7 @@ fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, cons
 	th->th_dport = htons(tcp_info->dst_port);
 
 	th->th_seq = tcp_info->seq;
-	th->th_ack = tcp_info->ack_seq;
+	th->th_ack = (tcp_info->flags & TH_ACK)? tcp_info->ack_seq : 0;
 	th->th_flags = tcp_info->flags;
 
 	window = tcp_info->window;
@@ -486,6 +556,11 @@ fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, cons
 
 	/* Maybe add a couple of TCP options here */
 
+	/* Add the payload */
+	if (tcp_info->payload.len
+	 && !fm_buffer_append(bp, tcp_info->payload.data, tcp_info->payload.len))
+		return false;
+
 	/* Set the length */
 	len = fm_buffer_len(bp, th);
 	if (len & 3)
@@ -495,7 +570,7 @@ fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, cons
 	th->th_sum = 0;
 
 	/* Then do the checksum */
-	fm_raw_packet_tcp_checksum(bp, src_addr, dst_addr, th);
+	fm_raw_packet_tcp_checksum(bp, &ip_info->src_addr, &ip_info->dst_addr, th);
 
 	return true;
 }
@@ -525,25 +600,13 @@ fm_raw_packet_pull_tcp_header(fm_buffer_t *bp, fm_tcp_header_info_t *tcp_info)
  * Add UDP header to packet
  */
 bool
-fm_raw_packet_add_udp_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
-					fm_udp_header_info_t *udp_info,
-					const void *payload, unsigned int payload_len)
+fm_raw_packet_add_udp_header(fm_buffer_t *bp, const fm_ip_header_info_t *ip_info,
+					const fm_udp_header_info_t *udp_info)
 {
 	struct udphdr *uh;
 
-	if (src_addr->family == AF_INET && dst_addr->family == AF_INET) {
-		if (udp_info->src_port == 0)
-			udp_info->src_port = ntohs(((struct sockaddr_in *) src_addr)->sin_port);
-		if (udp_info->dst_port == 0)
-			udp_info->dst_port = ntohs(((struct sockaddr_in *) dst_addr)->sin_port);
-	} else
-	if (src_addr->family == AF_INET6 && dst_addr->family == AF_INET6) {
-		if (udp_info->src_port == 0)
-			udp_info->src_port = ntohs(((struct sockaddr_in6 *) src_addr)->sin6_port);
-		if (udp_info->dst_port == 0)
-			udp_info->dst_port = ntohs(((struct sockaddr_in6 *) dst_addr)->sin6_port);
-	} else
-		return false;
+	assert(udp_info->src_port != 0);
+	assert(udp_info->dst_port != 0);
 
 	uh = fm_buffer_push(bp, sizeof(*uh));
 	memset(uh, 0, sizeof(*uh));
@@ -551,14 +614,14 @@ fm_raw_packet_add_udp_header(fm_buffer_t *bp, const fm_address_t *src_addr, cons
 	uh->uh_sport = htons(udp_info->src_port);
 	uh->uh_dport = htons(udp_info->dst_port);
 
-	uh->uh_ulen = htons(8 + payload_len);
+	uh->uh_ulen = htons(8 + udp_info->payload.len);
 	uh->uh_sum = 0;
 
-	if (!fm_buffer_append(bp, payload, payload_len))
+	if (!fm_buffer_append(bp, udp_info->payload.data, udp_info->payload.len))
 		return false;
 
 	/* Then do the checksum */
-	fm_raw_packet_udp_checksum(bp, src_addr, dst_addr, uh);
+	fm_raw_packet_udp_checksum(bp, &ip_info->src_addr, &ip_info->dst_addr, uh);
 
 	return true;
 }

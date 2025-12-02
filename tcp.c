@@ -42,12 +42,10 @@ typedef struct fm_tcp_extra_params {
 typedef struct fm_tcp_control {
 	fm_protocol_t *		proto;
 
-	/* This is used primarily for connected sockets and
-	 * for traceroute */
-	unsigned int		src_port;
+	fm_ip_header_info_t	ip_info;
+	fm_tcp_header_info_t	tcp_info;
 
 	fm_probe_params_t	params;
-	fm_tcp_extra_params_t	extra_params;
 } fm_tcp_control_t;
 
 typedef struct tcp_extant_info {
@@ -162,9 +160,10 @@ fm_tcp_generate_sequence(void)
 }
 
 static fm_tcp_control_t *
-fm_tcp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const fm_tcp_extra_params_t *extra_params)
+fm_tcp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params)
 {
 	fm_tcp_control_t *tcp;
+	uint16_t src_port;
 
 	tcp = calloc(1, sizeof(*tcp));
 	tcp->proto = proto;
@@ -173,19 +172,20 @@ fm_tcp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, cons
 	if (tcp->params.retries == 0)
 		tcp->params.retries = fm_global.tcp.retries;
 
-	if (extra_params != NULL)
-		tcp->extra_params = *extra_params;
-	
-	if (tcp->extra_params.flags == 0)
-		tcp->extra_params.flags = TH_SYN;
-	if (tcp->extra_params.sequence == 0)
-		tcp->extra_params.sequence = fm_tcp_generate_sequence();
-	tcp->extra_params.ack = tcp->extra_params.sequence + 0x80;
-
 	if (fm_tcp_socket_pool == NULL)
 		fm_tcp_socket_pool = fm_socket_pool_create(proto, SOCK_RAW);
 
-	tcp->src_port = fm_port_reserve(FM_PROTO_TCP);
+	src_port = fm_port_reserve(FM_PROTO_TCP);
+
+	tcp->ip_info.ipproto = IPPROTO_TCP;
+	tcp->ip_info.ttl = 64;
+	tcp->ip_info.tos = 0;
+
+	tcp->tcp_info.flags = TH_SYN;
+	tcp->tcp_info.seq = fm_tcp_generate_sequence();
+	tcp->tcp_info.ack_seq = tcp->tcp_info.seq + 0x80;
+	tcp->tcp_info.src_port = src_port;
+	tcp->tcp_info.mtu = 576;
 
 	return tcp;
 }
@@ -208,12 +208,10 @@ fm_tcp_control_init_target(const fm_tcp_control_t *tcp, fm_target_control_t *tar
 	target_control->sock = sock;
 	target_control->sock_is_shared = true;
 
-	if (!fm_socket_get_local_address(target_control->sock, &target_control->src_addr))
-		fm_log_warning("TCP: unable to get local address: %m");
+	target_control->ip_info = tcp->ip_info;
+	target_control->ip_info.dst_addr = *addr;
 
-	/* getsockname() will tell us the local port is 6 (aka IPPROTO_TCP).
-	 * Overwrite with the local port we reserved earlier. */
-	fm_address_set_port(&target_control->src_addr, tcp->src_port);
+	fm_target_get_local_bind_address(target, &target_control->ip_info.src_addr);
 
 	return true;
 }
@@ -319,35 +317,17 @@ fm_tcp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *it
 }
 
 static fm_pkt_t *
-fm_tcp_build_raw_packet(const fm_tcp_control_t *tcp, uint16_t dst_port, fm_target_control_t *target_control,
-		const fm_probe_params_t *params)
+fm_tcp_build_raw_packet(const fm_tcp_control_t *tcp, fm_target_control_t *target_control,
+		const fm_ip_header_info_t *ip_info,
+		const fm_tcp_header_info_t *tcp_info)
 {
-	fm_tcp_header_info_t hdrinfo;
-	fm_address_t dst_addr;
 	fm_buffer_t *payload;
 	fm_pkt_t *pkt;
 
-	memset(&hdrinfo, 0, sizeof(hdrinfo));
-	hdrinfo.flags = tcp->extra_params.flags;
-	hdrinfo.seq = tcp->extra_params.sequence;
-
-	if (hdrinfo.flags & TH_ACK)
-		hdrinfo.ack_seq = tcp->extra_params.ack;
-	hdrinfo.mtu = 576;
-
-	/* Build the dest addr with port */
-	dst_addr = target_control->dst_addr;
-	fm_address_set_port(&dst_addr, dst_port);
-
 	payload = fm_buffer_alloc(128);
 
-	if (!fm_raw_packet_add_network_header(payload, &target_control->src_addr, &dst_addr,
-					IPPROTO_TCP, params->ttl, params->tos,
-					20 /* standard TCP header length */))
-		goto failed;
-
-	/* This grabs the port numbers from the network address arguments */
-	if (!fm_raw_packet_add_tcp_header(payload, &target_control->src_addr, &dst_addr, &hdrinfo, 0))
+	if (!fm_raw_packet_add_ip_header(payload, ip_info, fm_tcp_compute_len(tcp_info))
+	 || !fm_raw_packet_add_tcp_header(payload, ip_info, tcp_info))
 		goto failed;
 
 	pkt = fm_pkt_alloc(target_control->family, 0);
@@ -370,36 +350,29 @@ static fm_error_t
 fm_tcp_request_send(const fm_tcp_control_t *tcp, fm_target_control_t *target_control, int param_type, int param_value, fm_extant_t **extant_ret)
 {
 	fm_tcp_extant_info_t extant_info;
-	fm_probe_params_t param_copy;
-	uint16_t src_port, dst_port;
+	const fm_tcp_header_info_t *tcp_info;
+	const fm_ip_header_info_t *ip_info;
 
-	param_copy = tcp->params;
-	src_port = fm_address_get_port(&target_control->src_addr);
-	dst_port = tcp->params.port;
-	if (param_type == FM_PARAM_TYPE_PORT)
-		dst_port = param_value;
-	else if (param_type == FM_PARAM_TYPE_TTL)
-		param_copy.ttl = param_value;
-	else if (param_type == FM_PARAM_TYPE_TOS)
-		param_copy.tos = param_value;
+	ip_info = fm_ip_header_info_finalize(&target_control->ip_info, param_type, param_value);
+	tcp_info = fm_tcp_header_info_finalize(&tcp->tcp_info, param_type, param_value);
 
 	{
 		/* build the TCP packet and transmit */
 		fm_pkt_t *pkt;
 
-		if (!(pkt = fm_tcp_build_raw_packet(tcp, dst_port, target_control, &param_copy)))
+		if (!(pkt = fm_tcp_build_raw_packet(tcp, target_control, ip_info, tcp_info)))
 			return FM_SEND_ERROR;
 
 		if (!fm_socket_send_pkt_and_burn(target_control->sock, pkt))
 			return FM_SEND_ERROR;
 	}
 
-	fm_tcp_extant_info_build(tcp, src_port, dst_port, &extant_info);
+	fm_tcp_extant_info_build(tcp, tcp_info->src_port, tcp_info->dst_port, &extant_info);
 	*extant_ret = fm_socket_add_extant(target_control->sock, target_control->target->host_asset,
 				target_control->family, IPPROTO_TCP, &extant_info, sizeof(extant_info));
 
 	/* update the asset state */
-	fm_target_update_port_state(target_control->target, FM_PROTO_TCP, dst_port, FM_ASSET_STATE_PROBE_SENT);
+	fm_target_update_port_state(target_control->target, FM_PROTO_TCP, tcp_info->dst_port, FM_ASSET_STATE_PROBE_SENT);
 
 	return 0;
 }
@@ -461,7 +434,7 @@ fm_tcp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipro
 	if (multiprobe->params.retries == 0)
 		multiprobe->params.retries = fm_global.tcp.retries;
 
-	tcp = fm_tcp_control_alloc(pclass->proto, &multiprobe->params, NULL);
+	tcp = fm_tcp_control_alloc(pclass->proto, &multiprobe->params);
 	if (tcp == NULL)
 		return false;
 

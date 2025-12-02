@@ -40,14 +40,8 @@ typedef struct fm_udp_control {
 
 	fm_probe_params_t	params;
 
-	/* This should be configurable at the probe level, but
-	 * we're not handling that yet.
-	 */
-	bool			use_connected_socket;
-
-	/* This is used primarily for connected sockets and
-	 * for traceroute */
-	unsigned int		src_port;
+	fm_ip_header_info_t	ip_info;
+	fm_udp_header_info_t	udp_info;
 
 	/* total_retries reflects the complete # of packets we're supposed to
 	 * send, accounting for service probes with multiple packets. */
@@ -150,9 +144,10 @@ fm_udp_control_free(fm_udp_control_t *udp)
 }
 
 static fm_udp_control_t *
-fm_udp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const void *extra_params)
+fm_udp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params)
 {
 	fm_udp_control_t *udp;
+	uint16_t src_port;
 
 	udp = calloc(1, sizeof(*udp));
 	udp->proto = proto;
@@ -165,7 +160,17 @@ fm_udp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, cons
 	if (fm_udp_socket_pool == NULL)
 		fm_udp_socket_pool = fm_socket_pool_create(proto, SOCK_DGRAM);
 
-	udp->src_port = fm_port_reserve(FM_PROTO_UDP);
+	src_port = fm_port_reserve(FM_PROTO_UDP);
+
+	udp->ip_info.ipproto = IPPROTO_UDP;
+	udp->ip_info.ttl = 64;
+	udp->ip_info.tos = 0;
+
+	udp->udp_info.src_port = src_port;
+
+	/* The default application data */
+	udp->udp_info.payload.data = "ABCDEFGHIJKLMNOPabcdefghijklmnop";
+	udp->udp_info.payload.len = 32;
 
 	return udp;
 }
@@ -186,12 +191,10 @@ fm_udp_control_init_target(const fm_udp_control_t *udp, fm_target_control_t *tar
 	target_control->sock = sock;
 	target_control->sock_is_shared = true;
 
-	if (!fm_socket_get_local_address(target_control->sock, &target_control->src_addr))
-		fm_log_warning("UDP: unable to get local address: %m");
+	target_control->ip_info = udp->ip_info;
+	target_control->ip_info.dst_addr = *addr;
 
-	/* getsockname() will tell us the local port is 17 (aka IPPROTO_UDP).
-	 * Overwrite with the local port we reserved earlier. */
-	fm_address_set_port(&target_control->src_addr, udp->src_port);
+	fm_target_get_local_bind_address(target, &target_control->ip_info.src_addr);
 
 	return true;
 }
@@ -204,7 +207,7 @@ fm_udp_control_init_target(const fm_udp_control_t *udp, fm_target_control_t *tar
 static void
 fm_udp_extant_info_build(const fm_udp_control_t *udp, uint16_t dst_port, fm_udp_extant_info_t *extant_info)
 {
-	extant_info->src_port = udp->src_port;
+	extant_info->src_port = udp->udp_info.src_port;
 	extant_info->dst_port = dst_port;
 }
 
@@ -312,41 +315,16 @@ fm_udp_request_next_service_probe(const fm_udp_control_t *udp)
 
 static fm_pkt_t *
 fm_udp_build_packet(const fm_udp_control_t *udp, fm_target_control_t *target_control,
-		const fm_probe_params_t *params, const fm_buffer_t *payload)
+		const fm_ip_header_info_t *ip_info,
+		const fm_udp_header_info_t *udp_info)
 {
-	fm_udp_header_info_t hdrinfo;
-	fm_address_t dst_addr;
 	fm_pkt_t *pkt;
-	const void *data;
-	unsigned int data_len;
 
-	memset(&hdrinfo, 0, sizeof(hdrinfo));
-	hdrinfo.src_port = udp->src_port;
-	hdrinfo.dst_port = params->port;
+	pkt = fm_pkt_alloc(target_control->family, 128);
+	pkt->peer_addr = target_control->dst_addr;
 
-	/* Build the dest addr with port */
-	dst_addr = target_control->dst_addr;
-	fm_address_set_port(&dst_addr, hdrinfo.dst_port);
-
-	/* If we have a service probe payload, send a (copy) of that packet, else
-	 * send a couple of random bytes as payload */
-	if (payload != NULL) {
-		data = fm_buffer_head(payload);
-		data_len = fm_buffer_available(payload);
-	} else {
-		data = "ABCDEFGHIJKLMNOPabcdefghijklmnop";
-		data_len = 32;
-	}
-
-	pkt = fm_pkt_alloc(dst_addr.family, 128);
-	pkt->peer_addr = dst_addr;
-
-	if (!fm_raw_packet_add_network_header(pkt->payload, &target_control->src_addr, &dst_addr,
-					IPPROTO_UDP, params->ttl, params->tos,
-					8 + data_len))
-		goto failed;
-
-	if (!fm_raw_packet_add_udp_header(pkt->payload, &target_control->src_addr, &dst_addr, &hdrinfo, data, data_len))
+	if (!fm_raw_packet_add_ip_header(pkt->payload, ip_info, fm_udp_compute_len(udp_info))
+	 || !fm_raw_packet_add_udp_header(pkt->payload, ip_info, udp_info))
 		goto failed;
 
 	/* On raw sockets, the port field is supposed to be either 0 or contain the transport
@@ -369,47 +347,39 @@ static fm_error_t
 fm_udp_request_send(const fm_udp_control_t *udp, fm_target_control_t *target_control, int param_type, int param_value, fm_extant_t **extant_ret)
 {
 	fm_udp_extant_info_t extant_info;
-	fm_probe_params_t param_copy;
+	const fm_udp_header_info_t *udp_info;
+	const fm_ip_header_info_t *ip_info;
 	fm_target_t *target = target_control->target;
 	fm_socket_t *sock;
 	fm_pkt_t *pkt;
 	const fm_buffer_t *payload;
-	uint16_t dst_port;
 
-	param_copy = udp->params;
-	if (param_type == FM_PARAM_TYPE_PORT)
-		param_copy.port = param_value;
-	else if (param_type == FM_PARAM_TYPE_TTL)
-		param_copy.ttl = param_value;
-	else if (param_type == FM_PARAM_TYPE_TOS)
-		param_copy.tos = param_value;
-	dst_port = param_copy.port;
+	payload = fm_udp_request_next_service_probe(udp);
 
-	if ((sock = target_control->sock) == NULL && (sock = udp->sock) == NULL)
-		return FM_SEND_ERROR;
+	ip_info = fm_ip_header_info_finalize(&target_control->ip_info, param_type, param_value);
+	udp_info = fm_udp_header_info_finalize(&udp->udp_info, param_type, param_value, payload);
 
+	sock = target_control->sock;
 	if (sock == NULL) {
 		fm_log_error("Unable to create UDP socket for %s: %m", target->id);
 		return FM_SEND_ERROR;
 	}
 
-	payload = fm_udp_request_next_service_probe(udp);
-
-	pkt = fm_udp_build_packet(udp, target_control, &param_copy, payload);
+	pkt = fm_udp_build_packet(udp, target_control, ip_info, udp_info);
 
 	if (!fm_socket_send_pkt_and_burn(sock, pkt)) {
 		fm_log_error("Unable to send UDP packet: %m");
 		return FM_SEND_ERROR;
 	}
 
-	fm_udp_extant_info_build(udp, dst_port, &extant_info);
+	fm_udp_extant_info_build(udp, udp_info->dst_port, &extant_info);
 	*extant_ret = fm_socket_add_extant(sock, target->host_asset,
 			target_control->family, IPPROTO_UDP, &extant_info, sizeof(extant_info));
 
 	assert(*extant_ret);
 
 	/* update the asset state */
-	fm_target_update_port_state(target, FM_PROTO_UDP, dst_port, FM_ASSET_STATE_PROBE_SENT);
+	fm_target_update_port_state(target, FM_PROTO_UDP, udp_info->dst_port, FM_ASSET_STATE_PROBE_SENT);
 
 	return 0;
 }
@@ -472,7 +442,7 @@ fm_udp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipro
 		return false;
 	}
 
-	udp = fm_udp_control_alloc(pclass->proto, &multiprobe->params, NULL);
+	udp = fm_udp_control_alloc(pclass->proto, &multiprobe->params);
 	if (udp == NULL)
 		return false;
 

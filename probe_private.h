@@ -36,6 +36,8 @@ struct fm_target_control {
 	fm_address_t		dst_addr;
 	fm_socket_t *		sock;
 
+	fm_ip_header_info_t	ip_info;
+
 	union {
 		struct {
 			uint32_t		src_ipaddr;
