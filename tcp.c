@@ -208,12 +208,12 @@ fm_tcp_control_init_target(const fm_tcp_control_t *tcp, fm_target_control_t *tar
 	target_control->sock = sock;
 	target_control->sock_is_shared = true;
 
-	if (!fm_socket_get_local_address(target_control->sock, &target_control->local_address))
+	if (!fm_socket_get_local_address(target_control->sock, &target_control->src_addr))
 		fm_log_warning("TCP: unable to get local address: %m");
 
 	/* getsockname() will tell us the local port is 6 (aka IPPROTO_TCP).
 	 * Overwrite with the local port we reserved earlier. */
-	fm_address_set_port(&target_control->local_address, tcp->src_port);
+	fm_address_set_port(&target_control->src_addr, tcp->src_port);
 
 	return true;
 }
@@ -341,13 +341,13 @@ fm_tcp_build_raw_packet(const fm_tcp_control_t *tcp, uint16_t dst_port, fm_targe
 
 	payload = fm_buffer_alloc(128);
 
-	if (!fm_raw_packet_add_network_header(payload, &target_control->local_address, &dst_addr,
+	if (!fm_raw_packet_add_network_header(payload, &target_control->src_addr, &dst_addr,
 					IPPROTO_TCP, params->ttl, params->tos,
 					20 /* standard TCP header length */))
 		goto failed;
 
 	/* This grabs the port numbers from the network address arguments */
-	if (!fm_raw_packet_add_tcp_header(payload, &target_control->local_address, &dst_addr, &hdrinfo, 0))
+	if (!fm_raw_packet_add_tcp_header(payload, &target_control->src_addr, &dst_addr, &hdrinfo, 0))
 		goto failed;
 
 	pkt = fm_pkt_alloc(target_control->family, 0);
@@ -374,7 +374,7 @@ fm_tcp_request_send(const fm_tcp_control_t *tcp, fm_target_control_t *target_con
 	uint16_t src_port, dst_port;
 
 	param_copy = tcp->params;
-	src_port = fm_address_get_port(&target_control->local_address);
+	src_port = fm_address_get_port(&target_control->src_addr);
 	dst_port = tcp->params.port;
 	if (param_type == FM_PARAM_TYPE_PORT)
 		dst_port = param_value;

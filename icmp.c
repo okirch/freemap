@@ -330,7 +330,7 @@ fm_icmp_request_init_target(const fm_icmp_control_t *icmp, fm_target_control_t *
 
 	if (target_control->family == AF_INET6) {
 		fm_ipv6_transport_csum_partial(&target_control->icmp.csum,
-						&target_control->local_address,
+						&target_control->src_addr,
 						&target_control->address,
 						IPPROTO_ICMPV6);
 	}
@@ -574,7 +574,7 @@ fm_icmp_multiprobe_add_broadcast(fm_multiprobe_t *multiprobe, fm_host_tasklet_t 
 	if (!(sock = fm_icmp_create_packet_socket(icmp, nic, target_control->family)))
 		return false;
 
-	target_control->local_address = *src_link_addr;
+	target_control->src_addr = *src_link_addr;
 	target_control->address = *dst_link_addr;
 	target_control->sock = sock;
 

@@ -95,7 +95,7 @@ typedef struct fm_target_control {
 	bool			sock_is_shared;
 
 	fm_target_t *		target;
-	fm_address_t		local_address;
+	fm_address_t		src_addr;
 	fm_address_t		address;
 	fm_socket_t *		sock;
 

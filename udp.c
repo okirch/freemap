@@ -186,12 +186,12 @@ fm_udp_control_init_target(const fm_udp_control_t *udp, fm_target_control_t *tar
 	target_control->sock = sock;
 	target_control->sock_is_shared = true;
 
-	if (!fm_socket_get_local_address(target_control->sock, &target_control->local_address))
+	if (!fm_socket_get_local_address(target_control->sock, &target_control->src_addr))
 		fm_log_warning("UDP: unable to get local address: %m");
 
 	/* getsockname() will tell us the local port is 17 (aka IPPROTO_UDP).
 	 * Overwrite with the local port we reserved earlier. */
-	fm_address_set_port(&target_control->local_address, udp->src_port);
+	fm_address_set_port(&target_control->src_addr, udp->src_port);
 
 	return true;
 }
@@ -341,12 +341,12 @@ fm_udp_build_packet(const fm_udp_control_t *udp, fm_target_control_t *target_con
 	pkt = fm_pkt_alloc(dst_addr.family, 128);
 	pkt->peer_addr = dst_addr;
 
-	if (!fm_raw_packet_add_network_header(pkt->payload, &target_control->local_address, &dst_addr,
+	if (!fm_raw_packet_add_network_header(pkt->payload, &target_control->src_addr, &dst_addr,
 					IPPROTO_UDP, params->ttl, params->tos,
 					8 + data_len))
 		goto failed;
 
-	if (!fm_raw_packet_add_udp_header(pkt->payload, &target_control->local_address, &dst_addr, &hdrinfo, data, data_len))
+	if (!fm_raw_packet_add_udp_header(pkt->payload, &target_control->src_addr, &dst_addr, &hdrinfo, data, data_len))
 		goto failed;
 
 	/* On raw sockets, the port field is supposed to be either 0 or contain the transport

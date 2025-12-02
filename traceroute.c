@@ -710,7 +710,7 @@ fm_topo_state_send_probe(fm_topo_state_t *topo, fm_topo_hop_state_t *hop, double
 
 	/* Overwrite the target control information with the socket for this TTL value, and
 	 * the source address of this socket */
-	fake_control.local_address = sock->local_address;
+	fake_control.src_addr = sock->local_address;
 	fake_control.sock = sock;
 
 	error = fm_multiprobe_transmit_ttl_probe(topo->packet_probe, &fake_control, ttl, &extant, &timeout);
