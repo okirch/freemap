@@ -63,7 +63,7 @@ typedef struct fm_udp_extant_info {
 	unsigned int		dst_port;
 } fm_udp_extant_info_t;
 
-static fm_socket_t *	fm_udp_create_dgram_socket(fm_protocol_t *proto, int af);
+static fm_socket_t *	fm_udp_create_socket(fm_protocol_t *proto, int af);
 static fm_extant_t *	fm_udp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_udp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 
@@ -86,7 +86,7 @@ static struct fm_protocol	fm_udp_bsdsock_ops = {
 			  FM_FEATURE_SOCKET_SHARING_MASK |
 			  FM_FEATURE_STATUS_CALLBACK_MASK,
 
-	.create_socket	= fm_udp_create_dgram_socket,
+	.create_socket	= fm_udp_create_socket,
 	.locate_error	= fm_udp_locate_error,
 	.locate_response= fm_udp_locate_response,
 };
@@ -98,15 +98,21 @@ FM_PROTOCOL_REGISTER(fm_udp_bsdsock_ops);
  * In the error case, the packet the kernel will give us does *not* include any headers
  */
 static fm_socket_t *
-fm_udp_create_dgram_socket(fm_protocol_t *proto, int af)
+fm_udp_create_socket(fm_protocol_t *proto, int af)
 {
 	fm_socket_t *sock;
 
-	sock = fm_socket_create(af, SOCK_DGRAM, 0, proto);
+	sock = fm_socket_create(af, SOCK_RAW, IPPROTO_UDP, proto);
 	if (sock) {
-		fm_socket_enable_ttl(sock);
-		fm_socket_enable_tos(sock);
 		fm_socket_enable_recverr(sock);
+		fm_socket_enable_hdrincl(sock);
+
+		if (af == AF_INET) {
+			fm_socket_install_data_parser(sock, FM_PROTO_IP);
+			fm_socket_install_error_parser(sock, FM_PROTO_IP);
+		}
+		fm_socket_install_data_parser(sock, FM_PROTO_UDP);
+		fm_socket_install_error_parser(sock, FM_PROTO_UDP);
 
 		fm_socket_attach_extant_map(sock, &fm_udp_extant_map);
 	}
@@ -170,6 +176,7 @@ fm_udp_synthesize_headers(fm_pkt_t *pkt)
 {
 	fm_packet_parser_t *parser;
 
+	abort();
 	if (pkt->info.ee == NULL)
 		parser = fm_udp_create_dummy_data_parser();
 	else
@@ -226,6 +233,9 @@ fm_udp_control_init_target(const fm_udp_control_t *udp, fm_target_control_t *tar
 	target_control->sock = sock;
 	target_control->sock_is_shared = true;
 
+	if (!fm_socket_get_local_address(target_control->sock, &target_control->local_address))
+		fm_log_warning("UDP: unable to get local address: %m");
+
 	return true;
 }
 
@@ -271,8 +281,7 @@ fm_udp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
 	fm_extant_t *extant;
 	bool unreachable;
 
-	if ((cooked = pkt->parsed) == NULL
-	 && (cooked = fm_udp_synthesize_headers(pkt)) == NULL)
+	if ((cooked = pkt->parsed) == NULL)
 		return NULL;
 
 	/* First, check the ICMP error header - does it tell us the port is unreachable? */
@@ -300,8 +309,7 @@ fm_udp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *it
 	fm_parsed_hdr_t *hdr;
 	fm_extant_t *extant;
 
-	if ((cooked = pkt->parsed) == NULL
-	 && (cooked = fm_udp_synthesize_headers(pkt)) == NULL)
+	if ((cooked = pkt->parsed) == NULL)
 		return NULL;
 
 	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_UDP)) == NULL)
@@ -346,28 +354,54 @@ fm_udp_request_next_service_probe(const fm_udp_control_t *udp)
 }
 
 static fm_pkt_t *
-fm_udp_build_packet(fm_address_t *dstaddr, unsigned int port, const fm_buffer_t *payload)
+fm_udp_build_packet(const fm_udp_control_t *udp, fm_target_control_t *target_control,
+		const fm_probe_params_t *params, const fm_buffer_t *payload)
 {
+	fm_udp_header_info_t hdrinfo;
+	fm_address_t dst_addr;
 	fm_pkt_t *pkt;
+	const void *data;
+	unsigned int data_len;
 
-	pkt = fm_pkt_alloc(dstaddr->family, 0);
-	pkt->peer_addr = *dstaddr;
+	memset(&hdrinfo, 0, sizeof(hdrinfo));
+	hdrinfo.src_port = fm_address_get_port(&target_control->local_address);
+	hdrinfo.dst_port = params->port;
 
-	fm_address_set_port(&pkt->peer_addr, port);
+	/* Build the dest addr with port */
+	dst_addr = target_control->address;
+	fm_address_set_port(&dst_addr, hdrinfo.dst_port);
 
 	/* If we have a service probe payload, send a (copy) of that packet, else
-	 * send a single NUL byte as payload */
+	 * send a couple of random bytes as payload */
 	if (payload != NULL) {
-		unsigned int len = fm_buffer_available(payload);
-
-		pkt->payload = fm_buffer_alloc(len);
-		fm_buffer_append(pkt->payload, fm_buffer_head(payload), len);
+		data = fm_buffer_head(payload);
+		data_len = fm_buffer_available(payload);
 	} else {
-		pkt->payload = fm_buffer_alloc(32);
-		fm_buffer_append(pkt->payload, "ABCDEFGHIJKLMNOPabcdefghijklmnop", 32);
+		data = "ABCDEFGHIJKLMNOPabcdefghijklmnop";
+		data_len = 32;
 	}
 
+	pkt = fm_pkt_alloc(dst_addr.family, 128);
+	pkt->peer_addr = dst_addr;
+
+	if (!fm_raw_packet_add_network_header(pkt->payload, &target_control->local_address, &dst_addr,
+					IPPROTO_UDP, params->ttl, params->tos,
+					8 + data_len))
+		goto failed;
+
+	if (!fm_raw_packet_add_udp_header(pkt->payload, &target_control->local_address, &dst_addr, &hdrinfo, data, data_len))
+		goto failed;
+
+	/* On raw sockets, the port field is supposed to be either 0 or contain the transport
+	 * protocol (IPPROTO_TCP in our case). Note, it seems that this is only enforced for
+	 * IPv6; the manpages say that this behavior "got lost" for IPv4 some time in Linux 2.2. */
+	fm_address_set_port(&pkt->peer_addr, IPPROTO_UDP);
+
 	return pkt;
+
+failed:
+	fm_pkt_free(pkt);
+	return NULL;
 }
 
 /*
@@ -378,11 +412,21 @@ static fm_error_t
 fm_udp_request_send(const fm_udp_control_t *udp, fm_target_control_t *target_control, int param_type, int param_value, fm_extant_t **extant_ret)
 {
 	fm_udp_extant_info_t extant_info;
+	fm_probe_params_t param_copy;
 	fm_target_t *target = target_control->target;
 	fm_socket_t *sock;
 	fm_pkt_t *pkt;
 	const fm_buffer_t *payload;
 	uint16_t dst_port;
+
+	param_copy = udp->params;
+	if (param_type == FM_PARAM_TYPE_PORT)
+		param_copy.port = param_value;
+	else if (param_type == FM_PARAM_TYPE_TTL)
+		param_copy.ttl = param_value;
+	else if (param_type == FM_PARAM_TYPE_TOS)
+		param_copy.tos = param_value;
+	dst_port = param_copy.port;
 
 	if ((sock = target_control->sock) == NULL && (sock = udp->sock) == NULL) {
 		sock = fm_protocol_create_host_shared_socket(udp->proto, target);
@@ -393,18 +437,9 @@ fm_udp_request_send(const fm_udp_control_t *udp, fm_target_control_t *target_con
 		return FM_SEND_ERROR;
 	}
 
-	if (param_type == FM_PARAM_TYPE_PORT)
-		dst_port = param_value;
-	else
-		dst_port = udp->params.port;
-
 	payload = fm_udp_request_next_service_probe(udp);
 
-	pkt = fm_udp_build_packet(&target_control->address, dst_port, payload);
-
-	/* apply ttl, tos etc */
-	fm_pkt_apply_probe_params(pkt, &udp->params, udp->proto->supported_parameters);
-	fm_pkt_apply_param(pkt, param_type, param_value);
+	pkt = fm_udp_build_packet(udp, target_control, &param_copy, payload);
 
 	if (!fm_socket_send_pkt_and_burn(sock, pkt)) {
 		fm_log_error("Unable to send UDP packet: %m");
