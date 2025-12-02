@@ -40,14 +40,15 @@
 #include "logging.h"
 
 static fm_socket_t *	fm_icmp_create_socket(fm_protocol_t *proto, int ipproto);
-static fm_socket_t *	fm_icmp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 
-static fm_socket_t *	fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr);
 static int		fm_icmp_protocol_for_family(int af);
 static void		fm_icmp_request_build_extant_info(fm_icmp_extant_info_t *info, int v4_request_type, int v4_response_type, int id, int seq);
 static fm_extant_t *	fm_icmp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_icmp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static bool		fm_icmp_process_extra_parameters(const fm_string_array_t *extra_args, fm_icmp_extra_params_t *extra_params);
+
+/* Global pool for ICMP sockets */
+static fm_socket_pool_t	*fm_icmp_socket_pool = NULL;
 
 /* Global extant map for all ICMP related stuff */
 static fm_extant_map_t	fm_icmp_extant_map = FM_EXTANT_MAP_INIT;
@@ -65,36 +66,12 @@ static struct fm_protocol	fm_icmp_sock_ops = {
 			  FM_FEATURE_STATUS_CALLBACK_MASK,
 
 	.create_socket	= fm_icmp_create_socket,
-	.create_host_shared_socket = fm_icmp_create_shared_socket,
 
 	.locate_error	= fm_icmp_locate_error,
 	.locate_response= fm_icmp_locate_response,
 };
 
 FM_PROTOCOL_REGISTER(fm_icmp_sock_ops);
-
-/*
- * Create a DGRAM socket and connect it.
- * Used for PF_PACKET sockets only
- */
-static fm_socket_t *
-fm_icmp_create_connected_socket(fm_protocol_t *proto, const fm_address_t *addr)
-{
-	fm_socket_t *sock;
-
-	sock = fm_protocol_create_socket(proto, addr->family);
-	if (sock == NULL)
-		return NULL;
-
-	fm_socket_enable_recverr(sock);
-
-	if (!fm_socket_connect(sock, addr)) {
-		fm_socket_free(sock);
-		return NULL;
-	}
-
-	return sock;
-}
 
 static fm_extant_t *
 fm_icmp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
@@ -217,20 +194,18 @@ fm_icmp_create_socket(fm_protocol_t *proto, int af)
 static fm_socket_t *
 fm_icmp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
 {
-	const fm_address_t *addr = &target->address;
-	fm_socket_t **sharedp;
+	fm_address_t bind_address;
 
-	if (addr->family == AF_INET)
-		sharedp = &target->raw_icmp4_sock;
-	else if (addr->family == AF_INET6)
-		sharedp = &target->raw_icmp4_sock;
-	else
+	/* Pick adequate source address to use when talking to this target. */
+	if (!fm_target_get_local_bind_address(target, &bind_address)) {
+		fm_log_error("%s: cannot determine source address", target->id);
 		return NULL;
+	}
 
-	if (*sharedp == NULL)
-		*sharedp = fm_icmp_create_connected_socket(proto, addr);
+	/* make sure the port number is 0 */
+	fm_address_set_port(&bind_address, 0);
 
-	return *sharedp;
+	return fm_socket_pool_get_socket(fm_icmp_socket_pool, &bind_address);
 }
 
 /*
@@ -290,6 +265,8 @@ fm_icmp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, con
 	if (icmp->extra_params.type_name == NULL)
 		fm_icmp_extra_params_set_type(&icmp->extra_params, "echo");
 
+	if (fm_icmp_socket_pool == NULL)
+		fm_icmp_socket_pool = fm_socket_pool_create(proto, SOCK_RAW);
 
 	return icmp;
 }
@@ -342,7 +319,7 @@ fm_icmp_request_init_target(const fm_icmp_control_t *icmp, fm_target_control_t *
 	fm_socket_t *sock = NULL;
 
 	/* For the time being, we create a single raw socket per target host */
-	sock = fm_protocol_create_host_shared_socket(icmp->proto, target);
+	sock = fm_icmp_create_shared_socket(icmp->proto, target);
 	if (sock == NULL)
 		return false;
 
@@ -350,6 +327,7 @@ fm_icmp_request_init_target(const fm_icmp_control_t *icmp, fm_target_control_t *
 	target_control->target = target;
 	target_control->address = *addr;
 	target_control->sock = sock;
+	target_control->sock_is_shared = true;
 
 	if (target_control->family == AF_INET6) {
 		fm_ipv6_transport_csum_partial(&target_control->icmp.csum,
@@ -584,7 +562,6 @@ fm_icmp_multiprobe_add_broadcast(fm_multiprobe_t *multiprobe, fm_host_tasklet_t 
 						const fm_address_t *dst_link_addr,
 						const fm_address_t *src_network_addr,
 						const fm_address_t *dst_network_addr)
-
 {
 	fm_target_control_t *target_control = &host_task->control;
 	fm_icmp_control_t *icmp = multiprobe->control;
