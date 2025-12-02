@@ -159,6 +159,9 @@ extern bool		fm_raw_packet_pull_eth_hdr(fm_pkt_t *pkt, fm_eth_header_info_t *inf
 extern bool		fm_raw_packet_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_header_info_t *info);
 extern bool		fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
 					fm_tcp_header_info_t *, unsigned int payload_len);
+extern bool		fm_raw_packet_add_udp_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
+					fm_udp_header_info_t *udp_info,
+					const void *payload, unsigned int payload_len);
 extern bool		fm_raw_packet_pull_tcp_header(fm_buffer_t *bp, fm_tcp_header_info_t *tcp);
 extern bool		fm_raw_packet_pull_udp_header(fm_buffer_t *bp, fm_udp_header_info_t *udp);
 extern bool		fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp);

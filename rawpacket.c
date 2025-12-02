@@ -419,6 +419,34 @@ fm_raw_packet_tcp_checksum(const fm_buffer_t *bp, const fm_address_t *src_addr, 
 }
 
 /*
+ * Perform UDP checksum
+ */
+static bool
+fm_raw_packet_udp_checksum(const fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr, struct udphdr *uh)
+{
+	fm_csum_partial_t csum = { 0 };
+	unsigned int len = ntohs(uh->uh_ulen);
+
+	uh->uh_sum = 0;
+
+	if (dst_addr->family == AF_INET) {
+		if (!fm_ipv4_transport_csum_partial(&csum, src_addr, dst_addr, IPPROTO_UDP))
+			return false;
+	} else 
+	if (dst_addr->family == AF_INET6) {
+		if (!fm_ipv6_transport_csum_partial(&csum, src_addr, dst_addr, IPPROTO_UDP))
+			return false;
+	} else 
+		return false;
+
+	fm_csum_partial_u16(&csum, len);
+	fm_csum_partial_update(&csum, uh, len);
+
+	uh->uh_sum = fm_csum_fold(&csum);
+	return true;
+}
+
+/*
  * Add TCP header to packet
  */
 bool
@@ -493,6 +521,48 @@ fm_raw_packet_pull_tcp_header(fm_buffer_t *bp, fm_tcp_header_info_t *tcp_info)
 	tcp_info->ack_seq = th->th_ack;
 	tcp_info->flags = th->th_flags;
 	tcp_info->window = htons(th->th_win);
+
+	return true;
+}
+
+/*
+ * Add UDP header to packet
+ */
+bool
+fm_raw_packet_add_udp_header(fm_buffer_t *bp, const fm_address_t *src_addr, const fm_address_t *dst_addr,
+					fm_udp_header_info_t *udp_info,
+					const void *payload, unsigned int payload_len)
+{
+	struct udphdr *uh;
+
+	if (src_addr->family == AF_INET && dst_addr->family == AF_INET) {
+		if (udp_info->src_port == 0)
+			udp_info->src_port = ntohs(((struct sockaddr_in *) src_addr)->sin_port);
+		if (udp_info->dst_port == 0)
+			udp_info->dst_port = ntohs(((struct sockaddr_in *) dst_addr)->sin_port);
+	} else
+	if (src_addr->family == AF_INET6 && dst_addr->family == AF_INET6) {
+		if (udp_info->src_port == 0)
+			udp_info->src_port = ntohs(((struct sockaddr_in6 *) src_addr)->sin6_port);
+		if (udp_info->dst_port == 0)
+			udp_info->dst_port = ntohs(((struct sockaddr_in6 *) dst_addr)->sin6_port);
+	} else
+		return false;
+
+	uh = fm_buffer_push(bp, sizeof(*uh));
+	memset(uh, 0, sizeof(*uh));
+
+	uh->uh_sport = htons(udp_info->src_port);
+	uh->uh_dport = htons(udp_info->dst_port);
+
+	uh->uh_ulen = htons(8 + payload_len);
+	uh->uh_sum = 0;
+
+	if (!fm_buffer_append(bp, payload, payload_len))
+		return false;
+
+	/* Then do the checksum */
+	fm_raw_packet_udp_checksum(bp, src_addr, dst_addr, uh);
 
 	return true;
 }

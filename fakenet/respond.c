@@ -229,6 +229,12 @@ static fm_fake_response_t *
 fm_fake_host_receive_udp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm_parsed_hdr_t *hip, const fm_udp_header_info_t *udp, fm_buffer_t *payload)
 {
 	const fm_fake_port_t *port;
+	fm_ip_header_info_t ip_reply_info;
+	fm_udp_header_info_t udp_reply_info;
+	const char trash_data[] = "trash";
+	unsigned int trash_len = sizeof(trash_data);
+	unsigned int udp_hdr_len;
+	fm_fake_response_t *resp;
 
 	port = fm_fake_host_lookup_port(host, FM_PROTO_UDP, udp->dst_port);
 	if (port == NULL) {
@@ -238,10 +244,24 @@ fm_fake_host_receive_udp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm
 		return fm_fake_host_send_error(host, error_type, hip);
 	}
 
-	/* TODO: send something that looks like a response.
+	/* send something that looks like a response.
 	 * Since this is used only for testing a network scanner that doesn't pay attention to
 	 * what comes back, we just return a garbage packet */
-	return NULL;
+	udp_reply_info.src_port = udp->dst_port;
+	udp_reply_info.dst_port = udp->src_port;
+
+	udp_hdr_len = 8 + trash_len;
+
+	resp = fm_fake_host_prepare_response(host, &hip->ip, udp_hdr_len, &ip_reply_info, false);
+	if (resp == NULL)
+		return NULL;
+
+	if (!fm_raw_packet_add_udp_header(resp->packet, &ip_reply_info.src_addr, &ip_reply_info.dst_addr, &udp_reply_info, trash_data, trash_len)) {
+		fm_fake_response_free(resp);
+		return NULL;
+	}
+
+	return resp;
 }
 
 static fm_fake_response_t *
