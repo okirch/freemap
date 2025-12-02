@@ -374,6 +374,8 @@ fm_multiprobe_validate_target(fm_multiprobe_t *multiprobe, fm_target_t *target)
 	if ((action_flags & FM_SCAN_ACTION_FLAG_LOCAL_ONLY) && target->local_device == NULL) {
                 if (!(action_flags & FM_SCAN_ACTION_FLAG_OPTIONAL))
                         fm_log_error("%s: probe %s only supported with local targets", target->id, pclass->name);
+		else
+                        debugmsg("%s: skipping optional probe %s (only supported with local targets)", target->id, pclass->name);
                 return false;
         }
 
