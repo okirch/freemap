@@ -92,6 +92,8 @@ typedef struct fm_tasklet {
  */
 typedef struct fm_target_control {
 	int			family;
+	bool			sock_is_shared;
+
 	fm_target_t *		target;
 	fm_address_t		local_address;
 	fm_address_t		address;

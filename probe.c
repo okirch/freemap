@@ -223,13 +223,13 @@ fm_target_control_init_default(fm_target_control_t *target_control, fm_target_t 
 }
 
 void
-fm_target_control_destroy(fm_target_control_t *host_state)
+fm_target_control_destroy(fm_target_control_t *target_control)
 {
 	/* careful with that axe, Eugene. */
-	if (host_state->sock != NULL) {
-		fm_socket_free(host_state->sock);
-		host_state->sock = NULL;
-	}
+	if (target_control->sock != NULL && !target_control->sock_is_shared)
+		fm_socket_free(target_control->sock);
+
+	target_control->sock = NULL;
 }
 
 static void
