@@ -63,10 +63,12 @@ typedef struct fm_udp_extant_info {
 	unsigned int		dst_port;
 } fm_udp_extant_info_t;
 
-static fm_socket_t *	fm_udp_create_bsd_socket(fm_protocol_t *proto, int af);
-static fm_socket_t *	fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);
+static fm_socket_t *	fm_udp_create_dgram_socket(fm_protocol_t *proto, int af);
 static fm_extant_t *	fm_udp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_udp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
+
+/* Global pool for UDP sockets */
+static fm_socket_pool_t	*fm_udp_socket_pool = NULL;
 
 /* Global extant map for all UDP related stuff */
 static fm_extant_map_t fm_udp_extant_map = FM_EXTANT_MAP_INIT;
@@ -84,8 +86,7 @@ static struct fm_protocol	fm_udp_bsdsock_ops = {
 			  FM_FEATURE_SOCKET_SHARING_MASK |
 			  FM_FEATURE_STATUS_CALLBACK_MASK,
 
-	.create_socket	= fm_udp_create_bsd_socket,
-	.create_host_shared_socket = fm_udp_create_shared_socket,
+	.create_socket	= fm_udp_create_dgram_socket,
 	.locate_error	= fm_udp_locate_error,
 	.locate_response= fm_udp_locate_response,
 };
@@ -97,7 +98,7 @@ FM_PROTOCOL_REGISTER(fm_udp_bsdsock_ops);
  * In the error case, the packet the kernel will give us does *not* include any headers
  */
 static fm_socket_t *
-fm_udp_create_bsd_socket(fm_protocol_t *proto, int af)
+fm_udp_create_dgram_socket(fm_protocol_t *proto, int af)
 {
 	fm_socket_t *sock;
 
@@ -115,43 +116,18 @@ fm_udp_create_bsd_socket(fm_protocol_t *proto, int af)
 static fm_socket_t *
 fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
 {
-	const fm_address_t *dst_address = &target->address;
 	fm_address_t bind_address;
-	fm_socket_t *sock = NULL;
 
-	sock = fm_protocol_create_socket(proto, dst_address->family);
-
-	/* The following code is not used yet. We will use that eg for
-	 * allocating source ports from a given range.
-	 * Before we get there, we would have to implement something like a port pool
-	 */
-	if (0) {
-		/* Pick the local host address to use when talking to this target. */
-		if (!fm_target_get_local_bind_address(target, &bind_address)) {
-			fm_log_error("%s: unable to determine local address to use when binding",
-					fm_address_format(dst_address));
-			goto failed;
-		}
-
-		/* make sure the port number is 0 */
-		fm_address_set_port(&bind_address, 0);
-
-		if (!fm_socket_bind(sock, &bind_address)) {
-			fm_log_error("%s: unable to bind to local address %s",
-					fm_address_format(dst_address),
-					fm_address_format(&bind_address));
-			goto failed;
-		}
+	/* Pick adequate source address to use when talking to this target. */
+	if (!fm_target_get_local_bind_address(target, &bind_address)) {
+		fm_log_error("%s: cannot determine source address", target->id);
+		return NULL;
 	}
 
-	fm_socket_enable_recverr(sock);
-	target->udp_sock = sock;
+	/* make sure the port number is 0 */
+	fm_address_set_port(&bind_address, 0);
 
-	return sock;
-
-failed:
-	fm_socket_free(sock);
-	return NULL;
+	return fm_socket_pool_get_socket(fm_udp_socket_pool, &bind_address);
 }
 
 /*
@@ -228,6 +204,9 @@ fm_udp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, cons
 		udp->params.retries = fm_global.udp.retries;
 	udp->total_retries = udp->params.retries;
 
+	if (fm_udp_socket_pool == NULL)
+		fm_udp_socket_pool = fm_socket_pool_create(proto, SOCK_DGRAM);
+
 	return udp;
 }
 
@@ -235,10 +214,18 @@ static bool
 fm_udp_control_init_target(const fm_udp_control_t *udp, fm_target_control_t *target_control, fm_target_t *target)
 {
 	const fm_address_t *addr = &target->address;
+	fm_socket_t *sock = NULL;
+
+	sock = fm_udp_create_shared_socket(udp->proto, target);
+	if (sock == NULL)
+		return false;
 
 	target_control->family = addr->family;
 	target_control->target = target;
 	target_control->address = *addr;
+	target_control->sock = sock;
+	target_control->sock_is_shared = true;
+
 	return true;
 }
 
@@ -246,7 +233,6 @@ fm_udp_control_init_target(const fm_udp_control_t *udp, fm_target_control_t *tar
  * Track extant UDP requests.
  * We currently do not track individual packets and their response(s), we just
  * record the fact that we *did* send to a specific port.
- * We do not even distinguish by the source port used on our end.
  */
 static void
 fm_udp_extant_info_build(const fm_udp_control_t *udp, uint16_t dst_port, fm_udp_extant_info_t *extant_info)
