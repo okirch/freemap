@@ -175,11 +175,86 @@ fm_fake_firewall_parse_rule(fm_fake_firewall_t *firewall, const char *rule_spec)
 }
 
 /*
+ * Rule matching engine
+ */
+typedef struct fm_fake_filter_packet_info {
+	fm_address_t		dst_addr;
+
+	unsigned int		proto_id;
+	unsigned int		tcp_flags;
+	unsigned int		src_port;
+	unsigned int		dst_port;
+	const struct fm_icmp_msg_type *icmp_type;
+} fm_fake_filter_packet_info_t;
+
+static bool fm_fake_filter_rule_match(const fm_fake_filter_rule_t *rule, const fm_fake_filter_packet_info_t *pi)
+{
+	if (rule->dst_addr.family != AF_UNSPEC
+	 && !fm_address_equal(&rule->dst_addr, &pi->dst_addr, false))
+		return false;
+
+	if (rule->proto_id == FM_PROTO_NONE)
+		return true;
+
+	if (rule->proto_id != pi->proto_id)
+		return false;
+
+	if (fm_port_range_valid(&rule->src_port_range)
+	 && !fm_port_range_contains(&rule->src_port_range, pi->src_port))
+		return false;
+
+	if (fm_port_range_valid(&rule->dst_port_range)
+	 && !fm_port_range_contains(&rule->dst_port_range, pi->dst_port))
+		return false;
+
+	if ((rule->tcp_flag_mask & pi->tcp_flags) != rule->tcp_flag_set)
+		return false;
+
+	if (rule->icmp_type && rule->icmp_type != pi->icmp_type)
+		return false;
+
+	return true;
+}
+
+/*
  * Firewall to inspect an incoming packet
  * returns one of ALLOW, DROP, REJECT.
  */
 int
 fm_firewall_inspect_packet(const fm_fake_firewall_t *firewall, fm_parsed_pkt_t *cooked, const fm_parsed_hdr_t *hip)
 {
+	fm_fake_filter_packet_info_t filter_packet;
+	const fm_parsed_hdr_t *htrans;
+	unsigned int i;
+
+	memset(&filter_packet, 0, sizeof(filter_packet));
+	filter_packet.dst_addr = hip->ip.dst_addr;
+
+	htrans = fm_parsed_packet_peek_next_header(cooked);
+	if (htrans == NULL) {
+		filter_packet.proto_id = FM_PROTO_NONE;
+	} else {
+		filter_packet.proto_id = htrans->proto_id;
+		if (htrans->proto_id == FM_PROTO_TCP) {
+			filter_packet.src_port = htrans->tcp.src_port;
+			filter_packet.dst_port = htrans->tcp.dst_port;
+			filter_packet.tcp_flags = htrans->tcp.flags;
+		} else
+		if (htrans->proto_id == FM_PROTO_UDP) {
+			filter_packet.src_port = htrans->udp.src_port;
+			filter_packet.dst_port = htrans->udp.dst_port;
+		} else
+		if (htrans->proto_id == FM_PROTO_ICMP) {
+			filter_packet.icmp_type = htrans->icmp.msg_type;
+		}
+	}
+
+	for (i = 0; i < firewall->rules.count; ++i) {
+		fm_fake_filter_rule_t *rule = &firewall->rules.entries[i];
+
+		if (fm_fake_filter_rule_match(rule, &filter_packet))
+			return rule->action;
+	}
+
 	return FM_FAKE_FW_ALLOW;
 }

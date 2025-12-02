@@ -172,6 +172,17 @@ extern fm_icmp_msg_type_t *fm_icmp_msg_type_get_reply(fm_icmp_msg_type_t *req);
 
 extern bool		fm_ipv6_transport_csum_partial(fm_csum_partial_t *, const fm_address_t *, const fm_address_t *, unsigned int next_header);
 
+static inline fm_parsed_hdr_t *
+fm_parsed_packet_peek_next_header(fm_parsed_pkt_t *cooked)
+{
+        unsigned int k = cooked->next_header;
+
+        if (k >= cooked->num_headers)
+                return NULL;
+
+        return cooked->headers[k];
+}
+
 static inline void
 fm_csum_partial_update(fm_csum_partial_t *cp, const void *data, size_t noctets)
 {

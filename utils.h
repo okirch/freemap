@@ -84,4 +84,16 @@ extern bool		fm_makedirs(char *path);
 #define offsetof(type, member) \
 	((unsigned long) &(((type *) 0)->member))
 
+static inline bool
+fm_port_range_valid(const fm_port_range_t *r)
+{
+	return 0 < r->first && r->first <= r->last;
+}
+
+static inline bool
+fm_port_range_contains(const fm_port_range_t *r, unsigned int port)
+{
+	return r->first <= port && port <= r->last;
+}
+
 #endif /* FREEMAP_UTILS_H */
