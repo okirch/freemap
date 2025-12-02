@@ -137,55 +137,6 @@ fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
 }
 
 /*
- * Regular dgram sockets do not provide headers; synthesize them
- */
-static fm_packet_parser_t *
-fm_udp_create_dummy_data_parser(void)
-{
-	static fm_packet_parser_t *fake = NULL;
-
-	if (fake == NULL) {
-		fake = fm_packet_parser_alloc();
-
-		fm_packet_parser_add_layer(fake, FM_PROTO_IP);
-		fm_packet_parser_add_layer(fake, FM_PROTO_UDP);
-	}
-
-	return fake;
-}
-
-static fm_packet_parser_t *
-fm_udp_create_dummy_error_parser(void)
-{
-	static fm_packet_parser_t *fake = NULL;
-
-	if (fake == NULL) {
-		fake = fm_packet_parser_alloc();
-
-		fm_packet_parser_add_layer(fake, FM_PROTO_IP);
-		fm_packet_parser_add_layer(fake, FM_PROTO_ICMP);
-		fm_packet_parser_add_layer(fake, FM_PROTO_IP);
-		fm_packet_parser_add_layer(fake, FM_PROTO_UDP);
-	}
-
-	return fake;
-}
-
-static fm_parsed_pkt_t *
-fm_udp_synthesize_headers(fm_pkt_t *pkt)
-{
-	fm_packet_parser_t *parser;
-
-	abort();
-	if (pkt->info.ee == NULL)
-		parser = fm_udp_create_dummy_data_parser();
-	else
-		parser = fm_udp_create_dummy_error_parser();
-
-	return fm_packet_synthetic_parse(parser, pkt);
-}
-
-/*
  * UDP action
  */
 static void
