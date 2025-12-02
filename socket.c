@@ -946,23 +946,6 @@ fm_socket_handle_poll_event(fm_socket_t *sock, int bits)
 		bits &= ~POLLIN;
 	}
 
-	if (bits & POLLOUT) {
-		/* POLLOUT being asserted does not mean the remote port is there;
-		 * it just means the kernel can tell us whether the connection attempt
-		 * succeeded. So go and reap the status */
-		if (connect(sock->fd, (struct sockaddr *) &sock->peer_address, sock->addrlen) < 0) {
-			fm_socket_process_os_error(sock, err);
-		} else {
-			fm_pkt_t *pkt;
-
-			pkt = fm_socket_build_dummy_packet(sock);
-			proto->connection_established(proto, pkt);
-			fm_pkt_free(pkt);
-		}
-
-		bits &= ~POLLOUT;
-	}
-
 	/* clear the bits we couldn't handle above */
 	if (sock->rpoll & bits) {
 bad_setup:

@@ -57,7 +57,6 @@ typedef struct tcp_extant_info {
 
 
 static fm_socket_t *	fm_tcp_create_socket(fm_protocol_t *proto, int af);
-static bool		fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *);
 static fm_extant_t *	fm_tcp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_tcp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 
@@ -82,7 +81,6 @@ static struct fm_protocol	fm_tcp_sock_ops = {
 	.create_socket	= fm_tcp_create_socket,
 	.locate_error	= fm_tcp_locate_error,
 	.locate_response= fm_tcp_locate_response,
-	.connection_established = fm_tcp_connecton_established,
 };
 
 FM_PROTOCOL_REGISTER(fm_tcp_sock_ops);
@@ -315,32 +313,6 @@ fm_tcp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *it
 	return extant;
 }
 
-/*
- * Callback from socket layer to indicate the connection has been established.
- * We only get here for stream sockets
- */
-static bool
-fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *pkt)
-{
-	unsigned int src_port, dst_port;
-	hlist_iterator_t iter;
-	fm_extant_t *extant;
-
-	src_port = fm_address_get_port(&pkt->peer_addr);
-	dst_port = fm_address_get_port(&pkt->local_addr);
-
-	fm_extant_iterator_init(&iter, &fm_tcp_extant_map.pending);
-
-	extant = fm_tcp_locate_common(pkt, dst_port, src_port, &iter);
-	if (extant != NULL) {
-		fm_host_asset_update_port_state(extant->host, FM_PROTO_TCP, src_port, FM_ASSET_STATE_OPEN);
-		fm_extant_received_reply(extant, NULL);
-		fm_extant_free(extant);
-	}
-
-	return true;
-}
-
 static fm_pkt_t *
 fm_tcp_build_raw_packet(const fm_tcp_control_t *tcp, uint16_t dst_port, fm_target_control_t *target_control,
 		const fm_probe_params_t *params)
@@ -395,29 +367,6 @@ fm_tcp_request_send(const fm_tcp_control_t *tcp, fm_target_control_t *target_con
 	fm_tcp_extant_info_t extant_info;
 	fm_probe_params_t param_copy;
 	uint16_t src_port, dst_port;
-
-	if (target_control->sock == NULL) {
-		target_control->sock = fm_protocol_create_socket(tcp->proto, target_control->family);
-		if (target_control->sock == NULL) {
-			fm_log_error("Unable to create TCP socket for %s: %m",
-					fm_address_format(&target_control->address));
-			return FM_SEND_ERROR;
-		}
-
-		if (!fm_socket_connect(target_control->sock, &target_control->address)) {
-			fm_log_error("Unable to connect TCP socket for %s: %m",
-					fm_address_format(&target_control->address));
-			return FM_SEND_ERROR;
-		}
-
-		if (!fm_socket_get_local_address(target_control->sock, &target_control->local_address)) {
-			fm_log_warning("TCP: unable to get local address after connect: %m");
-		}
-
-		fm_log_debug("Created TCP connection %s -> %s",
-					fm_address_format(&target_control->local_address),
-					fm_address_format(&target_control->address));
-	}
 
 	param_copy = tcp->params;
 	src_port = fm_address_get_port(&target_control->local_address);

@@ -44,7 +44,6 @@ struct fm_protocol {
 	fm_extant_t *	(*locate_error)(fm_protocol_t *, fm_pkt_t *, hlist_iterator_t *);
 	fm_extant_t *	(*locate_response)(fm_protocol_t *, fm_pkt_t *, hlist_iterator_t *);
 
-	bool		(*connection_established)(fm_protocol_t *, fm_pkt_t *);
 	bool		(*handle_os_error)(fm_protocol_t *, fm_pkt_t *);
 };
 
