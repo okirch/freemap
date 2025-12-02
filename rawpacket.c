@@ -589,13 +589,13 @@ fm_raw_packet_pull_udp_header(fm_buffer_t *bp, fm_udp_header_info_t *udp_info)
  * a zoo of bizarre unreachable codes.
  */
 static fm_icmp_msg_type_t	fm_icmp_msg_type[] = {
-	{ "net-unreach",	ICMP_DEST_UNREACH, ICMP_NET_UNREACH, ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_NOROUTE, },
-	{ "host-unreach",	ICMP_DEST_UNREACH, ICMP_HOST_UNREACH, ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_ADDR },
-	{ "port-unreach",	ICMP_DEST_UNREACH, ICMP_PORT_UNREACH, ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_NOPORT },
-	{ "frag-needed",	ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED, ICMP6_PACKET_TOO_BIG, -1 },
-	{ "ttl-exceeded",	ICMP_TIME_EXCEEDED, ICMP_EXC_TTL, ICMP6_TIME_EXCEEDED, ICMP6_TIME_EXCEED_TRANSIT },
-	{ "fragtime-exceeded",	ICMP_TIME_EXCEEDED, ICMP_EXC_FRAGTIME, ICMP6_TIME_EXCEEDED, ICMP6_TIME_EXCEED_REASSEMBLY },
-	{ "param-problem",	ICMP_PARAMETERPROB, 0, ICMP6_PARAM_PROB, 0 },
+	{ "net-unreach",	ICMP_DEST_UNREACH, ICMP_NET_UNREACH, ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_NOROUTE, .with_error = true },
+	{ "host-unreach",	ICMP_DEST_UNREACH, ICMP_HOST_UNREACH, ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_ADDR, .with_error = true },
+	{ "port-unreach",	ICMP_DEST_UNREACH, ICMP_PORT_UNREACH, ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_NOPORT, .with_error = true },
+	{ "frag-needed",	ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED, ICMP6_PACKET_TOO_BIG, -1, .with_error = true },
+	{ "ttl-exceeded",	ICMP_TIME_EXCEEDED, ICMP_EXC_TTL, ICMP6_TIME_EXCEEDED, ICMP6_TIME_EXCEED_TRANSIT, .with_error = true },
+	{ "fragtime-exceeded",	ICMP_TIME_EXCEEDED, ICMP_EXC_FRAGTIME, ICMP6_TIME_EXCEEDED, ICMP6_TIME_EXCEED_REASSEMBLY, .with_error = true },
+	{ "param-problem",	ICMP_PARAMETERPROB, 0, ICMP6_PARAM_PROB, 0, .with_error = true },
 	{ "echo-request",	ICMP_ECHO, 0, ICMP6_ECHO_REQUEST, 0, .with_seq_id = true },
 	{ "echo-reply",		ICMP_ECHOREPLY, 0, ICMP6_ECHO_REPLY, 0, .with_seq_id = true },
 	{ "timestamp-request",	ICMP_TIMESTAMP, 0, -1, 0, .with_seq_id = true },
@@ -671,10 +671,8 @@ bool
 fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info)
 {
 	struct icmp *ih;
-	unsigned int hdrlen = 4;
-	bool extract_id_seq = false;
 
-	if (!(ih = fm_buffer_peek(bp, hdrlen)))
+	if (!(ih = fm_buffer_pull(bp, 8)))
 		return false;
 
 	icmp_info->type = ih->icmp_type;
@@ -685,46 +683,13 @@ fm_raw_packet_pull_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info
 
 	icmp_info->msg_type = fm_icmp_msg_type_get_v4(ih->icmp_type, ih->icmp_code);
 
-	switch (ih->icmp_type) {
-	case ICMP_DEST_UNREACH:
-		if (ih->icmp_code == ICMP_UNREACH_NEEDFRAG) {
-			hdrlen += 4;
-			break;
+	if (icmp_info->msg_type != NULL) {
+		icmp_info->include_error_pkt = icmp_info->msg_type->with_error;
+
+		if (icmp_info->msg_type->with_seq_id) {
+			icmp_info->seq = ntohs(ih->icmp_seq);
+			icmp_info->id = ntohs(ih->icmp_id);
 		}
-		/* fallthru */
-
-	case ICMP_TIME_EXCEEDED:
-		icmp_info->include_error_pkt = true;
-		break;
-
-	case ICMP_PARAMETERPROB:
-		hdrlen += 1;
-		icmp_info->include_error_pkt = true;
-		break;
-
-	case ICMP_REDIRECT:
-		hdrlen += 4;	/* IP addr of gateway */
-		break;
-
-	case ICMP_ECHO:
-	case ICMP_ECHOREPLY:
-	case ICMP_TIMESTAMP:
-	case ICMP_TIMESTAMPREPLY:
-	case ICMP_ADDRESS:
-	case ICMP_ADDRESSREPLY:
-	case ICMP_INFO_REQUEST:
-	case ICMP_INFO_REPLY:
-		extract_id_seq = true;
-		hdrlen += 4;	/* seq and id */
-		break;
-	}
-
-	if (!fm_buffer_pull(bp, hdrlen))
-		return false;
-
-	if (extract_id_seq) {
-		icmp_info->seq = ntohs(ih->icmp_seq);
-		icmp_info->id = ntohs(ih->icmp_id);
 	}
 
 	return true;
@@ -747,40 +712,14 @@ bool
 fm_raw_packet_pull_icmpv6_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info)
 {
 	struct icmp6_hdr *ih;
-	unsigned int hdrlen = 4;
 
-	if (!(ih = fm_buffer_peek(bp, hdrlen)))
+	if (!(ih = fm_buffer_pull(bp, 8)))
 		return false;
 
 	icmp_info->type = ih->icmp6_type;
 	icmp_info->code = ih->icmp6_code;
 
 	fm_raw_packet_map_icmpv6_codes(icmp_info, ih->icmp6_type, ih->icmp6_code);
-
-	switch (ih->icmp6_type) {
-	case ICMP6_DST_UNREACH:
-		break;
-
-	case ICMP6_PACKET_TOO_BIG:
-		hdrlen += 4;
-		break;
-
-	case ICMP6_TIME_EXCEEDED:
-		break;
-
-	case ICMP6_PARAM_PROB:
-		hdrlen += 4;
-		break;
-
-	case ICMP6_ECHO_REQUEST:
-	case ICMP6_ECHO_REPLY:
-		hdrlen += 4;	/* seq and id */
-		break;
-	}
-
-
-	if (!fm_buffer_pull(bp, hdrlen))
-		return false;
 
 	if (!(ih->icmp6_type & ICMP6_INFOMSG_MASK)) {
 		icmp_info->include_error_pkt = true;
