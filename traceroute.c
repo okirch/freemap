@@ -113,7 +113,7 @@ fm_topo_state_init_target(fm_topo_state_t *topo, fm_target_control_t *target_con
 
 	target_control->family = addr->family;
 	target_control->target = target;
-	target_control->address = *addr;
+	target_control->dst_addr = *addr;
 	return true;
 }
 
@@ -991,7 +991,7 @@ fm_topo_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *ho
 
 	// if (topo->packet_proto->supported_parameters & FM_FEATURE_SOCKET_SHARING_MASK) {
 	if (true) {
-		topo->shared_socks = fm_topo_shared_sockets_get(topo->packet_proto, &target_control->address);
+		topo->shared_socks = fm_topo_shared_sockets_get(topo->packet_proto, &target_control->dst_addr);
 
 		/* Apply extra params if any */
 	}

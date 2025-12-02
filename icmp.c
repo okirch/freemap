@@ -324,14 +324,14 @@ fm_icmp_request_init_target(const fm_icmp_control_t *icmp, fm_target_control_t *
 
 	target_control->family = addr->family;
 	target_control->target = target;
-	target_control->address = *addr;
+	target_control->dst_addr = *addr;
 	target_control->sock = sock;
 	target_control->sock_is_shared = true;
 
 	if (target_control->family == AF_INET6) {
 		fm_ipv6_transport_csum_partial(&target_control->icmp.csum,
 						&target_control->src_addr,
-						&target_control->address,
+						&target_control->dst_addr,
 						IPPROTO_ICMPV6);
 	}
 
@@ -380,7 +380,7 @@ fm_icmp_request_build_packet(const fm_icmp_control_t *icmp, fm_target_control_t 
 
 	pkt->payload = bp;
 
-	pkt->peer_addr = host->address;
+	pkt->peer_addr = host->dst_addr;
 	if (host->family == AF_INET) {
 		struct icmp *icmph;
 
@@ -575,7 +575,7 @@ fm_icmp_multiprobe_add_broadcast(fm_multiprobe_t *multiprobe, fm_host_tasklet_t 
 		return false;
 
 	target_control->src_addr = *src_link_addr;
-	target_control->address = *dst_link_addr;
+	target_control->dst_addr = *dst_link_addr;
 	target_control->sock = sock;
 
 	target_control->icmp.packet_header = fm_buffer_alloc(128);

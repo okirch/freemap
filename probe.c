@@ -218,7 +218,7 @@ fm_target_control_init_default(fm_target_control_t *target_control, fm_target_t 
 	target_control->family = addr->family;
 	target_control->target = target;
 	target_control->src_addr = target->rtinfo.src.network_address;
-	target_control->address = *addr;
+	target_control->dst_addr = *addr;
 	target_control->sock = NULL;
 }
 

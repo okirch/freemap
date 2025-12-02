@@ -96,7 +96,7 @@ typedef struct fm_target_control {
 
 	fm_target_t *		target;
 	fm_address_t		src_addr;
-	fm_address_t		address;
+	fm_address_t		dst_addr;
 	fm_socket_t *		sock;
 
 	union {

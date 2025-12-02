@@ -182,7 +182,7 @@ fm_udp_control_init_target(const fm_udp_control_t *udp, fm_target_control_t *tar
 
 	target_control->family = addr->family;
 	target_control->target = target;
-	target_control->address = *addr;
+	target_control->dst_addr = *addr;
 	target_control->sock = sock;
 	target_control->sock_is_shared = true;
 
@@ -325,7 +325,7 @@ fm_udp_build_packet(const fm_udp_control_t *udp, fm_target_control_t *target_con
 	hdrinfo.dst_port = params->port;
 
 	/* Build the dest addr with port */
-	dst_addr = target_control->address;
+	dst_addr = target_control->dst_addr;
 	fm_address_set_port(&dst_addr, hdrinfo.dst_port);
 
 	/* If we have a service probe payload, send a (copy) of that packet, else
