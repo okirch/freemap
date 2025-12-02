@@ -25,7 +25,7 @@
 #include "protocols.h"
 #include "target.h"
 #include "scanner.h"
-#include "rawpacket.h"
+#include "probe_private.h"
 #include "socket.h"
 #include "logging.h"
 #include "utils.h"

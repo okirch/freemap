@@ -29,7 +29,7 @@
 #include "protocols.h"
 #include "target.h"
 #include "socket.h"
-#include "rawpacket.h"
+#include "probe_private.h"
 #include "logging.h"
 #include "buffer.h"
 

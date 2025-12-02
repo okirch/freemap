@@ -18,7 +18,6 @@
 #ifndef FREEMAP_PROBE_H
 #define FREEMAP_PROBE_H
 
-#include <linux/if_packet.h> /* for sockaddr_ll - ugly */
 #include <stdlib.h>
 #include <stdbool.h>
 #include <assert.h>
@@ -32,6 +31,9 @@
 typedef bool			fm_multiprobe_status_callback_t(const fm_multiprobe_t *multiprobe,
 						const fm_pkt_t *, double rtt,
 						void *user_data);
+
+/* This is defined in probe_private.h in all its glory */
+typedef struct fm_target_control fm_target_control_t;
 
 struct fm_probe_class {
 	const char *		name;
@@ -85,53 +87,6 @@ typedef struct fm_tasklet {
 
 	fm_extant_t *		extants[FM_TASKLET_MAX_PACKETS];
 } fm_tasklet_t;
-
-/*
- * This struct holds some per-target scanning state for the
- * protocol drivers.
- */
-typedef struct fm_target_control {
-	int			family;
-	bool			sock_is_shared;
-
-	fm_target_t *		target;
-	fm_address_t		src_addr;
-	fm_address_t		dst_addr;
-	fm_socket_t *		sock;
-
-	union {
-		struct {
-			uint32_t		src_ipaddr;
-			uint32_t		dst_ipaddr;
-			struct sockaddr_ll	src_lladdr;
-			struct sockaddr_ll	dst_lladdr;
-		} arp;
-		struct {
-			fm_buffer_t *		packet_header;
-			fm_csum_partial_t	csum;
-			/* counter for icmp seq generation: */
-			uint16_t		retries;
-		} icmp;
-	};
-} fm_target_control_t;
-
-struct fm_host_tasklet {
-	struct hlist		link;
-
-	double			timeout;
-
-	char *			name;
-	fm_target_t *		target;
-	fm_host_asset_t *	host_asset;
-	fm_ratelimit_t *	ratelimit;
-
-	fm_target_control_t	control;
-
-	unsigned int		probe_index;
-
-	unsigned int		num_tasks;
-	fm_tasklet_t *		tasklets;
-};
 
 typedef const struct fm_multiprobe_ops {
 	bool			(*add_target)(fm_multiprobe_t *, fm_host_tasklet_t *, fm_target_t *);

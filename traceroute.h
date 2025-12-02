@@ -21,7 +21,7 @@
 #define FREEMAP_TRACEROUTE_H
 
 #include "freemap.h"
-#include "probe.h"
+#include "probe_private.h"
 #include "routing.h"
 #include "utils.h"
 

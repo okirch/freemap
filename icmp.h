@@ -21,6 +21,7 @@
 #define FREEMAP_ICMP_H
 
 #include "freemap.h"
+#include "probe_private.h"
 
 typedef struct fm_icmp_extra_params {
 	const char *		type_name;

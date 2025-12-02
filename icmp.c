@@ -35,7 +35,7 @@
 #include "buffer.h"
 #include "utils.h"
 #include "icmp.h"
-#include "rawpacket.h"
+#include "probe_private.h"
 #include "socket.h"
 #include "logging.h"
 

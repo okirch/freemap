@@ -17,6 +17,8 @@
 
 #include <string.h>
 #include <stdio.h>
+
+#include "probe_private.h"
 #include "target.h"
 #include "network.h"
 #include "utils.h"
