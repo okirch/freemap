@@ -240,6 +240,7 @@ fm_fake_host_receive_udp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm
 	if (port == NULL) {
 		fm_icmp_msg_type_t *error_type;
 
+		fm_log_debug("  %s %s port udp/%u unreachable", host->name, fm_address_format(&host->address), udp->dst_port);
 		error_type = fm_icmp_msg_type_by_name("port-unreach");
 		return fm_fake_host_send_error(host, error_type, hip);
 	}
@@ -277,8 +278,10 @@ fm_fake_host_receive_tcp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const fm
 		port = fm_fake_host_lookup_port(host, FM_PROTO_TCP, tcp->dst_port);
 
 	if (port == NULL) {
+		fm_log_debug("  %s %s port tcp/%u closed", host->name, fm_address_format(&host->address), tcp->dst_port);
 		tcp_reply_info.flags = TH_ACK|TH_RST;
 	} else {
+		fm_log_debug("  %s %s port tcp/%u open", host->name, fm_address_format(&host->address), tcp->dst_port);
 		tcp_reply_info.flags = TH_ACK|TH_SYN;
 	}
 

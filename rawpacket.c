@@ -258,9 +258,6 @@ fm_raw_packet_pull_ipv6_extension(fm_buffer_t *bp, fm_ip_header_info_t *info)
 	 || !(raw = fm_buffer_pull(bp, raw[1] + 8)))
 		return false;
 
-	fm_log_debug("found extension header %d len %u next %u",
-			info->ipproto, raw[1] + 8, raw[0]);
-
 	ext = &info->ext_header[info->num_ext_headers++];
 	ext->ipproto = info->ipproto;
 	ext->data = raw + 2;
