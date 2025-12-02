@@ -57,11 +57,24 @@ struct fm_socket {
 	fm_extant_map_t *	extant_map;
 };
 
+typedef struct fm_socket_pool	fm_socket_pool_t;
+struct fm_socket_pool {
+	fm_protocol_t *		driver;
+	int			sotype;
+
+	fm_socket_t *		(*new_sock)(fm_socket_pool_t *pool, const fm_address_t *bind_addr);
+
+	struct hlist_head	list;
+};
+
 extern bool		fm_socket_recverr(fm_socket_t *sock, fm_pkt_info_t *info);
 extern void		fm_socket_attach_protocol(fm_socket_t *, fm_protocol_t *);
 
 extern void		fm_socket_attach_extant_map(fm_socket_t *, fm_extant_map_t *);
 extern fm_extant_t *	fm_socket_add_extant(fm_socket_t *, fm_host_asset_t *host, int family, int ipproto, const void *data, size_t len);
+
+extern fm_socket_pool_t *fm_socket_pool_create(fm_protocol_t *, int sotype);
+extern fm_socket_t *	fm_socket_pool_get_socket(fm_socket_pool_t *, const fm_address_t *local_addr);
 
 static inline bool
 fm_socket_is_connected(const fm_socket_t *sock)

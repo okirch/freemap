@@ -1058,3 +1058,68 @@ fm_socket_poll_all(fm_time_t timeout)
 
 	return fm_socket_purge();
 }
+
+/*
+ * Socket pools help sharing sockets between probes.
+ * If we don't share, we end up with hundreds of identical raw or packet sockets, with
+ * incoming packets delivered to each of them.
+ */
+typedef struct fm_socket_pool_entry {
+	struct hlist		link;
+	fm_address_t		local_addr;
+	fm_socket_t *		sock;
+} fm_socket_pool_entry_t;
+
+/*
+ * Create a socket pool
+ */
+fm_socket_pool_t *
+fm_socket_pool_create(fm_protocol_t *proto, int sotype)
+{
+	fm_socket_pool_t *pool;
+
+	pool = calloc(1, sizeof(*pool));
+	pool->driver = proto;
+	pool->sotype = sotype;
+
+	return pool;
+}
+
+/*
+ * Check the socket pool for a matching socket;
+ * if it does not exist yet, create it
+ */
+fm_socket_t *
+fm_socket_pool_get_socket(fm_socket_pool_t *pool, const fm_address_t *local_addr)
+{
+	fm_socket_pool_entry_t *entry;
+	hlist_iterator_t it;
+	fm_socket_t *sock;
+
+	hlist_iterator_init(&it, &pool->list);
+	while ((entry = hlist_iterator_next(&it)) != NULL) {
+		if (fm_address_equal(&entry->local_addr, local_addr, false))
+			return entry->sock;
+	}
+
+	sock = fm_protocol_create_socket(pool->driver, local_addr->family);
+	if (sock == NULL)
+		return NULL;
+
+	if (!fm_socket_bind(sock, local_addr)) {
+		fm_log_error("Cannot bind %s socket to address %s: %m",
+				pool->driver->name,
+				fm_address_format(local_addr));
+		fm_socket_free(sock);
+		return NULL;
+	}
+
+	entry = calloc(1, sizeof(*entry));
+	entry->local_addr = *local_addr;
+	entry->sock = sock;
+
+	hlist_append(&pool->list, &entry->link);
+
+	return sock;
+}
+
