@@ -33,70 +33,9 @@
 
 static struct hlist_head	fm_interface_list = { .first = NULL, };
 
-typedef struct fm_raw_socket_cache {
-	struct hlist		link;
-	int			sotype;
-	struct sockaddr_ll	lladdr;
-	fm_socket_t *		sock;
-	fm_protocol_t *		protocol;
-} fm_raw_socket_cache_t;
-
-static struct hlist_head	raw_sock_cache = { .first = NULL, };
 static fm_address_prefix_array_t fm_local_address_prefixes;
 
 static fm_address_prefix_t *	fm_address_prefix_array_new_entry(fm_address_prefix_array_t *array, const fm_address_t *addr, unsigned int pfxlen);
-
-fm_socket_t *
-fm_raw_socket_get(const fm_address_t *addr, fm_protocol_t *driver, int sotype)
-{
-	const struct sockaddr_ll *lladdr;
-	hlist_iterator_t it;
-	fm_raw_socket_cache_t *entry;
-	fm_socket_t *sock;
-
-	if (sotype < 0)
-		sotype = SOCK_DGRAM;
-
-	if (!(lladdr = fm_address_to_link_const(addr))) {
-		fm_log_error("Cannot create raw socket for address %s", fm_address_format(addr));
-		return NULL;
-	}
-
-	hlist_iterator_init(&it, &raw_sock_cache);
-	while ((entry = hlist_iterator_next(&it)) != NULL) {
-		if (entry->protocol == driver
-		 && entry->sotype == sotype
-		 && !memcmp(&entry->lladdr, lladdr, sizeof(*lladdr)))
-			return entry->sock;
-	}
-
-
-	sock = fm_socket_create(PF_PACKET, sotype, lladdr->sll_protocol, driver);
-
-	/* Install a packet parser for the requested protocol by default.
-	 * NB this does not take care of any other protocols layered on top of it.
-	 *
-	 * FIXME: Is this the right thing to do?
-	 */
-	fm_socket_install_data_parser(sock, driver->id);
-
-	if (!fm_socket_bind(sock, (const fm_address_t *) lladdr)) {
-		fm_log_error("Cannot bind raw socket to address %s: %m",
-				fm_address_format((fm_address_t *) &lladdr));
-		fm_socket_free(sock);
-		return NULL;
-	}
-
-	entry = calloc(1, sizeof(*entry));
-	entry->lladdr = *lladdr;
-	entry->sock = sock;
-	entry->protocol = driver;
-	entry->sotype = sotype;
-
-	hlist_append(&raw_sock_cache, &entry->link);
-
-	return sock;
-}
 
 /*
  * Manage list of interfaces

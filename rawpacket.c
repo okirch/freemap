@@ -585,6 +585,9 @@ fm_raw_packet_pull_udp_header(fm_buffer_t *bp, fm_udp_header_info_t *udp_info)
  * I don't want to distinguish between v4 and v6 in upper layer code,
  * so what we'll do here is translate ICMPv6 code/type combinations
  * to what resembles them most closely in v4.
+ *
+ * The list of types is far from complete; this omits source quench and redirect, as well as
+ * a zoo of bizarre unreachable codes.
  */
 static fm_icmp_msg_type_t	fm_icmp_msg_type[] = {
 	{ "net-unreach",	ICMP_DEST_UNREACH, ICMP_NET_UNREACH, ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_NOROUTE, },
