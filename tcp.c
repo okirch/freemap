@@ -57,10 +57,12 @@ typedef struct tcp_extant_info {
 
 
 static fm_socket_t *	fm_tcp_create_socket(fm_protocol_t *proto, int af);
-static fm_socket_t *	fm_tcp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target);
 static bool		fm_tcp_connecton_established(fm_protocol_t *proto, fm_pkt_t *);
 static fm_extant_t *	fm_tcp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_tcp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
+
+/* Global pool for TCP sockets */
+static fm_socket_pool_t	*fm_tcp_socket_pool = NULL;
 
 /* Global extant map for all TCP related stuff */
 static fm_extant_map_t	fm_tcp_extant_map = FM_EXTANT_MAP_INIT;
@@ -78,7 +80,6 @@ static struct fm_protocol	fm_tcp_sock_ops = {
 			  FM_FEATURE_STATUS_CALLBACK_MASK,
 
 	.create_socket	= fm_tcp_create_socket,
-	.create_host_shared_socket = fm_tcp_create_shared_socket,
 	.locate_error	= fm_tcp_locate_error,
 	.locate_response= fm_tcp_locate_response,
 	.connection_established = fm_tcp_connecton_established,
@@ -120,43 +121,23 @@ fm_tcp_create_socket(fm_protocol_t *proto, int af)
 static fm_socket_t *
 fm_tcp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
 {
-	const fm_address_t *dst_address = &target->address;
 	fm_address_t bind_address;
 	fm_socket_t *sock = NULL;
 
-	sock = fm_protocol_create_socket(proto, dst_address->family);
-
-	/* The following code is not used yet. We will use that eg for
-	 * allocating source ports from a given range.
-	 * Before we get there, we would have to implement something like a port pool
-	 */
-	if (1) {
-		/* Pick the local host address to use when talking to this target. */
-		if (!fm_target_get_local_bind_address(target, &bind_address)) {
-			fm_log_error("%s: unable to determine local address to use when binding",
-					fm_address_format(dst_address));
-			goto failed;
-		}
-
-		/* make sure the port number is 0 */
-		fm_address_set_port(&bind_address, 0);
-
-		if (!fm_socket_bind(sock, &bind_address)) {
-			fm_log_error("%s: unable to bind to local address %s",
-					fm_address_format(dst_address),
-					fm_address_format(&bind_address));
-			goto failed;
-		}
+	/* Pick adequate source address to use when talking to this target. */
+	if (!fm_target_get_local_bind_address(target, &bind_address)) {
+		fm_log_error("%s: cannot determine source address", target->id);
+		return NULL;
 	}
 
-	fm_socket_enable_recverr(sock);
-	target->tcp_sock = sock;
+	/* make sure the port number is 0 */
+	fm_address_set_port(&bind_address, 0);
+
+	sock = fm_socket_pool_get_socket(fm_tcp_socket_pool, &bind_address);
+	if (sock == NULL)
+		return NULL;
 
 	return sock;
-
-failed:
-	fm_socket_free(sock);
-	return NULL;
 }
 
 /*
@@ -203,6 +184,9 @@ fm_tcp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, cons
 		tcp->extra_params.sequence = fm_tcp_generate_sequence();
 	tcp->extra_params.ack = tcp->extra_params.sequence + 0x80;
 
+	if (fm_tcp_socket_pool == NULL)
+		fm_tcp_socket_pool = fm_socket_pool_create(proto, SOCK_RAW);
+
 	return tcp;
 }
 
@@ -213,7 +197,7 @@ fm_tcp_control_init_target(const fm_tcp_control_t *tcp, fm_target_control_t *tar
 	fm_socket_t *sock = NULL;
 
 	/* For the time being, we create a single raw socket per target host */
-	sock = fm_protocol_create_host_shared_socket(tcp->proto, target);
+	sock = fm_tcp_create_shared_socket(tcp->proto, target);
 	if (sock == NULL) {
 		fm_log_error("could not create shared TCP socket for %s", target->id);
 		return false;
@@ -223,6 +207,7 @@ fm_tcp_control_init_target(const fm_tcp_control_t *tcp, fm_target_control_t *tar
 	target_control->target = target;
 	target_control->address = *addr;
 	target_control->sock = sock;
+	target_control->sock_is_shared = true;
 
 	if (!fm_socket_get_local_address(target_control->sock, &target_control->local_address))
 		fm_log_warning("TCP: unable to get local address: %m");
