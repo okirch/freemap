@@ -49,7 +49,7 @@ fm_fake_host_prepare_response(fm_fake_host_t *host, const fm_ip_header_info_t *i
 	memset(reply_info, 0, sizeof(*reply_info));
 	reply_info->src_addr = ip->dst_addr;
 	reply_info->dst_addr = ip->src_addr;
-	reply_info->ttl = 64;
+	reply_info->ttl = 64 - host->ttl;
 	reply_info->tos = 0;
 
 	if (!send_error) {
@@ -98,7 +98,7 @@ fm_fake_router_prepare_response(fm_fake_router_t *router, const fm_ip_header_inf
 		return NULL;
 
 	reply_info->dst_addr = ip->src_addr;
-	reply_info->ttl = 64;
+	reply_info->ttl = 64 - router->ttl;
 	reply_info->tos = 0;
 
 	reply = fm_buffer_alloc(128);
