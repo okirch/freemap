@@ -47,8 +47,9 @@ typedef struct fm_tcp_control {
 } fm_tcp_control_t;
 
 typedef struct tcp_extant_info {
-	unsigned int		src_port;
-	unsigned int		dst_port;
+	unsigned char		sent_flags;
+	uint16_t		src_port;
+	uint16_t		dst_port;
 } fm_tcp_extant_info_t;
 
 
@@ -212,15 +213,13 @@ fm_tcp_control_init_target(const fm_tcp_control_t *tcp, fm_target_control_t *tar
 
 /*
  * Track extant TCP requests.
- * We currently do not track individual packets and their response(s), we just
- * record the fact that we *did* send to a specific port.
- * We do not even distinguish by the source port used on our end.
  */
 static void
-fm_tcp_extant_info_build(const fm_tcp_control_t *tcp, uint16_t src_port, uint16_t dst_port, fm_tcp_extant_info_t *extant_info)
+fm_tcp_extant_info_build(const fm_tcp_header_info_t *tcp_info, fm_tcp_extant_info_t *extant_info)
 {
-	extant_info->src_port = src_port;
-	extant_info->dst_port = dst_port;
+	extant_info->sent_flags = tcp_info->flags;
+	extant_info->src_port = tcp_info->src_port;
+	extant_info->dst_port = tcp_info->dst_port;
 }
 
 static fm_extant_t *
@@ -361,7 +360,7 @@ fm_tcp_request_send(const fm_tcp_control_t *tcp, fm_target_control_t *target_con
 			return FM_SEND_ERROR;
 	}
 
-	fm_tcp_extant_info_build(tcp, tcp_info->src_port, tcp_info->dst_port, &extant_info);
+	fm_tcp_extant_info_build(tcp_info, &extant_info);
 	*extant_ret = fm_socket_add_extant(target_control->sock, target_control->target->host_asset,
 				target_control->family, IPPROTO_TCP, &extant_info, sizeof(extant_info));
 
