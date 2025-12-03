@@ -86,6 +86,12 @@ fm_command_perform_init(fm_command_t *cmd)
 	}
 
 	project = fm_project_create(cmd->values[0]);
+
+	assign_string(&project->discovery_probe, "default");
+	assign_string(&project->topology_probe, "traceroute");
+	assign_string(&project->reachability_probe, "default");
+	assign_string(&project->service_probe, "default");
+
 	fm_project_save(project);
 
 	printf("Successfully initialized project %s current directory\n", project->name);
