@@ -185,28 +185,25 @@ fm_tcp_control_alloc(fm_protocol_t *proto)
 	return tcp;
 }
 
+/*
+ * Initialize protocol-specific part of target control.
+ * When we get here, most of the generic members have already been set.
+ */
 static bool
 fm_tcp_control_init_target(const fm_tcp_control_t *tcp, fm_target_control_t *target_control, fm_target_t *target)
 {
-	const fm_address_t *addr = &target->address;
 	fm_socket_t *sock = NULL;
 
 	sock = fm_tcp_create_shared_socket(tcp->proto, target);
-	if (sock == NULL) {
-		fm_log_error("could not create shared TCP socket for %s", target->id);
+	if (sock == NULL)
 		return false;
-	}
 
-	target_control->family = addr->family;
-	target_control->target = target;
-	target_control->dst_addr = *addr;
 	target_control->sock = sock;
 	target_control->sock_is_shared = true;
 
 	target_control->ip_info = tcp->ip_info;
-	target_control->ip_info.dst_addr = *addr;
-
-	fm_target_get_local_bind_address(target, &target_control->ip_info.src_addr);
+	target_control->ip_info.src_addr = target_control->src_addr;
+	target_control->ip_info.dst_addr = target_control->dst_addr;
 
 	return true;
 }

@@ -160,26 +160,25 @@ fm_udp_control_alloc(fm_protocol_t *proto)
 	return udp;
 }
 
+/*
+ * Initialize protocol-specific part of target control.
+ * When we get here, most of the generic members have already been set.
+ */
 static bool
 fm_udp_control_init_target(const fm_udp_control_t *udp, fm_target_control_t *target_control, fm_target_t *target)
 {
-	const fm_address_t *addr = &target->address;
 	fm_socket_t *sock = NULL;
 
 	sock = fm_udp_create_shared_socket(udp->proto, target);
 	if (sock == NULL)
 		return false;
 
-	target_control->family = addr->family;
-	target_control->target = target;
-	target_control->dst_addr = *addr;
 	target_control->sock = sock;
 	target_control->sock_is_shared = true;
 
 	target_control->ip_info = udp->ip_info;
-	target_control->ip_info.dst_addr = *addr;
-
-	fm_target_get_local_bind_address(target, &target_control->ip_info.src_addr);
+	target_control->ip_info.src_addr = target_control->src_addr;
+	target_control->ip_info.dst_addr = target_control->dst_addr;
 
 	return true;
 }
