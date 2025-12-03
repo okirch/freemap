@@ -290,6 +290,7 @@ fm_arp_control_send(const fm_arp_control_t *arp, fm_target_control_t *target_con
 	fm_socket_t *sock;
 	unsigned char pktbuf[128];
 	size_t pktlen;
+	fm_error_t err;
 
 	/* The src_lladdr is used to locate the appropriate PF_PACKET socket;
 	 * so we need to tell it what protocol we want. */
@@ -319,9 +320,10 @@ fm_arp_control_send(const fm_arp_control_t *arp, fm_target_control_t *target_con
 	eth_bcast.sll_protocol = htons(ETH_P_ARP);
 	memset(eth_bcast.sll_addr, 0xFF, ETH_ALEN);
 
-	if (!fm_socket_send(sock, (fm_address_t *) &eth_bcast, pktbuf, pktlen)) {
+	err = fm_socket_send(sock, (fm_address_t *) &eth_bcast, pktbuf, pktlen);
+	if (err < 0) {
 		fm_log_error("Unable to send ARP packet: %m");
-		return FM_SEND_ERROR;
+		return err;
 	}
 
 	*extant_ret = fm_socket_add_extant(sock, NULL, AF_PACKET, ETH_P_IP,

@@ -596,13 +596,13 @@ fm_sendmsg_add_cmsg_int(struct fm_msghdr *rd, int level, int type, int value)
 /*
  * Send data
  */
-bool
+fm_error_t
 fm_socket_send(fm_socket_t *sock, const fm_address_t *dstaddr, const void *pkt, size_t len)
 {
 	int r;
 
 	if (sock->fd < 0)
-		return false;
+		return FM_SEND_ERROR;
 
 	if (dstaddr == NULL) {
 		r = send(sock->fd, pkt, len, 0);
@@ -613,25 +613,25 @@ fm_socket_send(fm_socket_t *sock, const fm_address_t *dstaddr, const void *pkt, 
 	if (r < 0) {
 		/* have the caller receive the error */
 		if (errno == EMSGSIZE || errno == EHOSTUNREACH || errno == ECONNREFUSED)
-			return true;
+			return 0;
 
 		if (errno == ENOBUFS || errno == EAGAIN)
-			return false;
+			return FM_SEND_ERROR;
 
 		fm_log_error("failed to send: %m (errno %d)", errno);
-		return false;
+		return FM_SEND_ERROR;
 	}
 
-	return true;
+	return 0;
 }
 
-bool
+fm_error_t
 fm_socket_send_buffer(fm_socket_t *sock, const fm_address_t *dstaddr, fm_buffer_t *data)
 {
 	return fm_socket_send(sock, dstaddr, fm_buffer_head(data), fm_buffer_available(data));
 }
 
-bool
+fm_error_t
 fm_socket_send_pkt(fm_socket_t *sock, fm_pkt_t *pkt)
 {
 	struct fm_msghdr *rd;
@@ -663,22 +663,22 @@ fm_socket_send_pkt(fm_socket_t *sock, fm_pkt_t *pkt)
 	if (r < 0) {
 		/* have the caller receive the error */
 		if (errno == EMSGSIZE || errno == EHOSTUNREACH || errno == ECONNREFUSED)
-			return true;
+			return 0;
 
 		if (errno == ENOBUFS || errno == EAGAIN)
-			return false;
+			return FM_SEND_ERROR;
 
 		fm_log_error("failed to send: %m (errno %d)", errno);
-		return false;
+		return FM_SEND_ERROR;
 	}
 
-	return true;
+	return 0;
 }
 
-bool
+fm_error_t
 fm_socket_send_pkt_and_burn(fm_socket_t *sock, fm_pkt_t *pkt)
 {
-	bool rv;
+	fm_error_t rv;
 
 	rv = fm_socket_send_pkt(sock, pkt);
 	fm_pkt_free(pkt);

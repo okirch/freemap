@@ -308,6 +308,7 @@ fm_udp_request_send(const fm_udp_control_t *udp, fm_target_control_t *target_con
 	fm_target_t *target = target_control->target;
 	fm_socket_t *sock;
 	fm_pkt_t *pkt;
+	fm_error_t err;
 
 	ip_info = fm_ip_header_info_finalize(&target_control->ip_info, param_type, param_value);
 	udp_info = fm_udp_header_info_finalize(&udp->udp_info, param_type, param_value, application_payload);
@@ -320,7 +321,8 @@ fm_udp_request_send(const fm_udp_control_t *udp, fm_target_control_t *target_con
 
 	pkt = fm_udp_build_packet(udp, target_control, ip_info, udp_info);
 
-	if (!fm_socket_send_pkt_and_burn(sock, pkt)) {
+	err = fm_socket_send_pkt_and_burn(sock, pkt);
+	if (err < 0) {
 		fm_log_error("Unable to send UDP packet: %m");
 		return FM_SEND_ERROR;
 	}

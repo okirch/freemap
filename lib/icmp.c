@@ -382,6 +382,7 @@ fm_icmp_request_send(const fm_icmp_control_t *icmp, fm_target_control_t *target_
 	fm_icmp_extant_info_t extant_info;
 	fm_socket_t *sock;
 	fm_pkt_t *pkt;
+	fm_error_t err;
 
 	if ((sock = icmp->sock) == NULL
 	 && (sock = target_control->sock) == NULL) {
@@ -407,9 +408,10 @@ fm_icmp_request_send(const fm_icmp_control_t *icmp, fm_target_control_t *target_
 
 	pkt = fm_icmp_request_build_packet(icmp, target_control, ip_info, icmp_info);
 
-	if (!fm_socket_send_pkt_and_burn(sock, pkt)) {
+	err = fm_socket_send_pkt_and_burn(sock, pkt);
+	if (err < 0) {
 		fm_log_error("Unable to send ICMP packet: %m");
-		return FM_SEND_ERROR;
+		return err;
 	}
 
 	fm_icmp_extant_info_build(icmp, icmp_info, &extant_info);

@@ -347,12 +347,14 @@ fm_tcp_request_send(const fm_tcp_control_t *tcp, fm_target_control_t *target_con
 	{
 		/* build the TCP packet and transmit */
 		fm_pkt_t *pkt;
+		fm_error_t err;
 
 		if (!(pkt = fm_tcp_build_raw_packet(tcp, target_control, ip_info, tcp_info)))
 			return FM_SEND_ERROR;
 
-		if (!fm_socket_send_pkt_and_burn(target_control->sock, pkt))
-			return FM_SEND_ERROR;
+		err = fm_socket_send_pkt_and_burn(target_control->sock, pkt);
+		if (err < 0)
+			return err;
 	}
 
 	fm_tcp_extant_info_build(tcp_info, &extant_info);
