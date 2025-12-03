@@ -4,6 +4,8 @@
 *.log
 freemap
 patches
+Makefile.inc
+xconfig.h
 tests/addrs
 tests/ratelimit
 tests/argparse

@@ -44,6 +44,8 @@ freemap_OBJS = \
 	  cmd_scan.o \
 	  cmd_report.o
 
+include Makefile.inc
+
 all::	$(LIB) $(UTILS)
 
 clean::
@@ -52,6 +54,17 @@ clean::
 all clean::
 	make -C fakenet $@
 	make -C tests $@
+
+install::
+	install -d -m 755 $(INSTALL_ETCDIR)
+	install -d -m 755 $(INSTALL_LIBDIR)
+	install -d -m 755 $(INSTALL_BINDIR)
+	install -d -m 755 $(INSTALL_PROBESDIR)
+	install -s -m 755 freemap $(INSTALL_BINDIR)
+	install -m 644 etc/freemap.conf $(INSTALL_ETCDIR)
+	cp -r probes/* $(INSTALL_PROBESDIR)
+	find $(INSTALL_PROBESDIR) -type d | xargs chmod 755
+	find $(INSTALL_PROBESDIR) -type f | xargs chmod 644
 
 test: $(LIB)
 	make -C tests runall
