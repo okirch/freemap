@@ -285,6 +285,9 @@ fm_scanner_add_probe(fm_scanner_t *scanner, int stage, const fm_config_probe_t *
 	}
 
 	multiprobe = fm_multiprobe_from_config(pclass, parsed_probe);
+	if (multiprobe == NULL)
+		return false;
+
 	if (scanner->service_catalog != NULL)
 		fm_multiprobe_set_service_catalog(multiprobe, scanner->service_catalog);
 
