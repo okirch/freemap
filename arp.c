@@ -33,8 +33,6 @@
 typedef struct fm_arp_control {
 	fm_protocol_t *		proto;
 	fm_socket_t *		sock;
-
-	fm_probe_params_t	params;
 } fm_arp_control_t;
 
 typedef struct fm_arp_extant_info {
@@ -94,16 +92,12 @@ fm_arp_control_free(fm_arp_control_t *arp)
 }
 
 static fm_arp_control_t *
-fm_arp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const void *extra_params)
+fm_arp_control_alloc(fm_protocol_t *proto, const void *extra_params)
 {
 	fm_arp_control_t *arp;
 
 	arp = calloc(1, sizeof(*arp));
 	arp->proto = proto;
-	arp->params = *params;
-
-	if (arp->params.retries == 0)
-		arp->params.retries = FM_ARP_PROBE_RETRIES;
 
 	if (fm_arp_socket_pool == NULL)
 		fm_arp_socket_pool = fm_socket_pool_create(proto, SOCK_DGRAM);
@@ -398,7 +392,7 @@ fm_arp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipro
 		return false;
 	}
 
-	arp = fm_arp_control_alloc(pclass->proto, &multiprobe->params, NULL);
+	arp = fm_arp_control_alloc(pclass->proto, NULL);
 	if (arp == NULL)
 		return false;
 

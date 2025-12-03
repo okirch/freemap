@@ -257,9 +257,6 @@ fm_icmp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, con
 	if (extra_params != NULL)
 		icmp->extra_params = *extra_params;
 
-	if (icmp->params.retries == 0)
-		icmp->params.retries = fm_global.icmp.retries;
-
 	icmp->extra_params.ident = 0x5678;
 
 	if (icmp->extra_params.type_name == NULL)

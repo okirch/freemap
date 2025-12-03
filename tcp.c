@@ -44,8 +44,6 @@ typedef struct fm_tcp_control {
 
 	fm_ip_header_info_t	ip_info;
 	fm_tcp_header_info_t	tcp_info;
-
-	fm_probe_params_t	params;
 } fm_tcp_control_t;
 
 typedef struct tcp_extant_info {
@@ -160,17 +158,13 @@ fm_tcp_generate_sequence(void)
 }
 
 static fm_tcp_control_t *
-fm_tcp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params)
+fm_tcp_control_alloc(fm_protocol_t *proto)
 {
 	fm_tcp_control_t *tcp;
 	uint16_t src_port;
 
 	tcp = calloc(1, sizeof(*tcp));
 	tcp->proto = proto;
-	tcp->params = *params;
-
-	if (tcp->params.retries == 0)
-		tcp->params.retries = fm_global.tcp.retries;
 
 	if (fm_tcp_socket_pool == NULL)
 		fm_tcp_socket_pool = fm_socket_pool_create(proto, SOCK_RAW);
@@ -435,7 +429,7 @@ fm_tcp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipro
 	if (multiprobe->params.retries == 0)
 		multiprobe->params.retries = fm_global.tcp.retries;
 
-	tcp = fm_tcp_control_alloc(pclass->proto, &multiprobe->params);
+	tcp = fm_tcp_control_alloc(pclass->proto);
 	if (tcp == NULL)
 		return false;
 

@@ -528,7 +528,7 @@ fm_multiprobe_create_tasklet(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *hos
 	tasklet->host = host_task;
 	tasklet->probe_index = host_task->probe_index++;
 	tasklet->timeout = fm_time_now();
-	tasklet->send_retries = 3;
+	tasklet->send_retries = multiprobe->params.retries;
 	tasklet->resp_required = 1;
 
 	param_type = multiprobe->bucket_list.param_type;

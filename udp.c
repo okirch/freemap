@@ -38,8 +38,6 @@ typedef struct fm_udp_control {
 	fm_socket_t *		sock;
 	bool			sock_is_shared;
 
-	fm_probe_params_t	params;
-
 	fm_ip_header_info_t	ip_info;
 	fm_udp_header_info_t	udp_info;
 } fm_udp_control_t;
@@ -136,17 +134,13 @@ fm_udp_control_free(fm_udp_control_t *udp)
 }
 
 static fm_udp_control_t *
-fm_udp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params)
+fm_udp_control_alloc(fm_protocol_t *proto)
 {
 	fm_udp_control_t *udp;
 	uint16_t src_port;
 
 	udp = calloc(1, sizeof(*udp));
 	udp->proto = proto;
-	udp->params = *params;
-
-	if (udp->params.retries == 0)
-		udp->params.retries = fm_global.udp.retries;
 
 	if (fm_udp_socket_pool == NULL)
 		fm_udp_socket_pool = fm_socket_pool_create(proto, SOCK_DGRAM);
@@ -418,7 +412,7 @@ fm_udp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipro
 		return false;
 	}
 
-	udp = fm_udp_control_alloc(pclass->proto, &multiprobe->params);
+	udp = fm_udp_control_alloc(pclass->proto);
 	if (udp == NULL)
 		return false;
 
