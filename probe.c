@@ -539,7 +539,7 @@ fm_multiprobe_create_tasklet(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *hos
 }
 
 static void
-fm_fm_multiprobe_tasklet_add_extant(fm_tasklet_t *tasklet, fm_extant_t *extant)
+fm_multiprobe_tasklet_add_extant(fm_tasklet_t *tasklet, fm_extant_t *extant)
 {
 	unsigned int k;
 
@@ -616,7 +616,7 @@ fm_multiprobe_transmit_tasklet(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *h
 			fm_timestamp_init(&tasklet->send_ts);
 
 		/* attach us to the extant */
-		fm_fm_multiprobe_tasklet_add_extant(tasklet, extant);
+		fm_multiprobe_tasklet_add_extant(tasklet, extant);
 		extant->tasklet = tasklet;
 	}
 
