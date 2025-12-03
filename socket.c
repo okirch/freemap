@@ -128,6 +128,22 @@ fm_pkt_is_ttl_exceeded(const fm_pkt_t *pkt)
 	return false;
 }
 
+bool
+fm_pkt_is_dest_unreachable(const fm_pkt_t *pkt)
+{
+	const struct sock_extended_err *ee;
+	if (pkt == NULL || (ee = pkt->info.ee) == NULL)
+		return false;
+
+	if (ee->ee_origin == SO_EE_ORIGIN_ICMP)
+		return ee->ee_type == ICMP_DEST_UNREACH;
+
+	if (ee->ee_origin == SO_EE_ORIGIN_ICMP6)
+		return ee->ee_type == ICMP6_DST_UNREACH;
+
+	return false;
+}
+
 /*
  * Socket functions
  */
