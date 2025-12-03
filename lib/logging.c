@@ -188,7 +188,7 @@ fm_debug_facility_name_to_mask(const char *name)
 		{ NULL }
 	};
 	unsigned int i, len;
-	unsigned long mask;
+	unsigned long mask = 0;
 
 	if (!strcmp(name, "all"))
 		return ~0UL;
