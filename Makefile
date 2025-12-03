@@ -1,55 +1,55 @@
-CFLAGS	= -Wall -g -D_GNU_SOURCE -D_MISC_SOURCE -I. -lcurlies
+CFLAGS	= -Wall -g -D_GNU_SOURCE -D_MISC_SOURCE -I./lib -lcurlies
 
-OBJS	= projects.o \
-	  scanner.o \
-	  scheduler.o \
-	  events.o \
-	  extant.o \
-	  probe.o \
-	  addrgen.o \
-	  target.o \
-	  protocols.o \
-	  tcp.o \
-	  udp.o \
-	  icmp.o \
-	  arp.o \
-	  rawpacket.o \
-	  traceroute.o \
-	  ratelimit.o \
-	  addresses.o \
-	  ports.o \
-	  network.o \
-	  socket.o \
-	  packet.o \
-	  local.o \
-	  routing.o \
-	  netlink.o \
-	  neighbor.o \
-	  assets.o \
-	  assetio.o \
-	  report.o \
-	  program.o \
-	  config.o \
-	  defaults.o \
-	  services.o \
-	  subcommand.o \
-	  logging.o \
-	  buffer.o \
-	  utils.o
+OBJS	= lib/projects.o \
+	  lib/scanner.o \
+	  lib/scheduler.o \
+	  lib/events.o \
+	  lib/extant.o \
+	  lib/probe.o \
+	  lib/addrgen.o \
+	  lib/target.o \
+	  lib/protocols.o \
+	  lib/tcp.o \
+	  lib/udp.o \
+	  lib/icmp.o \
+	  lib/arp.o \
+	  lib/rawpacket.o \
+	  lib/traceroute.o \
+	  lib/ratelimit.o \
+	  lib/addresses.o \
+	  lib/ports.o \
+	  lib/network.o \
+	  lib/socket.o \
+	  lib/packet.o \
+	  lib/local.o \
+	  lib/routing.o \
+	  lib/netlink.o \
+	  lib/neighbor.o \
+	  lib/assets.o \
+	  lib/assetio.o \
+	  lib/report.o \
+	  lib/program.o \
+	  lib/config.o \
+	  lib/defaults.o \
+	  lib/services.o \
+	  lib/subcommand.o \
+	  lib/logging.o \
+	  lib/buffer.o \
+	  lib/utils.o
 LIB	= libfreemap.a
 UTILS	= freemap
 freemap_OBJS = \
-	  main.o \
-	  cmd_project.o \
-	  cmd_scan.o \
-	  cmd_report.o
+	  util/main.o \
+	  util/cmd_project.o \
+	  util/cmd_scan.o \
+	  util/cmd_report.o
 
 include Makefile.inc
 
 all::	$(LIB) $(UTILS)
 
 clean::
-	rm -f $(LIB) *.o
+	rm -f $(LIB) lib/*.o util/*.o
 
 all clean::
 	make -C fakenet $@

@@ -1,4 +1,4 @@
-CFLAGS	= -Wall -I.. -g -lcurlies
+CFLAGS	= -Wall -I../lib -g -lcurlies
 
 ALL	= \
 	  addrs \

@@ -1,4 +1,4 @@
-CFLAGS	= -Wall -I.. -g -D_GNU_SOURCE -lcurlies -lm
+CFLAGS	= -Wall -I../lib -g -D_GNU_SOURCE -lcurlies -lm
 
 ALL	= \
 	  fakenet
