@@ -284,35 +284,8 @@ fm_udp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *it
 }
 
 /*
- * UDP port probes using standard BSD sockets
+ * Build the packet.
  */
-
-/*
- * See if we have a probe packet
- */
-static const fm_buffer_t *
-fm_udp_request_next_service_probe(const fm_udp_control_t *udp)
-{
-#if 0 /* This needs to happen at the multiprobe level */
-	unsigned int index = udp->service_index;
-	const fm_buffer_t *payload;
-
-	if (udp->service_probe == NULL)
-		return NULL;
-
-	payload = udp->service_probe->packets[index++];
-	if (fm_buffer_available(payload) == 0) {
-		fm_log_warning("udp port %u: service probe %u has empty packet", udp->params.port, index - 1);
-		payload = NULL;
-	}
-
-	udp->service_index = index % udp->service_probe->npackets;
-	return payload;
-#else
-	return NULL;
-#endif
-}
-
 static fm_pkt_t *
 fm_udp_build_packet(const fm_udp_control_t *udp, fm_target_control_t *target_control,
 		const fm_ip_header_info_t *ip_info,
@@ -344,7 +317,9 @@ failed:
  * The probe argument is only here because we need to notify it when done.
  */
 static fm_error_t
-fm_udp_request_send(const fm_udp_control_t *udp, fm_target_control_t *target_control, int param_type, int param_value, fm_extant_t **extant_ret)
+fm_udp_request_send(const fm_udp_control_t *udp, fm_target_control_t *target_control, int param_type, int param_value,
+		const fm_buffer_t *application_payload,
+		fm_extant_t **extant_ret)
 {
 	fm_udp_extant_info_t extant_info;
 	const fm_udp_header_info_t *udp_info;
@@ -352,12 +327,9 @@ fm_udp_request_send(const fm_udp_control_t *udp, fm_target_control_t *target_con
 	fm_target_t *target = target_control->target;
 	fm_socket_t *sock;
 	fm_pkt_t *pkt;
-	const fm_buffer_t *payload;
-
-	payload = fm_udp_request_next_service_probe(udp);
 
 	ip_info = fm_ip_header_info_finalize(&target_control->ip_info, param_type, param_value);
-	udp_info = fm_udp_header_info_finalize(&udp->udp_info, param_type, param_value, payload);
+	udp_info = fm_udp_header_info_finalize(&udp->udp_info, param_type, param_value, application_payload);
 
 	sock = target_control->sock;
 	if (sock == NULL) {
@@ -398,12 +370,14 @@ fm_udp_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *hos
 static fm_error_t
 fm_udp_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task,
 		int param_type, int param_value,
+		const fm_buffer_t *application_payload,
 		fm_extant_t **extant_ret, double *timeout_ret)
 {
 	const fm_udp_control_t *udp = multiprobe->control;
 
 	return fm_udp_request_send(udp, &host_task->control,
-			param_type, param_value, extant_ret);
+			param_type, param_value,
+			application_payload, extant_ret);
 }
 
 static void

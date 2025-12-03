@@ -609,6 +609,7 @@ fm_multiprobe_transmit_tasklet(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *h
 
 	error = multiprobe->ops->transmit(multiprobe, host_task,
 				tasklet->param_type, tasklet->param_value,
+				NULL,
 				&extant, &timeout);
 
 	if (extant != NULL) {
@@ -663,6 +664,7 @@ fm_multiprobe_transmit_ttl_probe(fm_multiprobe_t *multiprobe, fm_target_control_
 	debugmsg("%s%s/ttl=%u: transmit probe", multiprobe->name, target_control->target->id, ttl);
 	error = multiprobe->ops->transmit(multiprobe, &fake_host_task,
 				FM_PARAM_TYPE_TTL, ttl,
+				NULL,
 				extant_ret, timeout_ret);
 	return error;
 }

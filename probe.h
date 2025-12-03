@@ -99,6 +99,7 @@ typedef const struct fm_multiprobe_ops {
 						const fm_address_t *dst_network_addr);
 	fm_error_t		(*transmit)(fm_multiprobe_t *, fm_host_tasklet_t *,
 						int param_type, int param_value,
+						const fm_buffer_t *application_payload,
 						fm_extant_t **extant_ret,
 						double *timeout_ret);
 	void			(*destroy_host)(fm_multiprobe_t *, fm_host_tasklet_t *);

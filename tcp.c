@@ -391,6 +391,7 @@ fm_tcp_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *hos
 static fm_error_t
 fm_tcp_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task,
 		int param_type, int param_value,
+		const fm_buffer_t *application_payload,
 		fm_extant_t **extant_ret, double *timeout_ret)
 {
 	const fm_tcp_control_t *tcp = multiprobe->control;
