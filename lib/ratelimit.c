@@ -161,6 +161,11 @@ fm_timestamp_expires_when(const struct timeval *expiry, const struct timeval *no
 	return delta.tv_sec + 1e-6 * delta.tv_usec;
 }
 
+/*
+ * Token based rate limiter.
+ * Implementation note: rl->value can be set to a negative value
+ * to implement a constant backoff.
+ */
 void
 fm_ratelimit_init(fm_ratelimit_t *rl, unsigned int rate, unsigned int max_burst)
 {
@@ -211,6 +216,8 @@ fm_ratelimit_okay(fm_ratelimit_t *rl)
 unsigned int
 fm_ratelimit_available(const fm_ratelimit_t *rl)
 {
+	if (rl->value < 0)
+		return 0;
 	return rl->value;
 }
 
@@ -221,6 +228,12 @@ fm_ratelimit_consume(fm_ratelimit_t *rl, unsigned int ntokens)
 		rl->value -= ntokens;
 	else
 		rl->value = 0;
+}
+
+void
+fm_ratelimit_choke(fm_ratelimit_t *rl, double seconds)
+{
+	rl->value = -(rl->rate * seconds);
 }
 
 /*

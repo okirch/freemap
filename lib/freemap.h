@@ -88,6 +88,7 @@ extern void		fm_ratelimit_init(fm_ratelimit_t *rl, unsigned int rate, unsigned i
 extern void		fm_ratelimit_update(fm_ratelimit_t *rl);
 extern bool		fm_ratelimit_okay(fm_ratelimit_t *rl);
 extern unsigned int	fm_ratelimit_available(const fm_ratelimit_t *rl);
+extern void		fm_ratelimit_choke(fm_ratelimit_t *rl, double seconds);
 extern void		fm_ratelimit_consume(fm_ratelimit_t *rl, unsigned int ntokens);
 extern double		fm_ratelimit_transfer(fm_ratelimit_t *from, fm_ratelimit_t *to, unsigned int ntokens);
 extern double		fm_ratelimit_wait_until(const fm_ratelimit_t *rl, unsigned int ntokens);
