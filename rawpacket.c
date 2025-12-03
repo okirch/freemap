@@ -784,11 +784,14 @@ static fm_icmp_msg_type_t	fm_icmp_msg_type[] = {
 	{ "ttl-exceeded",	ICMP_TIME_EXCEEDED, ICMP_EXC_TTL, ICMP6_TIME_EXCEEDED, ICMP6_TIME_EXCEED_TRANSIT, .with_error = true },
 	{ "fragtime-exceeded",	ICMP_TIME_EXCEEDED, ICMP_EXC_FRAGTIME, ICMP6_TIME_EXCEEDED, ICMP6_TIME_EXCEED_REASSEMBLY, .with_error = true },
 	{ "param-problem",	ICMP_PARAMETERPROB, 0, ICMP6_PARAM_PROB, 0, .with_error = true },
-	{ "echo-request",	ICMP_ECHO, 0, ICMP6_ECHO_REQUEST, 0, .with_seq_id = true },
+
+	/* Order is crucial for the following set of message types. If a msgtype has the .is_request flag set,
+	 * we expect the response type to be the one immediately following. */
+	{ "echo-request",	ICMP_ECHO, 0, ICMP6_ECHO_REQUEST, 0, .with_seq_id = true, .is_request = true },
 	{ "echo-reply",		ICMP_ECHOREPLY, 0, ICMP6_ECHO_REPLY, 0, .with_seq_id = true },
-	{ "timestamp-request",	ICMP_TIMESTAMP, 0, -1, 0, .with_seq_id = true },
+	{ "timestamp-request",	ICMP_TIMESTAMP, 0, -1, 0, .with_seq_id = true, .is_request = true },
 	{ "timestamp-reply",	ICMP_TIMESTAMPREPLY, 0, -1, 0, .with_seq_id = true },
-	{ "info-request",	ICMP_INFO_REQUEST, 0, -1, 0, .with_seq_id = true },
+	{ "info-request",	ICMP_INFO_REQUEST, 0, -1, 0, .with_seq_id = true, .is_request = true },
 	{ "info-reply",		ICMP_INFO_REPLY, 0, -1, 0, .with_seq_id = true },
 
 	{ NULL }
@@ -823,18 +826,11 @@ fm_icmp_msg_type_get_v6(unsigned int type, unsigned int code)
 fm_icmp_msg_type_t *
 fm_icmp_msg_type_get_reply(fm_icmp_msg_type_t *req)
 {
-	switch (req->v4_type) {
-	case ICMP_ECHO:
-		return fm_icmp_msg_type_get_v4(ICMP_ECHOREPLY, req->v4_code);
+	if (!req->is_request)
+		return NULL;
 
-	case ICMP_TIMESTAMP:
-		return fm_icmp_msg_type_get_v4(ICMP_TIMESTAMPREPLY, req->v4_code);
-
-	case ICMP_INFO_REQUEST:
-		return fm_icmp_msg_type_get_v4(ICMP_INFO_REPLY, req->v4_code);
-	}
-
-	return NULL;
+	/* See comment about ordering in fm_icmp_msg_type[] table above */
+	return req + 1;
 
 }
 

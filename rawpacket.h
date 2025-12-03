@@ -75,6 +75,7 @@ typedef const struct fm_icmp_msg_type {
 	int			v6_type, v6_code;
 	bool			with_seq_id;
 	bool			with_error;
+	bool			is_request;
 } fm_icmp_msg_type_t;
 
 /*
