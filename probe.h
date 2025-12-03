@@ -78,6 +78,7 @@ typedef struct fm_tasklet {
 	unsigned short		probe_index;
 	unsigned short		max_packets;
 
+	unsigned short		num_sent;
 	unsigned short		send_retries;
 	unsigned short		resp_received;
 	unsigned short		resp_required;

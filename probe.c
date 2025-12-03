@@ -622,9 +622,9 @@ fm_multiprobe_transmit_tasklet(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *h
 
 	if (error == 0) {
 		/* good */
-		tasklet->send_retries -= 1;
+		tasklet->num_sent += 1;
 
-		if (tasklet->send_retries)
+		if (tasklet->num_sent < tasklet->send_retries)
 			tasklet->timeout = fm_time_now() + multiprobe->timings.packet_spacing;
 		else
 			tasklet->timeout = fm_time_now() + multiprobe->timings.timeout;
@@ -693,7 +693,7 @@ fm_multiprobe_transmit_tasklets(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *
 
 		if (tasklet->timeout <= now) {
 			/* This tasklet is ready to proceed. */
-			if (tasklet->send_retries == 0) {
+			if (tasklet->num_sent >= tasklet->send_retries) {
 				/* It's dead, Jim */
 				debugmsg("%s%s timed out", host_task->name, tasklet->detail);
 				tasklet->state = FM_TASKLET_STATE_DONE;
