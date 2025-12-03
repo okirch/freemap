@@ -192,7 +192,7 @@ static fm_config_proc_t		fm_config_address_generation = {
 	.attributes = {
 		ATTRIB_SPECIAL(struct fm_config_address_generation, only_family, set_address_family),
 		ATTRIB_BOOL(struct fm_config_address_generation, try_all),
-		ATTRIB_INT(struct fm_config_address_generation, randomize),
+		ATTRIB_BOOL(struct fm_config_address_generation, randomize),
 	},
 };
 
