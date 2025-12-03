@@ -39,6 +39,9 @@ fm_config_init_defaults(fm_config_t *conf)
 	conf->target_pool.max_size = 1023;
 	conf->target_pool.resize_interval = 4;
 
+	/* Various bits in the Linux stack seem to be tuned to the magic number of
+	 * 1000 packets by default. Since we're not the only ones sending packets,
+	 * we may want to stay a bit shy of that rate. */
 	conf->scanner.global_packet_rate = 1000;
 	conf->scanner.target_packet_rate = 10;
 

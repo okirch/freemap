@@ -145,6 +145,30 @@ fm_probe_mode_to_string(int mode)
 }
 
 /*
+ * We use a global ratelimit object to control the overall packet rate we generate
+ */
+static fm_ratelimit_t *
+fm_global_ratelimit(void)
+{
+	static fm_ratelimit_t global_rate;
+
+	if (global_rate.rate == 0) {
+		fm_ratelimit_init(&global_rate, fm_global.scanner.global_packet_rate, 20);
+	}
+
+	return &global_rate;
+}
+
+static void
+fm_global_rate_throttle(void)
+{
+	fm_ratelimit_t *global_rate = fm_global_ratelimit();
+
+	/* choke for 0.1 seconds */
+	fm_ratelimit_choke(global_rate, 0.1);
+}
+
+/*
  * The multiprobe<->job glue
  */
 static fm_error_t
@@ -695,6 +719,16 @@ fm_multiprobe_transmit_tasklet(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *h
 			tasklet->timeout = fm_time_now() + multiprobe->timings.timeout;
 
 		stats->num_sent += 1;
+	} else if (error == FM_THROTTLE_SEND_RATE) {
+		/* There are probably a number of different reasons why we can get
+		 * EAGAIN from the network stack even though we're staying below the
+		 * global packet send rate. This does happen in particular when
+		 * doing stuff like a local scan, where the kernel needs to perform
+		 * neighbor discovery for each network address.
+		 * The best solution to that is probably to apply a network
+		 * level rate limit. */
+		fm_log_notice("%s: we're sending too fast. back down.", host_task->name);
+		fm_global_rate_throttle();
 	} else if (error == FM_TRY_AGAIN) {
 		/* the probe asked to be postponed... for now, warn about it */
 		if (timeout == 0) {
@@ -740,8 +774,11 @@ fm_multiprobe_transmit_tasklets(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *
 	unsigned int k, num_busy = 0;
 	fm_error_t error;
 	double now, timeout = 0, throttle_timeout;
+	fm_ratelimit_t *global_rate;
 
 	now = fm_time_now();
+
+	global_rate = fm_global_ratelimit();
 
 	for (k = 0; k < host_task->num_tasks; ++k, ++tasklet) {
 		if (tasklet->state == FM_TASKLET_STATE_DONE)
@@ -766,11 +803,20 @@ fm_multiprobe_transmit_tasklets(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *
 				continue;
 			}
 
-			/* FIXME why not a loop? */
+			/* FIXME: We could try to send as many packets to this host as
+			 * possible. Right now, we just send one, then move to the next
+			 * target. */
+
+			if (!fm_ratelimit_available(global_rate)) {
+				debugmsg("%s: hit the global rate limit", host_task->name);
+				return false;
+			}
+
 			if (fm_ratelimit_available(host_task->ratelimit)) {
 				error = fm_multiprobe_transmit_tasklet(multiprobe, host_task, tasklet, sched_stats);
 				if (error == 0) {
 					fm_ratelimit_consume(host_task->ratelimit, 1);
+					fm_ratelimit_consume(global_rate, 1);
 				}
 			}
 		}
@@ -821,13 +867,24 @@ fm_multiprobe_is_idle(const fm_multiprobe_t *multiprobe)
 void
 fm_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_sched_stats_t *sched_stats)
 {
-	double timeout = 0;
+	double timeout = 0, throttle_timeout;
 	fm_host_tasklet_t *host_task;
+	fm_ratelimit_t *global_rate;
 
 	timeout = fm_multiprobe_get_waiting_timeout(multiprobe);
 
+	global_rate = fm_global_ratelimit();
+	fm_ratelimit_update(global_rate);
+
 	while ((host_task = hlist_head_get_first(&multiprobe->ready)) != NULL) {
 		bool done;
+
+		if (!fm_ratelimit_available(global_rate)) {
+			throttle_timeout = fm_time_now() + fm_ratelimit_wait_until(global_rate, 10);
+			if (timeout == 0 || throttle_timeout > timeout)
+				timeout = throttle_timeout;
+			break;
+		}
 
 		fm_ratelimit_update(host_task->ratelimit);
 
