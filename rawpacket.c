@@ -115,10 +115,31 @@ fm_udp_header_info_finalize(const fm_udp_header_info_t *udp, int param_type, int
 	return &copy;
 }
 
+fm_icmp_header_info_t *
+fm_icmp_header_info_finalize(const fm_icmp_header_info_t *icmp, int param_type, int param_value, const fm_buffer_t *payload)
+{
+	static fm_icmp_header_info_t copy;
+
+	copy = *icmp;
+
+	if (payload) {
+		copy.payload.len = fm_buffer_available(payload);
+		copy.payload.data = fm_buffer_head(payload);
+	}
+
+	return &copy;
+}
+
 unsigned int
 fm_udp_compute_len(const fm_udp_header_info_t *udp)
 {
 	return 8 + udp->payload.len;
+}
+
+unsigned int
+fm_icmp_compute_len(const fm_icmp_header_info_t *icmp)
+{
+	return 8 + icmp->payload.len;
 }
 
 /*

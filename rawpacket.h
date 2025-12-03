@@ -206,10 +206,12 @@ extern bool		fm_udp_process_config_arg(fm_udp_header_info_t *, const char *);
 extern const fm_ip_header_info_t *fm_ip_header_info_finalize(const fm_ip_header_info_t *ip, int param_type, int param_value);
 extern const fm_tcp_header_info_t *fm_tcp_header_info_finalize(const fm_tcp_header_info_t *tcp, int param_type, int param_value);
 extern const fm_udp_header_info_t *fm_udp_header_info_finalize(const fm_udp_header_info_t *udp, int param_type, int param_value, const fm_buffer_t *payload);
+extern fm_icmp_header_info_t *fm_icmp_header_info_finalize(const fm_icmp_header_info_t *icmp, int param_type, int param_value, const fm_buffer_t *payload);
 
 extern unsigned int	fm_ip_compute_len(const fm_ip_header_info_t *ip);
 extern unsigned int	fm_tcp_compute_len(const fm_tcp_header_info_t *tcp);
 extern unsigned int	fm_udp_compute_len(const fm_udp_header_info_t *udp);
+extern unsigned int	fm_icmp_compute_len(const fm_icmp_header_info_t *icmp);
 
 static inline fm_parsed_hdr_t *
 fm_parsed_packet_peek_next_header(fm_parsed_pkt_t *cooked)

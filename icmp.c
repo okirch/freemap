@@ -73,6 +73,24 @@ static struct fm_protocol	fm_icmp_sock_ops = {
 
 FM_PROTOCOL_REGISTER(fm_icmp_sock_ops);
 
+/*
+ * Track extant ICMP requests.
+ */
+static void
+fm_icmp_extant_info_build(const fm_icmp_control_t *icmp, const fm_icmp_header_info_t *icmp_info, fm_icmp_extant_info_t *extant_info)
+{
+	/* Now construct the extant match. */
+	fm_icmp_request_build_extant_info(extant_info,
+			icmp_info->msg_type->v4_type,
+			icmp->response_type->v4_code,
+			icmp_info->id,
+			icmp_info->seq);
+
+	fm_log_debug("ICMP: create extant with response type=%d, seq=0x%x, id=0x%x", 
+			extant_info->match.v4_response_type,
+			extant_info->match.seq, extant_info->match.id);
+}
+
 static fm_extant_t *
 fm_icmp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
 {
@@ -177,13 +195,9 @@ fm_icmp_create_socket(fm_protocol_t *proto, int af)
 
 	sock = fm_socket_create(af, SOCK_RAW, ipproto, proto);
 	if (sock != NULL) {
-		fm_socket_enable_ttl(sock);
-		fm_socket_enable_tos(sock);
+		fm_socket_enable_hdrincl(sock);
 
-		/* PF_RAW sockets will always give us the IPv4 header.
-		 * Funnily, IPv6 packets always come with the header stripped. */
-		if (af == AF_INET)
-			fm_socket_install_data_parser(sock, FM_PROTO_IP);
+		fm_socket_install_data_parser(sock, FM_PROTO_IP);
 		fm_socket_install_data_parser(sock, FM_PROTO_ICMP);
 
 		fm_socket_attach_extant_map(sock, &fm_icmp_extant_map);
@@ -214,30 +228,24 @@ fm_icmp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
  * we replace it with a const string.
  */
 static bool
-fm_icmp_extra_params_set_type(fm_icmp_extra_params_t *params, const char *type_name)
+fm_icmp_control_select_type(fm_icmp_control_t *icmp, const char *name)
 {
-	params->ipv4.send_type = -1;
-	params->ipv4.response_type = -1;
-	params->ipv6.send_type = -1;
-	params->ipv6.response_type = -1;
+	fm_icmp_msg_type_t *msg_type;
+	char type_name[64];
 
-	if (!strcasecmp(type_name, "echo")) {
-		params->type_name = "echo";
-		params->ipv4.send_type = ICMP_ECHO;
-		params->ipv4.response_type = ICMP_ECHOREPLY;
-		params->ipv6.send_type = ICMP6_ECHO_REQUEST;
-		params->ipv6.response_type = ICMP6_ECHO_REPLY;
-	} else if (!strcasecmp(type_name, "timestamp")) {
-		params->type_name = "timestamp";
-		params->ipv4.send_type = ICMP_TIMESTAMP;
-		params->ipv4.response_type = ICMP_TIMESTAMPREPLY;
-	} else if (!strcasecmp(type_name, "info")) {
-		params->type_name = "info";
-		params->ipv4.send_type = ICMP_INFO_REQUEST;
-		params->ipv4.response_type = ICMP_INFO_REPLY;
-	} else {
+	snprintf(type_name, sizeof(type_name), "%s-request", name);
+	if ((msg_type = fm_icmp_msg_type_by_name(type_name)) == NULL) {
+		fm_log_error("ICMP: cannot configure probe type %s: no ICMP message type called \"%s\"", name, type_name);
 		return false;
 	}
+	icmp->icmp_info.msg_type = msg_type;
+
+	snprintf(type_name, sizeof(type_name), "%s-reply", name);
+	if ((msg_type = fm_icmp_msg_type_by_name(type_name)) == NULL) {
+		fm_log_error("ICMP: cannot configure probe type %s: no ICMP message type called \"%s\"", name, type_name);
+		return false;
+	}
+	icmp->response_type = msg_type;
 
 	return true;
 }
@@ -257,10 +265,16 @@ fm_icmp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, con
 	if (extra_params != NULL)
 		icmp->extra_params = *extra_params;
 
-	icmp->extra_params.ident = 0x5678;
+	/* No IP settings at this level */
 
-	if (icmp->extra_params.type_name == NULL)
-		fm_icmp_extra_params_set_type(&icmp->extra_params, "echo");
+	icmp->icmp_info.seq = 0;
+	icmp->icmp_info.id = 0x5678;
+
+	/* Default to echo request/reply */
+	if (!fm_icmp_control_select_type(icmp, "echo"))
+		return NULL;
+
+	icmp->extra_params.ident = 0x5678;
 
 	if (fm_icmp_socket_pool == NULL)
 		fm_icmp_socket_pool = fm_socket_pool_create(proto, SOCK_RAW);
@@ -326,11 +340,18 @@ fm_icmp_request_init_target(const fm_icmp_control_t *icmp, fm_target_control_t *
 	target_control->sock_is_shared = true;
 
 	if (target_control->family == AF_INET6) {
+		/* nix this, too: */
 		fm_ipv6_transport_csum_partial(&target_control->icmp.csum,
 						&target_control->src_addr,
 						&target_control->dst_addr,
 						IPPROTO_ICMPV6);
 	}
+
+	target_control->ip_info = icmp->ip_info;
+	target_control->ip_info.ipproto = fm_icmp_protocol_for_family(target_control->family);
+	target_control->ip_info.dst_addr = *addr;
+
+	fm_target_get_local_bind_address(target, &target_control->ip_info.src_addr);
 
 	return true;
 }
@@ -354,75 +375,28 @@ fm_icmp_protocol_for_family(int af)
 }
 
 /*
- * raw icmp6
+ * Build the actual packet.
  */
 static fm_pkt_t *
-fm_icmp_request_build_packet(const fm_icmp_control_t *icmp, fm_target_control_t *host,
-				const fm_icmp_extra_params_t *send_params,
-				fm_icmp_extant_info_t *extant_info)
+fm_icmp_request_build_packet(const fm_icmp_control_t *icmp, fm_target_control_t *target_control,
+				const fm_ip_header_info_t *ip_info,
+				fm_icmp_header_info_t *icmp_info)
 {
-	fm_pkt_t *pkt = fm_pkt_alloc(host->family, 0);
-	fm_csum_partial_t *csum = NULL, _csum;
-	fm_buffer_t *bp, *raw;
+	fm_pkt_t *pkt;
 
-	if ((raw = host->icmp.packet_header) != NULL) {
-		bp = fm_buffer_alloc(16 + fm_buffer_available(raw));
-		fm_buffer_append(bp, fm_buffer_head(raw), fm_buffer_available(raw));
+	pkt = fm_pkt_alloc(target_control->family, fm_ip_compute_len(ip_info) + fm_icmp_compute_len(icmp_info));
+	pkt->peer_addr = ip_info->dst_addr;
 
-		_csum = host->icmp.csum;
-		csum = &_csum;
-	} else {
-		bp = fm_buffer_alloc(16);
+	if (!fm_raw_packet_add_ip_header(pkt->payload, ip_info, fm_icmp_compute_len(icmp_info))
+	 || !fm_raw_packet_add_icmp_header(pkt->payload, ip_info, icmp_info)) {
+		fm_pkt_free(pkt);
+		return NULL;
 	}
 
-	pkt->payload = bp;
-
-	pkt->peer_addr = host->dst_addr;
-	if (host->family == AF_INET) {
-		struct icmp *icmph;
-
-		icmph = fm_buffer_push(bp, 8);
-		icmph->icmp_type = send_params->ipv4.send_type;
-		icmph->icmp_code = 0;
-		icmph->icmp_cksum = 0;
-		icmph->icmp_id = htons(send_params->ident);
-		icmph->icmp_seq = htons(send_params->sequence);
-
-		icmph->icmp_cksum = in_csum(icmph, 8);
-        } else if (host->family == AF_INET6) {
-		struct icmp6_hdr *icmph;
-
-		icmph = fm_buffer_push(bp, 8);
-		icmph->icmp6_type = send_params->ipv6.send_type;
-		icmph->icmp6_code = 0;
-		icmph->icmp6_cksum = 0;
-		icmph->icmp6_id = htons(send_params->ident);
-		icmph->icmp6_seq = htons(send_params->sequence);
-
-		if (csum != NULL) {
-			/* Add the length field to the IPv6 pseudo header */
-			fm_csum_partial_u16(csum, 8);
-
-			/* Add the ICMP header for checksumming */
-			fm_csum_partial_update(csum, icmph, 8);
-
-			icmph->icmp6_cksum = fm_csum_fold(csum);
-		}
-        }
-
-	/* Now construct the extant match.
-	 * To make things a bit simpler, the ICMPv6 header parsing code provides the v4 equivalent
-	 * type/code where possible, so that we do not have to distinguish between v4 and v6 in the
-	 * matching code.
-	 */
-	fm_icmp_request_build_extant_info(extant_info,
-			send_params->ipv4.send_type,
-			send_params->ipv4.response_type,
-			icmp->kernel_trashes_id? -1 : send_params->ident,
-			send_params->sequence);
-
-	/* apply ttl, tos etc */
-	fm_pkt_apply_probe_params(pkt, &icmp->params, icmp->proto->supported_parameters);
+	/* On raw sockets, the port field is supposed to be either 0 or contain the transport
+         * protocol (IPPROTO_TCP in our case). Note, it seems that this is only enforced for
+         * IPv6; the manpages say that this behavior "got lost" for IPv4 some time in Linux 2.2. */
+        fm_address_set_port(&pkt->peer_addr, IPPROTO_UDP);
 
 	return pkt;
 }
@@ -444,27 +418,26 @@ fm_icmp_request_build_extant_info(fm_icmp_extant_info_t *info, int v4_request_ty
  * The probe argument is only here because we need to notify it when done.
  */
 static fm_error_t
-fm_icmp_request_send(const fm_icmp_control_t *icmp, fm_target_control_t *host,
+fm_icmp_request_send(const fm_icmp_control_t *icmp, fm_target_control_t *target_control,
 				int param_type, unsigned int param_value,
 				fm_extant_t **extant_ret)
 {
 	static unsigned int global_icmp_seq = 1;
-	fm_icmp_extra_params_t send_params;
+	const fm_ip_header_info_t *ip_info;
+	fm_icmp_header_info_t *icmp_info;
 	fm_icmp_extant_info_t extant_info;
 	fm_socket_t *sock;
 	fm_pkt_t *pkt;
 
 	if ((sock = icmp->sock) == NULL
-	 && (sock = host->sock) == NULL) {
+	 && (sock = target_control->sock) == NULL) {
 		fm_log_error("%s: you promised me a socket but there ain't none", __func__);
 		return FM_SEND_ERROR;
 	}
 
-	/* Copy the param block so that we can modify it */
-	send_params = icmp->extra_params;
+	ip_info = fm_ip_header_info_finalize(&target_control->ip_info, param_type, param_value);
 
-	send_params.ttl = icmp->params.ttl;
-	send_params.tos = icmp->params.tos;
+	icmp_info = fm_icmp_header_info_finalize(&icmp->icmp_info, param_type, param_value, NULL);
 
 	/* If the TTL parameter is set, this is probably traceroute, and we need to
 	 * have a way to match error packets against the actual request.
@@ -473,38 +446,33 @@ fm_icmp_request_send(const fm_icmp_control_t *icmp, fm_target_control_t *host,
 	 * Fudge a sequence number that is a combination of retry and ttl.
 	 */
 	if (param_type == FM_PARAM_TYPE_TTL) {
-		send_params.sequence = (param_value << 8) | host->icmp.retries++;
-		send_params.ttl = param_value;
+		icmp_info->seq = (param_value << 8) | target_control->icmp.retries++;
 	} else {
-		send_params.sequence = global_icmp_seq++;
+		icmp_info->seq = global_icmp_seq++;
 	}
 
-	pkt = fm_icmp_request_build_packet(icmp, host, &send_params, &extant_info);
-
-	fm_log_debug("ICMP: create extant with response type=%d, seq=0x%x, id=0x%x from %s", 
-			extant_info.match.v4_response_type,
-			extant_info.match.seq, extant_info.match.id,
-			fm_address_format(&pkt->peer_addr));
+	pkt = fm_icmp_request_build_packet(icmp, target_control, ip_info, icmp_info);
 
 	if (!fm_socket_send_pkt_and_burn(sock, pkt)) {
 		fm_log_error("Unable to send ICMP packet: %m");
 		return FM_SEND_ERROR;
 	}
 
-	if (host->target != NULL) {
-		fm_host_asset_t *asset = host->target->host_asset;
+	fm_icmp_extant_info_build(icmp, icmp_info, &extant_info);
+	if (target_control->target != NULL) {
+		fm_host_asset_t *asset = target_control->target->host_asset;
 
-		*extant_ret = fm_socket_add_extant(sock, asset, host->family, IPPROTO_ICMP, &extant_info, sizeof(extant_info));
+		*extant_ret = fm_socket_add_extant(sock, asset, target_control->family, IPPROTO_ICMP, &extant_info, sizeof(extant_info));
 	} else {
-		*extant_ret = fm_socket_add_extant(sock, NULL, host->family, IPPROTO_ICMP, &extant_info, sizeof(extant_info));
+		*extant_ret = fm_socket_add_extant(sock, NULL, target_control->family, IPPROTO_ICMP, &extant_info, sizeof(extant_info));
 	}
 
 	if (*extant_ret && icmp->extants_are_multi_shot)
 		(*extant_ret)->single_shot = false;
 
 	/* update the asset state */
-	if (host->target != NULL)
-		fm_target_update_host_state(host->target, FM_PROTO_ICMP, FM_ASSET_STATE_PROBE_SENT);
+	if (target_control->target != NULL)
+		fm_target_update_host_state(target_control->target, FM_PROTO_ICMP, FM_ASSET_STATE_PROBE_SENT);
 
 	return 0;
 }
@@ -512,6 +480,7 @@ fm_icmp_request_send(const fm_icmp_control_t *icmp, fm_target_control_t *host,
 static bool
 fm_icmp_process_extra_parameters(const fm_string_array_t *extra_args, fm_icmp_extra_params_t *extra_params)
 {
+#if 0 /* this will change */
 	const char *type_name = NULL;
 	unsigned int i;
 
@@ -535,6 +504,7 @@ fm_icmp_process_extra_parameters(const fm_string_array_t *extra_args, fm_icmp_ex
 		fm_log_error("ICMP type %s not supported\n", type_name);
 		return false;
 	}
+#endif
 
 	return true;
 
