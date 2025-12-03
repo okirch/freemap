@@ -286,8 +286,7 @@ fm_icmp_create_packet_socket(fm_icmp_control_t *icmp, const fm_interface_t *nic,
 static void
 fm_icmp_control_free(fm_icmp_control_t *icmp)
 {
-	if (icmp->sock != NULL && !icmp->sock_is_shared)
-		fm_socket_free(icmp->sock);
+	fm_socket_release(icmp->sock);
 	icmp->sock = NULL;
 
 	free(icmp);
@@ -307,7 +306,6 @@ fm_icmp_request_init_target(const fm_icmp_control_t *icmp, fm_target_control_t *
 		return false;
 
 	target_control->sock = sock;
-	target_control->sock_is_shared = true;
 
 	target_control->ip_info = icmp->ip_info;
 	target_control->ip_info.ipproto = fm_icmp_protocol_for_family(target_control->family);

@@ -34,6 +34,7 @@ struct fm_socket {
 	int			family;
 	int			type;
 	bool			trace;
+	bool			shared;
 
 	socklen_t		addrlen;
 	int			rpoll;
@@ -80,6 +81,17 @@ static inline bool
 fm_socket_is_connected(const fm_socket_t *sock)
 {
 	return sock->peer_address.family != AF_UNSPEC;
+}
+
+/*
+ * This is the kinder, gentler version of fm_socket_free which does nothing
+ * if the socket is shared.
+ */
+static inline void
+fm_socket_release(fm_socket_t *sock)
+{
+	if (!sock->shared)
+		fm_socket_free(sock);
 }
 
 struct fm_socket_list {

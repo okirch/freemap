@@ -178,6 +178,9 @@ fm_socket_allocate(int fd, int family, int type, socklen_t len)
 void
 fm_socket_free(fm_socket_t *sock)
 {
+	/* Never delete a shared socket */
+	assert(!sock->shared);
+
 	fm_socket_list_remove(sock);
 	fm_socket_close(sock);
 
@@ -1125,6 +1128,9 @@ fm_socket_pool_get_socket(fm_socket_pool_t *pool, const fm_address_t *local_addr
 		fm_socket_free(sock);
 		return NULL;
 	}
+
+	/* Mark this socket as shared, so it doesn't get deleted accidentally */
+	sock->shared = true;
 
 	entry = calloc(1, sizeof(*entry));
 	entry->local_addr = *local_addr;

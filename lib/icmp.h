@@ -36,7 +36,6 @@ typedef struct fm_icmp_control {
 	fm_protocol_t *		proto;
 
 	fm_socket_t *		sock;
-	bool			sock_is_shared;
 	bool			extants_are_multi_shot;
 
 	fm_ip_header_info_t	ip_info;

@@ -199,7 +199,6 @@ fm_tcp_control_init_target(const fm_tcp_control_t *tcp, fm_target_control_t *tar
 		return false;
 
 	target_control->sock = sock;
-	target_control->sock_is_shared = true;
 
 	target_control->ip_info = tcp->ip_info;
 	target_control->ip_info.src_addr = target_control->src_addr;

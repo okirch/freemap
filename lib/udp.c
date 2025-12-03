@@ -36,7 +36,6 @@ typedef struct fm_udp_control {
 	fm_protocol_t *		proto;
 
 	fm_socket_t *		sock;
-	bool			sock_is_shared;
 
 	fm_ip_header_info_t	ip_info;
 	fm_udp_header_info_t	udp_info;
@@ -126,8 +125,8 @@ fm_udp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
 static void
 fm_udp_control_free(fm_udp_control_t *udp)
 {
-	if (udp->sock != NULL && !udp->sock_is_shared)
-		fm_socket_free(udp->sock);
+	if (udp->sock != NULL)
+		fm_socket_release(udp->sock);
 
 	udp->sock = NULL;
 	free(udp);
@@ -174,7 +173,6 @@ fm_udp_control_init_target(const fm_udp_control_t *udp, fm_target_control_t *tar
 		return false;
 
 	target_control->sock = sock;
-	target_control->sock_is_shared = true;
 
 	target_control->ip_info = udp->ip_info;
 	target_control->ip_info.src_addr = target_control->src_addr;

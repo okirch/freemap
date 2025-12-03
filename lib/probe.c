@@ -28,6 +28,7 @@
 #include "scanner.h"
 #include "program.h"
 #include "services.h"
+#include "socket.h"
 #include "buffer.h"
 #include "logging.h"
 
@@ -230,9 +231,9 @@ fm_target_control_init_default(fm_target_control_t *target_control, fm_target_t 
 void
 fm_target_control_destroy(fm_target_control_t *target_control)
 {
-	/* careful with that axe, Eugene. */
-	if (target_control->sock != NULL && !target_control->sock_is_shared)
-		fm_socket_free(target_control->sock);
+	/* careful with that axe, Eugene. Use fm_socket_release rather than fm_socket_free() */
+	if (target_control->sock != NULL)
+		fm_socket_release(target_control->sock);
 
 	target_control->sock = NULL;
 }
