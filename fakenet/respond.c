@@ -125,7 +125,6 @@ static fm_fake_response_t *
 fm_fake_host_send_error(fm_fake_host_t *host, fm_icmp_msg_type_t *error_type, const fm_parsed_hdr_t *hdr)
 {
 	unsigned int snap_len;
-	fm_buffer_t *snap_buf;
 	fm_fake_response_t *resp;
 	fm_ip_header_info_t ip_reply_info;
 	fm_icmp_header_info_t icmp_reply_info = { 0 };
@@ -146,17 +145,14 @@ fm_fake_host_send_error(fm_fake_host_t *host, fm_icmp_msg_type_t *error_type, co
 	if (resp == NULL)
 		return NULL;
 
-	snap_buf = fm_buffer_alloc(snap_len);
-	fm_buffer_append(snap_buf, hdr->raw.data, snap_len);
+	icmp_reply_info.payload.data = hdr->raw.data;
+	icmp_reply_info.payload.len = snap_len;
 
 	icmp_reply_info.msg_type = error_type;
-	if (!fm_raw_packet_add_icmp_header(resp->packet, &icmp_reply_info, &ip_reply_info, snap_buf)) {
+	if (!fm_raw_packet_add_icmp_header(resp->packet, &ip_reply_info, &icmp_reply_info)) {
 		fm_fake_response_free(resp);
-		fm_buffer_free(snap_buf);
 		return NULL;
 	}
-
-	fm_buffer_free(snap_buf);
 
 	return resp;
 }
@@ -201,8 +197,10 @@ fm_fake_host_receive_icmp(fm_fake_host_t *host, fm_parsed_pkt_t *cooked, const f
 
 	icmp_reply_info = *icmp;
 	icmp_reply_info.msg_type = reply_type;
+	icmp_reply_info.payload.data = fm_buffer_head(payload);
+	icmp_reply_info.payload.len = fm_buffer_available(payload);
 
-	if (!fm_raw_packet_add_icmp_header(resp->packet, &icmp_reply_info, &ip_reply_info, payload)) {
+	if (!fm_raw_packet_add_icmp_header(resp->packet, &ip_reply_info, &icmp_reply_info)) {
 		fm_fake_response_free(resp);
 		return NULL;
 	}
@@ -336,7 +334,6 @@ static fm_fake_response_t *
 fm_fake_router_send_error(fm_fake_router_t *router, fm_icmp_msg_type_t *error_type, const fm_parsed_hdr_t *hdr)
 {
 	unsigned int snap_len;
-	fm_buffer_t *snap_buf;
 	fm_fake_response_t *resp;
 	fm_ip_header_info_t ip_reply_info;
 	fm_icmp_header_info_t icmp_reply_info = { 0 };
@@ -357,17 +354,14 @@ fm_fake_router_send_error(fm_fake_router_t *router, fm_icmp_msg_type_t *error_ty
 	if (resp == NULL)
 		return NULL;
 
-	snap_buf = fm_buffer_alloc(snap_len);
-	fm_buffer_append(snap_buf, hdr->raw.data, snap_len);
+	icmp_reply_info.payload.data = hdr->raw.data;
+	icmp_reply_info.payload.len = snap_len;
 
 	icmp_reply_info.msg_type = error_type;
-	if (!fm_raw_packet_add_icmp_header(resp->packet, &icmp_reply_info, &ip_reply_info, snap_buf)) {
+	if (!fm_raw_packet_add_icmp_header(resp->packet, &ip_reply_info, &icmp_reply_info)) {
 		fm_fake_response_free(resp);
-		fm_buffer_free(snap_buf);
 		return NULL;
 	}
-
-	fm_buffer_free(snap_buf);
 
 	return resp;
 }

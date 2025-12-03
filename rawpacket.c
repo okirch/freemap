@@ -902,7 +902,7 @@ fm_raw_packet_pull_icmpv6_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_in
  * Add an ICMP header (IPv4/v6 agnostic)
  */
 bool
-fm_raw_packet_add_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info, const fm_ip_header_info_t *ip_info, const fm_buffer_t *data)
+fm_raw_packet_add_icmp_header(fm_buffer_t *bp, const fm_ip_header_info_t *ip_info, const fm_icmp_header_info_t *icmp_info)
 {
 	fm_icmp_msg_type_t *msg_type;
 	unsigned int hdrlen = 8, datalen = 0;
@@ -910,8 +910,7 @@ fm_raw_packet_add_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info,
 	if ((msg_type = icmp_info->msg_type) == NULL)
 		return false;
 
-	if (data)
-		datalen = fm_buffer_available(data);
+	datalen = icmp_info->payload.len;
 
 	if (ip_info->ipproto == IPPROTO_ICMP) {
 		struct icmp *icmph;
@@ -929,7 +928,7 @@ fm_raw_packet_add_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info,
 		}
 
 		if (datalen != 0) {
-			if (!fm_buffer_append(bp, fm_buffer_head(data), datalen))
+			if (!fm_buffer_append(bp, icmp_info->payload.data, datalen))
 				return false;
 			hdrlen += datalen;
 		}
@@ -953,7 +952,7 @@ fm_raw_packet_add_icmp_header(fm_buffer_t *bp, fm_icmp_header_info_t *icmp_info,
 		}
 
 		if (datalen != 0) {
-			if (!fm_buffer_append(bp, fm_buffer_head(data), datalen))
+			if (!fm_buffer_append(bp, icmp_info->payload.data, datalen))
 				return false;
 			hdrlen += datalen;
 		}

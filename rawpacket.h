@@ -90,6 +90,12 @@ typedef struct fm_icmp_header_info {
 	fm_icmp_msg_type_t *	msg_type;
 
 	bool			include_error_pkt;
+
+	/* payload */
+	struct {
+		unsigned int	len;
+		const void *	data;
+	} payload;
 } fm_icmp_header_info_t;
 
 typedef struct fm_udp_header_info {
@@ -165,7 +171,8 @@ extern bool		fm_raw_packet_add_network_header(fm_buffer_t *bp, const fm_address_
 					int ipproto, unsigned int ttl, unsigned int tos,
 					unsigned int transport_len);
 extern bool		fm_raw_packet_add_ip_header(fm_buffer_t *bp, const fm_ip_header_info_t *ip, unsigned int transport_len);
-extern bool		fm_raw_packet_add_icmp_header(fm_buffer_t *, fm_icmp_header_info_t *, const fm_ip_header_info_t *, const fm_buffer_t *data);
+extern bool		fm_raw_packet_add_icmp_header(fm_buffer_t *, const fm_ip_header_info_t *ip_info,
+					const fm_icmp_header_info_t *icmp_info);
 extern bool		fm_raw_packet_pull_eth_hdr(fm_pkt_t *pkt, fm_eth_header_info_t *info);
 extern bool		fm_raw_packet_pull_ip_hdr(fm_pkt_t *pkt, fm_ip_header_info_t *info);
 extern bool		fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_ip_header_info_t *ip_info,
