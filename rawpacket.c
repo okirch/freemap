@@ -154,7 +154,7 @@ fm_tcp_process_config_arg(fm_tcp_header_info_t *tcp, const char *arg)
 
 		for (svalue = strdupa(arg + 10); svalue; svalue = next) {
 			if ((next = strchr(svalue, ',')) != NULL)
-				*next++ = ',';
+				*next++ = '\0';
 
 			if (!strcmp(svalue, "syn"))
 				flags |= TH_SYN;
@@ -182,7 +182,7 @@ fm_tcp_process_config_arg(fm_tcp_header_info_t *tcp, const char *arg)
 
 		for (svalue = strdupa(arg + 12); svalue; svalue = next) {
 			if ((next = strchr(svalue, ',')) != NULL)
-				*next++ = ',';
+				*next++ = '\0';
 
 			if (!strcmp(svalue, "maxseg"))
 				option_mask |= (1 << TCPOPT_MAXSEG);
