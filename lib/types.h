@@ -282,6 +282,9 @@ typedef enum {
 	/* Returned by eg the traceroute transmit call to signal the
 	 * caller that the probe is done with a given target. */
 	FM_TASK_COMPLETE = -6,
+
+	/* Returned when sendmsg() returns EAGAIN */
+	FM_THROTTLE_SEND_RATE = -7,
 } fm_error_t;
 
 /*

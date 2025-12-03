@@ -616,7 +616,7 @@ fm_socket_send(fm_socket_t *sock, const fm_address_t *dstaddr, const void *pkt, 
 			return 0;
 
 		if (errno == ENOBUFS || errno == EAGAIN)
-			return FM_SEND_ERROR;
+			return FM_THROTTLE_SEND_RATE;
 
 		fm_log_error("failed to send: %m (errno %d)", errno);
 		return FM_SEND_ERROR;
@@ -666,7 +666,7 @@ fm_socket_send_pkt(fm_socket_t *sock, fm_pkt_t *pkt)
 			return 0;
 
 		if (errno == ENOBUFS || errno == EAGAIN)
-			return FM_SEND_ERROR;
+			return FM_THROTTLE_SEND_RATE;
 
 		fm_log_error("failed to send: %m (errno %d)", errno);
 		return FM_SEND_ERROR;

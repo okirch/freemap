@@ -147,6 +147,7 @@ static const char *strings[FM_MAX_ERROR_INDEX] = {
 	[-FM_NOT_SUPPORTED] = "Not supported",
 	[-FM_NO_ROUTE_TO_HOST] = "No route to host",
 	[-FM_TASK_COMPLETE] = "Probe task complete",
+	[-FM_THROTTLE_SEND_RATE] = "Going to fast, slow down with those packets",
 };
 
 const char *
