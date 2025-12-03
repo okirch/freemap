@@ -122,6 +122,107 @@ fm_udp_compute_len(const fm_udp_header_info_t *udp)
 }
 
 /*
+ * Process extra args at protocol level
+ */
+bool
+fm_ip_process_config_arg(fm_ip_header_info_t *ip, const char *arg)
+{
+	if (fm_parse_numeric_argument(arg, "ip-ttl", &ip->ttl)
+	 || fm_parse_numeric_argument(arg, "ip-tos", &ip->tos))
+		return true;
+	return false;
+}
+
+bool
+fm_tcp_process_config_arg(fm_tcp_header_info_t *tcp, const char *arg)
+{
+	unsigned int nvalue;
+
+	if (fm_parse_numeric_argument(arg, "tcp-dst-port", &nvalue)) {
+		tcp->dst_port = nvalue;
+		return true;
+	}
+
+	if (fm_parse_numeric_argument(arg, "tcp-mss", &nvalue)) {
+		tcp->mss = nvalue;
+		return true;
+	}
+
+	if (!strncmp(arg, "tcp-flags=", 10)) {
+		char *svalue, *next;
+		int flags = 0;
+
+		for (svalue = strdupa(arg + 10); svalue; svalue = next) {
+			if ((next = strchr(svalue, ',')) != NULL)
+				*next++ = ',';
+
+			if (!strcmp(svalue, "syn"))
+				flags |= TH_SYN;
+			else if (!strcmp(svalue, "ack"))
+				flags |= TH_ACK;
+			else if (!strcmp(svalue, "rst"))
+				flags |= TH_RST;
+			else if (!strcmp(svalue, "fin"))
+				flags |= TH_FIN;
+			else if (!strcmp(svalue, "push"))
+				flags |= TH_PUSH;
+			else if (!strcmp(svalue, "none"))
+				flags = 0;
+			else
+				return false;
+		}
+
+		tcp->flags = flags;
+		return true;
+	}
+
+	if (!strncmp(arg, "tcp-options=", 12)) {
+		char *svalue, *next;
+		int option_mask = 0;
+
+		for (svalue = strdupa(arg + 12); svalue; svalue = next) {
+			if ((next = strchr(svalue, ',')) != NULL)
+				*next++ = ',';
+
+			if (!strcmp(svalue, "maxseg"))
+				option_mask |= (1 << TCPOPT_MAXSEG);
+			if (!strcmp(svalue, "wscale"))
+				option_mask |= (1 << TCPOPT_WINDOW);
+			else if (!strcmp(svalue, "sack-permitted"))
+				option_mask |= (1 << TCPOPT_SACK_PERMITTED);
+			else if (!strcmp(svalue, "timestamp"))
+				option_mask |= (1 << TCPOPT_TIMESTAMP);
+			else if (!strcmp(svalue, "none"))
+				option_mask = 0;
+			else
+				return false;
+		}
+
+		if (option_mask)
+			fm_log_warning("TCP: sending of TCP options not yet implemented");
+
+		tcp->option_mask = option_mask;
+		return true;
+	}
+
+	return false;
+}
+
+bool
+fm_udp_process_config_arg(fm_udp_header_info_t *udp, const char *arg)
+{
+	unsigned int port;
+
+	if (fm_parse_numeric_argument(arg, "udp-dst-port", &port)) {
+		udp->dst_port = port;
+		return true;
+	}
+
+	return false;
+}
+
+
+/*
  * Add link-level header to raw packet
  */
 bool
@@ -555,6 +656,9 @@ fm_raw_packet_add_tcp_header(fm_buffer_t *bp, const fm_ip_header_info_t *ip_info
 	th->th_win = htons(window);
 
 	/* Maybe add a couple of TCP options here */
+	if (tcp_info->option_mask) {
+		/* TBD */
+	}
 
 	/* Add the payload */
 	if (tcp_info->payload.len

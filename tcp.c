@@ -413,14 +413,11 @@ static bool
 fm_tcp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const fm_string_array_t *extra_args)
 {
 	fm_tcp_control_t *tcp;
+	unsigned int i;
 
 	if (multiprobe->control != NULL) {
 		fm_log_error("cannot reconfigure probe %s", multiprobe->name);
 		return false;
-	}
-
-	/* TODO: process extra_args if given */
-	if (extra_args->count) {
 	}
 
 	/* Set the default timings and retries */
@@ -432,6 +429,20 @@ fm_tcp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipro
 	tcp = fm_tcp_control_alloc(pclass->proto);
 	if (tcp == NULL)
 		return false;
+
+	/* process extra_args if given */
+	for (i = 0; i < extra_args->count; ++i) {
+		const char *arg = extra_args->entries[i];
+
+		if (!strncmp(arg, "tcp-", 4) && fm_tcp_process_config_arg(&tcp->tcp_info, arg))
+			continue;
+
+		if (!strncmp(arg, "ip-", 4) && fm_ip_process_config_arg(&tcp->ip_info, arg))
+			continue;
+
+		fm_log_error("%s: unsupported or invalid option %s", multiprobe->name, arg);
+		return false;
+	}
 
 	multiprobe->ops = &fm_tcp_multiprobe_ops;
 	multiprobe->control = tcp;

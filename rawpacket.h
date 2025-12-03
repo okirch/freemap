@@ -111,10 +111,8 @@ typedef struct fm_tcp_header_info {
 	uint16_t		mss;
 	uint16_t		mtu;
 
-	bool			opt_maxseg,
-				opt_timestamps,
-				opt_sack,
-				opt_wscale;
+	/* not yet implemented */
+	uint16_t		option_mask;
 
 	/* payload */
 	struct {
@@ -186,6 +184,13 @@ extern fm_icmp_msg_type_t *fm_icmp_msg_type_by_name(const char *name);
 extern fm_icmp_msg_type_t *fm_icmp_msg_type_get_reply(fm_icmp_msg_type_t *req);
 
 extern bool		fm_ipv6_transport_csum_partial(fm_csum_partial_t *, const fm_address_t *, const fm_address_t *, unsigned int next_header);
+
+/*
+ * Functions for applying config options to protocol probes
+ */
+extern bool		fm_ip_process_config_arg(fm_ip_header_info_t *, const char *);
+extern bool		fm_tcp_process_config_arg(fm_tcp_header_info_t *, const char *);
+extern bool		fm_udp_process_config_arg(fm_udp_header_info_t *, const char *);
 
 /* These functions can be used to apply parameters before sending a packet.
  * If the parameter is applicable, returns a pointer to a local (static) copy with the parameter applied.

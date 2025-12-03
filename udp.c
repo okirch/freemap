@@ -392,9 +392,10 @@ static fm_multiprobe_ops_t	fm_udp_multiprobe_ops = {
 };
 
 static bool
-fm_udp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const fm_string_array_t *extra_string_args)
+fm_udp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const fm_string_array_t *extra_args)
 {
 	fm_udp_control_t *udp;
+	unsigned int i;
 
 	if (multiprobe->control != NULL) {
 		fm_log_error("cannot reconfigure probe %s", multiprobe->name);
@@ -407,14 +408,23 @@ fm_udp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipro
 	if (multiprobe->params.retries == 0)
 		multiprobe->params.retries = fm_global.udp.retries;
 
-	if (extra_string_args && extra_string_args->count != 0) {
-		fm_log_error("%s: found unsupported extra parameters", multiprobe->name);
-		return false;
-	}
-
 	udp = fm_udp_control_alloc(pclass->proto);
 	if (udp == NULL)
 		return false;
+
+	/* process extra_args if given */
+	for (i = 0; i < extra_args->count; ++i) {
+		const char *arg = extra_args->entries[i];
+
+		if (!strncmp(arg, "udp-", 4) && fm_udp_process_config_arg(&udp->udp_info, arg))
+			continue;
+
+		if (!strncmp(arg, "ip-", 4) && fm_ip_process_config_arg(&udp->ip_info, arg))
+			continue;
+
+		fm_log_error("%s: unsupported or invalid option %s", multiprobe->name, arg);
+		return false;
+	}
 
 	multiprobe->ops = &fm_udp_multiprobe_ops;
 	multiprobe->control = udp;
