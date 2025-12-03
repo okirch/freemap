@@ -10,6 +10,17 @@ In particular, the targets to scan are current hard-coded in main.c :-)
 
 This needs https://github.com/okirch/libcurlies for handling configuration files.
 
+Once you have that compiled and installed, you can build freemap.
+
+There's a small configure script you need to run first, which does little more
+than setting a bunch of path names. It supports the usual options like --prefix,
+--etcdir, --bindir etc.
+
+```
+  ./configure --prefix /usr --etcdir /etc
+  make
+  make install
+```
 
 # Using
 
@@ -19,11 +30,12 @@ you may want to re-run parts of a scan, possibly with different arguments, witho
 having to watch it go through *all* the necessary paces.
 
 ```
-  freemap init
+  freemap init my_scan
 ```
 
-This will initialize the current directory as a scan project. You can then go on and
-configure your scan:
+This will initialize the current directory as a scan project, and place a configuration
+file in there called `project.conf`. You can edit this file directly, or you can use
+`freemap` to change settings for you.
 
 ```
   freemap add-targets 192.168.1.0/24
@@ -32,13 +44,11 @@ configure your scan:
   freemap set service-scan thorough
 ```
 
-You can then run the entire scan process at once, as most other scanners will do:
+The first step is crucial, because it defines the scan target(s) you want to probe going
+forward. If you do this, you can run any scan commands without specifying the targets
+on the command line.
 
-```
-  freemap scan
-```
-
-Alternatively, you could run individual steps
+Subsequently, you can run individual probing steps:
 
 ```
   freemap topology-scan
@@ -58,9 +68,10 @@ Finally, the port scan will probe whether services are listening on UDP and TCP 
 In the case of UDP, it is possible to define probing packets to send to the port,
 in order to verify the kind of service that is running there.
 
-All results from these probing activities are stored in the project directory. These
-are mapped into memory as needed. In particular, these files will appear fairly large,
-but they usually occupy only a few blocks on disk - the rest is holes.
+All results from these probing activities are stored in sparse files within the project
+directory. These are mapped into memory as needed. In particular, these files will
+appear fairly large, but they usually occupy only a few blocks on disk - the rest is
+holes.
 
 Last but not least, the data that has been collected can be displayed using
 
