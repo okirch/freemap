@@ -1,8 +1,6 @@
  * DOCUMENTATION
+ * convert icmp probe to raw packets
  * The host asset cache is crap for IPv6
- * reduce the zoo of types (exec steps vs actions vs probe). The current
-   implementation is too complex, and many settings are evaluated too late for
-   timely error reporting.
  * have a "local" address enumerator that loops through all local networks
  * improve on the netid idea
  * perform send rate limiting based on class C networks so that we're
@@ -13,13 +11,13 @@
    (such as ARP over loopback, tunnels etc)
  * Does it make sense to extract eg MPLS extension info from ICMP responses
    in traceroute?
- * The synthetic packet header parsing is wonky
  * Ability to read address lists from file
  * use AS information to group targets into networks
 
 Other probes to implement
  - A host probe that uses invalid protocol numbers to elicit a response
  - A host probe using TCP, UDP, SCTP to a well-known port
+ - A host probe that elicits fragment reassembly timeouts
  - (for locally connected networks): ARP and IPv6 NDISC probes
 
 Gauge resource needs of a probe
