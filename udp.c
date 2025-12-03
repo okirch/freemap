@@ -284,22 +284,15 @@ fm_udp_build_packet(const fm_udp_control_t *udp, fm_target_control_t *target_con
 	fm_pkt_t *pkt;
 
 	pkt = fm_pkt_alloc(target_control->family, 128);
-	pkt->peer_addr = target_control->dst_addr;
+	fm_pkt_set_peer_address_raw(pkt, &target_control->dst_addr, IPPROTO_UDP);
 
 	if (!fm_raw_packet_add_ip_header(pkt->payload, ip_info, fm_udp_compute_len(udp_info))
-	 || !fm_raw_packet_add_udp_header(pkt->payload, ip_info, udp_info))
-		goto failed;
-
-	/* On raw sockets, the port field is supposed to be either 0 or contain the transport
-	 * protocol (IPPROTO_TCP in our case). Note, it seems that this is only enforced for
-	 * IPv6; the manpages say that this behavior "got lost" for IPv4 some time in Linux 2.2. */
-	fm_address_set_port(&pkt->peer_addr, IPPROTO_UDP);
+	 || !fm_raw_packet_add_udp_header(pkt->payload, ip_info, udp_info)) {
+		fm_pkt_free(pkt);
+		return NULL;
+	}
 
 	return pkt;
-
-failed:
-	fm_pkt_free(pkt);
-	return NULL;
 }
 
 /*

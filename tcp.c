@@ -321,29 +321,18 @@ fm_tcp_build_raw_packet(const fm_tcp_control_t *tcp, fm_target_control_t *target
 		const fm_ip_header_info_t *ip_info,
 		const fm_tcp_header_info_t *tcp_info)
 {
-	fm_buffer_t *payload;
 	fm_pkt_t *pkt;
 
-	payload = fm_buffer_alloc(128);
+	pkt = fm_pkt_alloc(target_control->family, 128);
+	fm_pkt_set_peer_address_raw(pkt, &target_control->dst_addr, IPPROTO_TCP);
 
-	if (!fm_raw_packet_add_ip_header(payload, ip_info, fm_tcp_compute_len(tcp_info))
-	 || !fm_raw_packet_add_tcp_header(payload, ip_info, tcp_info))
-		goto failed;
-
-	pkt = fm_pkt_alloc(target_control->family, 0);
-	pkt->payload = payload;
-	pkt->peer_addr = target_control->dst_addr;
-
-	/* On raw sockets, the port field is supposed to be either 0 or contain the transport
-	 * protocol (IPPROTO_TCP in our case). Note, it seems that this is only enforced for
-	 * IPv6; the manpages say that this behavior "got lost" for IPv4 some time in Linux 2.2. */
-	fm_address_set_port(&pkt->peer_addr, IPPROTO_TCP);
+	if (!fm_raw_packet_add_ip_header(pkt->payload, ip_info, fm_tcp_compute_len(tcp_info))
+	 || !fm_raw_packet_add_tcp_header(pkt->payload, ip_info, tcp_info)) {
+		fm_pkt_free(pkt);
+		return NULL;
+	}
 
 	return pkt;
-
-failed:
-	fm_buffer_free(payload);
-	return NULL;
 }
 
 static fm_error_t

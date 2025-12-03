@@ -145,6 +145,19 @@ fm_pkt_is_dest_unreachable(const fm_pkt_t *pkt)
 }
 
 /*
+ * This should be called in the transmit path when using raw sockets.
+ * On raw sockets, the port field is supposed to be either 0 or contain the transport
+ * protocol (eg IPPROTO_TCP). Note, it seems that this is only enforced for
+ * IPv6; the manpages say that this behavior "got lost" for IPv4 some time in Linux 2.2.
+ */
+void
+fm_pkt_set_peer_address_raw(fm_pkt_t *pkt, const fm_address_t *dst_addr, int ipproto)
+{
+	pkt->peer_addr = *dst_addr;
+	fm_address_set_port(&pkt->peer_addr, ipproto);
+}
+
+/*
  * Socket functions
  */
 static fm_socket_t *
