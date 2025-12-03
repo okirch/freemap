@@ -1,5 +1,6 @@
  * DOCUMENTATION
- * convert icmp probe to raw packets
+ * Read the config values from /etc/freemap.conf and from the local
+   project file.
  * The host asset cache is crap for IPv6
  * have a "local" address enumerator that loops through all local networks
  * improve on the netid idea
