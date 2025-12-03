@@ -300,10 +300,20 @@ fm_tcp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *it
 	extant = fm_tcp_locate_common(pkt, hdr->tcp.dst_port, hdr->tcp.src_port, iter);
 
 	if (extant != NULL && extant->host) {
-		if (hdr->tcp.flags & TH_RST)
-			fm_host_asset_update_port_state(extant->host, FM_PROTO_TCP, hdr->tcp.src_port, FM_ASSET_STATE_CLOSED);
-		else if (hdr->tcp.flags & TH_ACK)
-			fm_host_asset_update_port_state(extant->host, FM_PROTO_TCP, hdr->tcp.src_port, FM_ASSET_STATE_OPEN);
+		const struct tcp_extant_info *info = (struct tcp_extant_info *) (extant + 1);
+
+		/* beware - responses are only indicative of port state if the original request was
+		 * a regular SYN packet.
+		 * Everything else should just elicit an RST packet, indicating that we can
+		 * talk to the host's TCP stack. */
+		if (info->sent_flags == TH_SYN) {
+			if (hdr->tcp.flags & TH_RST)
+				fm_host_asset_update_port_state(extant->host, FM_PROTO_TCP, hdr->tcp.src_port, FM_ASSET_STATE_CLOSED);
+			else if (hdr->tcp.flags & TH_ACK)
+				fm_host_asset_update_port_state(extant->host, FM_PROTO_TCP, hdr->tcp.src_port, FM_ASSET_STATE_OPEN);
+		}
+
+		fm_host_asset_update_state(extant->host, FM_ASSET_STATE_OPEN);
 	}
 
 	return extant;
