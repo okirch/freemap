@@ -513,13 +513,20 @@ fm_icmp_multiprobe_add_broadcast(fm_multiprobe_t *multiprobe, fm_host_tasklet_t 
 	if (!(sock = fm_icmp_create_packet_socket(icmp, nic, target_control->family)))
 		return false;
 
+	target_control->ip_info = icmp->ip_info;
+
+	/* apply ttl and tos defaults. do it now because we need those for 
+	 * building the IPv6 header below. */
+	fm_ip_header_info_apply_defaults(&target_control->ip_info, target_control->family);
+
 	target_control->src_addr = *src_link_addr;
 	target_control->dst_addr = *dst_link_addr;
 	target_control->sock = sock;
 
+	/* Why do we cache this header? This makes no sense */
 	target_control->icmp.packet_header = fm_buffer_alloc(128);
 	fm_raw_packet_add_ipv6_header(target_control->icmp.packet_header, src_network_addr, dst_network_addr,
-			IPPROTO_ICMPV6, icmp->params.ttl, icmp->params.tos, 
+			IPPROTO_ICMPV6, target_control->ip_info.ttl, target_control->ip_info.tos, 
 			sizeof(struct icmp6_hdr));
 
 	fm_ipv6_transport_csum_partial(&target_control->icmp.csum, src_network_addr, dst_network_addr, IPPROTO_ICMPV6);

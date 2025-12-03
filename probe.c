@@ -435,6 +435,9 @@ fm_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_target_t *target)
 		return false;
 	}
 
+	/* apply ttl and tos defaults if they haven't been set by the driver */
+	fm_ip_header_info_apply_defaults(&host_task->control.ip_info, host_task->control.family);
+
 	if (host_task->control.sock != NULL && multiprobe->data_tap.callback) {
 		fm_socket_install_data_tap(host_task->control.sock,
 				multiprobe->data_tap.callback,
@@ -504,6 +507,9 @@ fm_multiprobe_add_link_level_broadcast(fm_multiprobe_t *multiprobe, int af,
 		fm_host_tasklet_free(host_task);
 		return false;
 	}
+
+	/* apply ttl and tos defaults if they haven't been set by the driver */
+	fm_ip_header_info_apply_defaults(&host_task->control.ip_info, host_task->control.family);
 
 	if (host_task->control.sock != NULL && multiprobe->data_tap.callback) {
 		fm_socket_install_data_tap(host_task->control.sock,

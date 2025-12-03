@@ -39,6 +39,27 @@
 #include "utils.h"
 
 
+/*
+ * This is called when we prepare the target_control data when adding
+ * a new target to a probe.
+ */
+void
+fm_ip_header_info_apply_defaults(fm_ip_header_info_t *ip, int family)
+{
+	if (ip->ttl == 0) {
+		if (family == AF_INET)
+			ip->ttl = fm_global.ipv4.ttl;
+		else if (family == AF_INET6)
+			ip->ttl = fm_global.ipv6.ttl;
+	}
+	if (ip->tos == 0) {
+		if (family == AF_INET)
+			ip->tos = fm_global.ipv4.tos;
+		else if (family == AF_INET6)
+			ip->tos = fm_global.ipv6.tos;
+	}
+}
+
 /* These functions can be used to apply parameters before sending a packet.
  * If the parameter is applicable, returns a pointer to a local (static) copy with the parameter applied.
  * If the parameter is not applicable, just returns the pointer that was passed in.

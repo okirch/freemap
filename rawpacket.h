@@ -205,6 +205,7 @@ extern bool		fm_icmp_process_config_arg(fm_icmp_header_info_t *, const char *);
  * If the parameter is applicable, returns a pointer to a local (static) copy with the parameter applied.
  * If the parameter is not applicable, just returns the pointer that was passed in.
  */
+extern void		fm_ip_header_info_apply_defaults(fm_ip_header_info_t *ip, int family);
 extern const fm_ip_header_info_t *fm_ip_header_info_finalize(const fm_ip_header_info_t *ip, int param_type, int param_value);
 extern const fm_tcp_header_info_t *fm_tcp_header_info_finalize(const fm_tcp_header_info_t *tcp, int param_type, int param_value);
 extern const fm_udp_header_info_t *fm_udp_header_info_finalize(const fm_udp_header_info_t *udp, int param_type, int param_value, const fm_buffer_t *payload);
