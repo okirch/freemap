@@ -465,6 +465,9 @@ fm_icmp_multiprobe_add_broadcast(fm_multiprobe_t *multiprobe, fm_host_tasklet_t 
 		return false;
 
 	target_control->ip_info = icmp->ip_info;
+	target_control->ip_info.ipproto = fm_icmp_protocol_for_family(target_control->family);
+	target_control->ip_info.src_addr = *src_network_addr;
+	target_control->ip_info.dst_addr = *dst_network_addr;
 
 	/* apply ttl and tos defaults. do it now because we need those for 
 	 * building the IPv6 header below. */
