@@ -16,9 +16,16 @@ host-scan thorough {
 	host-probe arp {
 		optional true;
 	}
-	host-probe icmp {};
-	port-probe tcp {
-		port 0;
+	host-probe icmp {
+		ttl	128;
+	};
+
+	# This probe tries to elicit a TCP RST response from the target host.
+	# Note, this probe doesn't do anything useful if the host you run
+	# on has firewalling enabled (the response will be discarded).
+	host-probe tcp {
+		tcp-flags syn, ack;
+		tcp-dst-port 80;
 	}
 }
 
