@@ -231,16 +231,13 @@ fm_icmp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
  * Create an ICMP request block
  */
 fm_icmp_control_t *
-fm_icmp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const fm_icmp_extra_params_t *extra_params)
+fm_icmp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params)
 {
 	fm_icmp_control_t *icmp;
 
 	icmp = calloc(1, sizeof(*icmp));
 	icmp->proto = proto;
 	icmp->params = *params;
-
-	if (extra_params != NULL)
-		icmp->extra_params = *extra_params;
 
 	/* No IP settings at this level */
 
@@ -250,8 +247,6 @@ fm_icmp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, con
 	/* Default to echo request/reply */
 	if (!fm_icmp_process_config_arg(&icmp->icmp_info, "icmp-type=echo"))
 		return NULL;
-
-	icmp->extra_params.ident = 0x5678;
 
 	if (fm_icmp_socket_pool == NULL)
 		fm_icmp_socket_pool = fm_socket_pool_create(proto, SOCK_RAW);
@@ -576,10 +571,11 @@ static fm_multiprobe_ops_t	fm_icmp_multiprobe_ops = {
 };
 
 static bool
-fm_icmp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const fm_string_array_t *extra_string_args)
+fm_icmp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const fm_string_array_t *extra_args)
 {
 	fm_icmp_extra_params_t parsed_extra_params, *extra_params = NULL;
 	fm_icmp_control_t *icmp;
+	unsigned int i;
 
 	if (multiprobe->control != NULL) {
 		fm_log_error("cannot reconfigure probe %s", multiprobe->name);
@@ -592,19 +588,23 @@ fm_icmp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipr
 	if (multiprobe->params.retries == 0)
 		multiprobe->params.retries = fm_global.icmp.retries;
 
-	if (extra_string_args && extra_string_args->count != 0) {
-		memset(&parsed_extra_params, 0, sizeof(parsed_extra_params));
-		if (fm_icmp_process_extra_parameters(extra_string_args, &parsed_extra_params)) {
-			fm_log_warning("ICMP: failed to parse all protocol-specific parameters");
-			return false;
-		}
-
-		extra_params = &parsed_extra_params;
-	}
-
-	icmp = fm_icmp_control_alloc(pclass->proto, &multiprobe->params, extra_params);
+	icmp = fm_icmp_control_alloc(pclass->proto, &multiprobe->params);
 	if (icmp == NULL)
 		return false;
+
+	/* process extra_args if given */
+	for (i = 0; i < extra_args->count; ++i) {
+		const char *arg = extra_args->entries[i];
+
+		if (!strncmp(arg, "icmp-", 4) && fm_icmp_process_config_arg(&icmp->icmp_info, arg))
+			continue;
+
+		if (!strncmp(arg, "ip-", 4) && fm_ip_process_config_arg(&icmp->ip_info, arg))
+			continue;
+
+		fm_log_error("%s: unsupported or invalid option %s", multiprobe->name, arg);
+		return false;
+	}
 
 	multiprobe->ops = &fm_icmp_multiprobe_ops;
 	multiprobe->control = icmp;
