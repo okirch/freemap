@@ -79,10 +79,15 @@ FM_PROTOCOL_REGISTER(fm_icmp_sock_ops);
 static void
 fm_icmp_extant_info_build(const fm_icmp_control_t *icmp, const fm_icmp_header_info_t *icmp_info, fm_icmp_extant_info_t *extant_info)
 {
+	fm_icmp_msg_type_t *response_type;
+
+	/* This is a quick operation, and we've checked earlier that this returns non-NULL */
+	response_type = fm_icmp_msg_type_get_reply(icmp_info->msg_type);
+
 	/* Now construct the extant match. */
 	fm_icmp_request_build_extant_info(extant_info,
 			icmp_info->msg_type->v4_type,
-			icmp->response_type->v4_code,
+			response_type->v4_code,
 			icmp_info->id,
 			icmp_info->seq);
 
@@ -223,34 +228,6 @@ fm_icmp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
 }
 
 /*
- * Choose the ICMP type to use.
- * As we don't know how long the type_name string passed as argument will be valid,
- * we replace it with a const string.
- */
-static bool
-fm_icmp_control_select_type(fm_icmp_control_t *icmp, const char *name)
-{
-	fm_icmp_msg_type_t *msg_type;
-	char type_name[64];
-
-	snprintf(type_name, sizeof(type_name), "%s-request", name);
-	if ((msg_type = fm_icmp_msg_type_by_name(type_name)) == NULL) {
-		fm_log_error("ICMP: cannot configure probe type %s: no ICMP message type called \"%s\"", name, type_name);
-		return false;
-	}
-	icmp->icmp_info.msg_type = msg_type;
-
-	snprintf(type_name, sizeof(type_name), "%s-reply", name);
-	if ((msg_type = fm_icmp_msg_type_by_name(type_name)) == NULL) {
-		fm_log_error("ICMP: cannot configure probe type %s: no ICMP message type called \"%s\"", name, type_name);
-		return false;
-	}
-	icmp->response_type = msg_type;
-
-	return true;
-}
-
-/*
  * Create an ICMP request block
  */
 fm_icmp_control_t *
@@ -271,7 +248,7 @@ fm_icmp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, con
 	icmp->icmp_info.id = 0x5678;
 
 	/* Default to echo request/reply */
-	if (!fm_icmp_control_select_type(icmp, "echo"))
+	if (!fm_icmp_process_config_arg(&icmp->icmp_info, "icmp-type=echo"))
 		return NULL;
 
 	icmp->extra_params.ident = 0x5678;

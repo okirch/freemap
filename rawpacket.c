@@ -242,6 +242,38 @@ fm_udp_process_config_arg(fm_udp_header_info_t *udp, const char *arg)
 	return false;
 }
 
+bool
+fm_icmp_process_config_arg(fm_icmp_header_info_t *icmp, const char *arg)
+{
+	unsigned int ival;
+	const char  *sval;
+
+	if (fm_parse_numeric_argument(arg, "icmp-id", &ival)) {
+		icmp->id = ival;
+		return true;
+	}
+
+	if (fm_parse_string_argument(arg, "icmp-type", &sval)) {
+		fm_icmp_msg_type_t *msg_type;
+		char type_name[64];
+
+		snprintf(type_name, sizeof(type_name), "%s-request", sval);
+		if ((msg_type = fm_icmp_msg_type_by_name(type_name)) == NULL) {
+			fm_log_error("ICMP: cannot configure probe type %s: no ICMP message type called \"%s\"", sval, type_name);
+			return false;
+		}
+
+		if (!fm_icmp_msg_type_get_reply(msg_type)) {
+			fm_log_error("ICMP: cannot configure probe type %s: message type \"%s\" has no corresponding reply type", sval, type_name);
+			return false;
+		}
+
+		icmp->msg_type = msg_type;
+		return true;
+	}
+
+	return false;
+}
 
 /*
  * Add link-level header to raw packet

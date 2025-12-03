@@ -47,8 +47,6 @@ typedef struct fm_icmp_control {
 	fm_ip_header_info_t	ip_info;
 	fm_icmp_header_info_t	icmp_info;
 
-	fm_icmp_msg_type_t *	response_type;
-
 	fm_probe_params_t	params;
 	fm_icmp_extra_params_t	extra_params;
 } fm_icmp_control_t;

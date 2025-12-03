@@ -199,6 +199,7 @@ extern bool		fm_ipv6_transport_csum_partial(fm_csum_partial_t *, const fm_addres
 extern bool		fm_ip_process_config_arg(fm_ip_header_info_t *, const char *);
 extern bool		fm_tcp_process_config_arg(fm_tcp_header_info_t *, const char *);
 extern bool		fm_udp_process_config_arg(fm_udp_header_info_t *, const char *);
+extern bool		fm_icmp_process_config_arg(fm_icmp_header_info_t *, const char *);
 
 /* These functions can be used to apply parameters before sending a packet.
  * If the parameter is applicable, returns a pointer to a local (static) copy with the parameter applied.
