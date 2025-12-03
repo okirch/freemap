@@ -500,6 +500,16 @@ fm_proto_icmp_display(const fm_pkt_t *pkt, const fm_parsed_hdr_t *hdr)
 {
 	const fm_icmp_header_info_t *info = &hdr->icmp;
 
-	fm_log_debug("  icmp type %u/code %u",
-			info->type, info->code);
+	if (info->msg_type == NULL) {
+		fm_log_debug("  icmp type %u/code %u",
+				info->type, info->code);
+	} else if (info->msg_type->with_seq_id) {
+		fm_log_debug("  icmp type %u/code %u/id %04x/seq %04x (%s)",
+				info->type, info->code,
+				info->id, info->seq,
+				info->msg_type->desc);
+	} else {
+		fm_log_debug("  icmp type %u/code %u (%s)",
+				info->type, info->code, info->msg_type->desc);
+	}
 }
