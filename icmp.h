@@ -25,10 +25,6 @@
 
 typedef struct fm_icmp_extra_params {
 	const char *		type_name;
-	struct {
-		int		send_type;
-		int		response_type;
-	} ipv4, ipv6;
 
 	uint16_t		tos;		/* copied from probe_params */
 	uint16_t		ttl;		/* copied from probe_params */
@@ -41,20 +37,11 @@ typedef struct fm_icmp_control {
 
 	fm_socket_t *		sock;
 	bool			sock_is_shared;
-	bool			kernel_trashes_id;
 	bool			extants_are_multi_shot;
 
 	fm_ip_header_info_t	ip_info;
 	fm_icmp_header_info_t	icmp_info;
-
-	fm_probe_params_t	params;
-	fm_icmp_extra_params_t	extra_params;
 } fm_icmp_control_t;
-
-typedef struct fm_icmp_request {
-	fm_icmp_control_t *	control;
-	fm_target_control_t	target_control;
-} fm_icmp_request_t;
 
 typedef struct fm_icmp_extant_info {
 	struct fm_icmp_match {

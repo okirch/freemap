@@ -45,7 +45,6 @@ static int		fm_icmp_protocol_for_family(int af);
 static void		fm_icmp_request_build_extant_info(fm_icmp_extant_info_t *info, int v4_request_type, int v4_response_type, int id, int seq);
 static fm_extant_t *	fm_icmp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_icmp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
-static bool		fm_icmp_process_extra_parameters(const fm_string_array_t *extra_args, fm_icmp_extra_params_t *extra_params);
 
 /* Global pool for ICMP sockets */
 static fm_socket_pool_t	*fm_icmp_socket_pool = NULL;
@@ -231,13 +230,12 @@ fm_icmp_create_shared_socket(fm_protocol_t *proto, fm_target_t *target)
  * Create an ICMP request block
  */
 fm_icmp_control_t *
-fm_icmp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params)
+fm_icmp_control_alloc(fm_protocol_t *proto)
 {
 	fm_icmp_control_t *icmp;
 
 	icmp = calloc(1, sizeof(*icmp));
 	icmp->proto = proto;
-	icmp->params = *params;
 
 	/* No IP settings at this level */
 
@@ -310,14 +308,6 @@ fm_icmp_request_init_target(const fm_icmp_control_t *icmp, fm_target_control_t *
 	target_control->dst_addr = *addr;
 	target_control->sock = sock;
 	target_control->sock_is_shared = true;
-
-	if (target_control->family == AF_INET6) {
-		/* nix this, too: */
-		fm_ipv6_transport_csum_partial(&target_control->icmp.csum,
-						&target_control->src_addr,
-						&target_control->dst_addr,
-						IPPROTO_ICMPV6);
-	}
 
 	target_control->ip_info = icmp->ip_info;
 	target_control->ip_info.ipproto = fm_icmp_protocol_for_family(target_control->family);
@@ -449,39 +439,6 @@ fm_icmp_request_send(const fm_icmp_control_t *icmp, fm_target_control_t *target_
 	return 0;
 }
 
-static bool
-fm_icmp_process_extra_parameters(const fm_string_array_t *extra_args, fm_icmp_extra_params_t *extra_params)
-{
-#if 0 /* this will change */
-	const char *type_name = NULL;
-	unsigned int i;
-
-	extra_params = calloc(1, sizeof(*extra_params));
-
-	for (i = 0; i < extra_args->count; ++i) {
-		const char *arg = extra_args->entries[i];
-
-		if (fm_parse_string_argument(arg, "type", &type_name)) {
-			/* pass */
-		} else {
-			fm_log_error("Cannot create ICMP host probe: invalid argument \"%s\"", arg);
-			return false;
-		}
-	}
-
-	if (type_name == NULL)
-		type_name = "echo";
-
-	if (!fm_icmp_extra_params_set_type(extra_params, type_name)) {
-		fm_log_error("ICMP type %s not supported\n", type_name);
-		return false;
-	}
-#endif
-
-	return true;
-
-}
-
 /*
  * New multiprobe implementation
  */
@@ -580,7 +537,6 @@ static fm_multiprobe_ops_t	fm_icmp_multiprobe_ops = {
 static bool
 fm_icmp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const fm_string_array_t *extra_args)
 {
-	fm_icmp_extra_params_t parsed_extra_params, *extra_params = NULL;
 	fm_icmp_control_t *icmp;
 	unsigned int i;
 
@@ -595,7 +551,7 @@ fm_icmp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipr
 	if (multiprobe->params.retries == 0)
 		multiprobe->params.retries = fm_global.icmp.retries;
 
-	icmp = fm_icmp_control_alloc(pclass->proto, &multiprobe->params);
+	icmp = fm_icmp_control_alloc(pclass->proto);
 	if (icmp == NULL)
 		return false;
 
