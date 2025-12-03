@@ -112,20 +112,6 @@ fm_scanner_queue_probe(fm_scanner_t *scanner, int stage_id, fm_multiprobe_t *mul
 	stage = fm_scanner_create_stage(scanner, stage_id);
 
 	fm_multiprobe_array_append(&stage->probes, multiprobe);
-
-#if 0
-	/* This is the wrong place; this needs to happen in the multiprobe code when
-	 * selecting the next port */
-	if (multiprobe && port && action->service_catalog) {
-		fm_service_probe_t *service_probe;
-
-		service_probe = fm_service_catalog_get_service_probe(action->service_catalog,
-						action->probe_class->proto_id, port);
-		if (service_probe != NULL) {
-			fm_log_error("%s: implement multiprobe set_service");
-		}
-	}
-#endif
 }
 
 double
@@ -299,7 +285,7 @@ fm_scanner_add_probe(fm_scanner_t *scanner, int stage, const fm_config_probe_t *
 	}
 
 	multiprobe = fm_multiprobe_from_config(pclass, parsed_probe);
-	if (pclass->features & FM_FEATURE_SERVICE_PROBES_MASK)
+	if (scanner->service_catalog != NULL)
 		fm_multiprobe_set_service_catalog(multiprobe, scanner->service_catalog);
 
 	fm_scanner_queue_probe(scanner, stage, multiprobe);

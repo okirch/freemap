@@ -27,12 +27,15 @@
 #include "events.h"
 #include "scanner.h"
 #include "program.h"
+#include "services.h"
+#include "buffer.h"
 #include "logging.h"
 
 #define debugmsg	fm_debug_probe
 
 static void		fm_multiprobe_destroy(fm_multiprobe_t *multiprobe);
 static void		fm_target_control_init_default(fm_target_control_t *, fm_target_t *);
+static void		fm_tasklet_set_service_probe(fm_tasklet_t *, const fm_service_probe_t *);
 
 /*
  * Handle registration of probe classes
@@ -360,8 +363,23 @@ fm_multiprobe_configure(fm_multiprobe_t *multiprobe, fm_probe_class_t *pclass, c
 bool
 fm_multiprobe_set_service_catalog(fm_multiprobe_t *multiprobe, const fm_service_catalog_t *catalog)
 {
-	fm_log_notice("%s: ignoring service catalog for now", multiprobe->name);
+	fm_probe_class_t *pclass = multiprobe->probe_class;
+
+	if (pclass == NULL || !(pclass->features & FM_FEATURE_SERVICE_PROBES_MASK))
+		return false;
+
+	multiprobe->service_catalog = catalog;
 	return true;
+}
+
+static fm_service_probe_t *
+fm_multiprobe_lookup_service(fm_multiprobe_t *multiprobe, int param_type, int param_value)
+{
+	if (multiprobe->service_catalog == NULL
+	 || multiprobe->ops->lookup_service == NULL)
+		return NULL;
+
+	return multiprobe->ops->lookup_service(multiprobe, param_type, param_value, multiprobe->service_catalog);
 }
 
 /*
@@ -501,6 +519,7 @@ static bool
 fm_multiprobe_create_tasklet(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task, fm_tasklet_t *tasklet, fm_sched_stats_t *sched_stats)
 {
 	int param_type;
+	const fm_service_probe_t *service_probe;
 
 	assert(tasklet->state == FM_TASKLET_STATE_FREE);
 	assert(host_task->probe_index < multiprobe->bucket_list.count);
@@ -533,9 +552,44 @@ fm_multiprobe_create_tasklet(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *hos
 	if (tasklet->detail == NULL)
 		tasklet->detail = strdup("");
 
+	service_probe = fm_multiprobe_lookup_service(multiprobe, param_type, tasklet->param_value);
+	if (service_probe != NULL)
+		fm_tasklet_set_service_probe(tasklet, service_probe);
+
 	debugmsg("%s: created probe #%u%s", host_task->name, tasklet->probe_index, tasklet->detail);
 
 	return true;
+}
+
+static void
+fm_tasklet_set_service_probe(fm_tasklet_t *tasklet, const fm_service_probe_t *service_probe)
+{
+	if (service_probe == NULL || service_probe->npackets == 0)
+		return;
+
+	tasklet->service_probe = service_probe;
+
+	tasklet->send_retries *= service_probe->npackets;
+}
+
+static const fm_buffer_t *
+fm_tasklet_get_service_payload(fm_tasklet_t *tasklet)
+{
+	const fm_service_probe_t *service_probe = tasklet->service_probe;
+	unsigned int index;
+	const fm_buffer_t *payload;
+
+	if (service_probe == NULL)
+		return NULL;
+
+	index = tasklet->num_sent % service_probe->npackets;
+	payload = service_probe->packets[index];
+	if (fm_buffer_available(payload) == 0) {
+                fm_log_warning("%s%s: service probe %u has empty packet", tasklet->host->name, tasklet->detail, index);
+		return NULL;
+	}
+
+	return payload;
 }
 
 static void
@@ -599,6 +653,7 @@ static fm_error_t
 fm_multiprobe_transmit_tasklet(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task,
 		fm_tasklet_t *tasklet, fm_sched_stats_t *stats)
 {
+	const fm_buffer_t *service_payload = NULL;
 	fm_extant_t *extant = NULL;
 	fm_error_t error;
 	bool first_transmission;
@@ -607,9 +662,11 @@ fm_multiprobe_transmit_tasklet(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *h
 	debugmsg("%s%s: transmit probe", host_task->name, tasklet->detail);
 	first_transmission = !fm_timestamp_is_set(&tasklet->send_ts);
 
+	service_payload = fm_tasklet_get_service_payload(tasklet);
+
 	error = multiprobe->ops->transmit(multiprobe, host_task,
 				tasklet->param_type, tasklet->param_value,
-				NULL,
+				service_payload,
 				&extant, &timeout);
 
 	if (extant != NULL) {

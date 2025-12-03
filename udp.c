@@ -42,14 +42,6 @@ typedef struct fm_udp_control {
 
 	fm_ip_header_info_t	ip_info;
 	fm_udp_header_info_t	udp_info;
-
-	/* total_retries reflects the complete # of packets we're supposed to
-	 * send, accounting for service probes with multiple packets. */
-	unsigned int		total_retries;
-
-	/* Set of packages we're supposed to use in probing the port */
-	unsigned int		service_index;
-	fm_service_probe_t *	service_probe;
 } fm_udp_control_t;
 
 typedef struct fm_udp_extant_info {
@@ -155,7 +147,6 @@ fm_udp_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params)
 
 	if (udp->params.retries == 0)
 		udp->params.retries = fm_global.udp.retries;
-	udp->total_retries = udp->params.retries;
 
 	if (fm_udp_socket_pool == NULL)
 		fm_udp_socket_pool = fm_socket_pool_create(proto, SOCK_DGRAM);
@@ -367,6 +358,16 @@ fm_udp_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *hos
 	return fm_udp_control_init_target(udp, &host_task->control, target);
 }
 
+static fm_service_probe_t *
+fm_udp_multiprobe_lookup_service(fm_multiprobe_t *multiprobe, int param_type, int param_value, const fm_service_catalog_t *service_catalog)
+{
+	const fm_udp_control_t *udp = multiprobe->control;
+	const fm_udp_header_info_t *udp_info;
+
+	udp_info = fm_udp_header_info_finalize(&udp->udp_info, param_type, param_value, NULL);
+	return fm_service_catalog_get_service_probe(service_catalog, FM_PROTO_UDP, udp_info->dst_port);
+}
+
 static fm_error_t
 fm_udp_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task,
 		int param_type, int param_value,
@@ -383,13 +384,14 @@ fm_udp_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_
 static void
 fm_udp_multiprobe_destroy(fm_multiprobe_t *multiprobe)
 {
-	fm_udp_control_t *icmp = multiprobe->control;
+	fm_udp_control_t *udp = multiprobe->control;
 
 	multiprobe->control = NULL;
-	fm_udp_control_free(icmp);
+	fm_udp_control_free(udp);
 }
 
 static fm_multiprobe_ops_t	fm_udp_multiprobe_ops = {
+	.lookup_service		= fm_udp_multiprobe_lookup_service,
 	.add_target		= fm_udp_multiprobe_add_target,
 	.transmit		= fm_udp_multiprobe_transmit,
 	.destroy		= fm_udp_multiprobe_destroy,

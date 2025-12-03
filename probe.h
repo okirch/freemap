@@ -86,6 +86,8 @@ typedef struct fm_tasklet {
 	short			param_type;
 	short			param_value;
 
+	const fm_service_probe_t *service_probe;
+
 	fm_extant_t *		extants[FM_TASKLET_MAX_PACKETS];
 } fm_tasklet_t;
 
@@ -97,6 +99,9 @@ typedef const struct fm_multiprobe_ops {
 						const fm_address_t *dst_link_addr,
 						const fm_address_t *src_network_addr,
 						const fm_address_t *dst_network_addr);
+	fm_service_probe_t *	(*lookup_service)(fm_multiprobe_t *,
+						int param_type, int param_value,
+						const fm_service_catalog_t *);
 	fm_error_t		(*transmit)(fm_multiprobe_t *, fm_host_tasklet_t *,
 						int param_type, int param_value,
 						const fm_buffer_t *application_payload,
@@ -116,6 +121,10 @@ struct fm_multiprobe {
 
 	/* This is where the probe receives its targets from */
 	fm_target_pool_t *	target_queue;
+
+	/* The service catalog tells us what application packets to send to a
+	 * datagram based service */
+	const fm_service_catalog_t *service_catalog;
 
 	struct {
 		double		packet_spacing;
