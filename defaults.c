@@ -23,7 +23,7 @@ void
 fm_config_init_defaults(fm_config_t *conf)
 {
 	fm_string_array_append(&conf->library.search_path, "/usr/share/freemap/library");
-	fm_string_array_append(&conf->library.search_path, "./lib");	/* Remove before production */
+	fm_string_array_append(&conf->library.search_path, "./probes");	/* Remove before production */
 
 	conf->address_generation.only_family = AF_UNSPEC;
 	conf->address_generation.try_all = false;
