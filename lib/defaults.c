@@ -44,6 +44,7 @@ fm_config_init_defaults(fm_config_t *conf)
 	 * we may want to stay a bit shy of that rate. */
 	conf->scanner.global_packet_rate = 1000;
 	conf->scanner.target_packet_rate = 10;
+	conf->scanner.socket_send_buffer = 0;
 
 	conf->ipv4.ttl = 64;
 	conf->ipv4.tos = 0x10;

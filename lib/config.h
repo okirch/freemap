@@ -47,6 +47,9 @@ struct fm_config {
 
 		/* The rate of packets per target we're allowed to generate. */
 		unsigned int	target_packet_rate;
+
+		/* Configure socket SO_SNDBUF (0 means use OS default) */
+		unsigned int	socket_send_buffer;
 	} scanner;
 
 	struct fm_config_ipv4 {

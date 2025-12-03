@@ -214,6 +214,7 @@ static fm_config_proc_t		fm_config_scanner = {
 	.attributes = {
 		ATTRIB_INT(struct fm_config_scanner, global_packet_rate),
 		ATTRIB_INT(struct fm_config_scanner, target_packet_rate),
+		ATTRIB_INT(struct fm_config_scanner, socket_send_buffer),
 	},
 };
 

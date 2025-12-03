@@ -1121,6 +1121,11 @@ fm_socket_pool_get_socket(fm_socket_pool_t *pool, const fm_address_t *local_addr
 	if (sock == NULL)
 		return NULL;
 
+	if (fm_global.scanner.socket_send_buffer != 0
+	 && !fm_socket_option_set(sock, "SO_SNDBUF", SOL_SOCKET, SO_SNDBUFFORCE, fm_global.scanner.socket_send_buffer)) {
+		fm_log_warning("Unable to bump send buffer size");
+	}
+
 	if (!fm_socket_bind(sock, local_addr)) {
 		fm_log_error("Cannot bind %s socket to address %s: %m",
 				pool->driver->name,
