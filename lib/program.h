@@ -86,7 +86,7 @@ struct fm_config_service {
 
 
 struct fm_config_program {
-	fm_config_routine_t *	stage[__FM_SCAN_STAGE_MAX];
+	const fm_config_routine_t *stage[__FM_SCAN_STAGE_MAX];
 	fm_service_catalog_t *	service_catalog;
 };
 
