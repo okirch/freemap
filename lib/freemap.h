@@ -114,6 +114,7 @@ extern bool		fm_scanner_transmit(fm_scanner_t *, fm_time_t *);
 extern bool		fm_scanner_next_stage(fm_scanner_t *);
 extern double		fm_scanner_elapsed(fm_scanner_t *);
 extern void		fm_scanner_dump_program(fm_scanner_t *);
+extern const char *	fm_scan_stage_to_string(unsigned int stage_id);
 
 extern const fm_config_program_t *fm_config_library_load_program(const char *);
 extern void		fm_config_program_dump(const fm_config_program_t *program);

@@ -87,11 +87,12 @@ fm_command_perform_init(fm_command_t *cmd)
 
 	project = fm_project_create(cmd->values[0]);
 
-	assign_string(&project->discovery_probe, "default");
-	assign_string(&project->topology_probe, "traceroute");
-	assign_string(&project->reachability_probe, "default");
-	assign_string(&project->service_probe, "default");
+	if (!fm_project_apply_preset(project, "default")) {
+		fm_log_error("Unable to use default presets for newly created project.");
+		return 1;
+	}
 
+	printf("Using default presets.\n");
 	fm_project_save(project);
 
 	printf("Successfully initialized project %s current directory\n", project->name);
@@ -158,20 +159,9 @@ fm_command_perform_configure(fm_command_t *cmd)
 
 	key = cmd->values[0];
 	value = cmd->values[1];
-	if (!strcmp(key, "topology-probe")) {
-		if (!sanity_check_probe_name(key, FM_PROBE_MODE_TOPO, value))
+	if (!strcmp(key, "preset")) {
+		if (!fm_project_apply_preset(project, value))
 			return 1;
-		assign_string(&project->topology_probe, value);
-	} else
-	if (!strcmp(key, "reachability-probe")) {
-		if (!sanity_check_probe_name(key, FM_PROBE_MODE_HOST, value))
-			return 1;
-		assign_string(&project->reachability_probe, value);
-	} else
-	if (!strcmp(key, "service-probe")) {
-		if (!sanity_check_probe_name(key, FM_PROBE_MODE_PORT, value))
-			return 1;
-		assign_string(&project->service_probe, value);
 	} else {
 		fm_log_error("Unknown project setting %s=\"%s\"", key, value);
 		return 1;

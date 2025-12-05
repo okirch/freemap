@@ -28,11 +28,15 @@
 /* FIXME: the _probe members should be renamed to _stage */
 struct fm_project {
 	char *			name;
-	char *			discovery_probe;
-	char *			topology_probe;
-	char *			reachability_probe;
-	char *			service_probe;
 	fm_string_array_t	targets;
+
+	char *			preset;
+	fm_string_array_t	tcp_ports;
+	fm_string_array_t	udp_ports;
+	fm_config_routine_t *	discovery_scan;
+	fm_config_routine_t *	topology_scan;
+	fm_config_routine_t *	host_scan;
+	fm_config_routine_t *	port_scan;
 };
 
 extern fm_project_t *		fm_project_create(const char *name);
@@ -41,6 +45,7 @@ extern fm_project_t *		fm_project_load(void);
 extern bool			fm_project_save(fm_project_t *);
 extern void			fm_project_free(fm_project_t *);
 extern const char *		fm_project_get_asset_path(fm_project_t *);
+extern bool			fm_project_apply_preset(fm_project_t *project, const char *name);
 
 extern bool			fm_config_load_project(fm_project_t *project, const char *path);
 extern bool			fm_config_save_project(fm_project_t *project, const char *path);

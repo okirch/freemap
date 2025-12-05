@@ -310,12 +310,12 @@ static fm_config_proc_t		fm_project_main = {
 	.name = ATTRIB_STRING(fm_project_t, name),
 	.attributes = {
 		ATTRIB_STRING_ARRAY(fm_project_t, targets),
-		ATTRIB_STRING(fm_project_t, discovery_probe),
-		ATTRIB_STRING(fm_project_t, topology_probe),
-		ATTRIB_STRING(fm_project_t, reachability_probe),
-		ATTRIB_STRING(fm_project_t, service_probe),
+		ATTRIB_STRING(fm_project_t, preset),
+		ATTRIB_STRING_ARRAY(fm_project_t, tcp_ports),
+		ATTRIB_STRING_ARRAY(fm_project_t, udp_ports),
 	},
 };
+
 static fm_config_proc_t		fm_project_root = {
 	.children = {
 		{ "project",	0,					&fm_project_main }

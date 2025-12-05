@@ -17,6 +17,7 @@
 
 #include <unistd.h>
 #include "projects.h"
+#include "program.h"
 #include "logging.h"
 
 #define DEFAULT_PROJECT_CONF	"project.conf"
@@ -36,10 +37,9 @@ void
 fm_project_free(fm_project_t *proj)
 {
 	drop_string(&proj->name);
-	drop_string(&proj->discovery_probe);
-	drop_string(&proj->topology_probe);
-	drop_string(&proj->reachability_probe);
-	drop_string(&proj->service_probe);
+	drop_string(&proj->preset);
+	fm_string_array_destroy(&proj->udp_ports);
+	fm_string_array_destroy(&proj->tcp_ports);
 	fm_string_array_destroy(&proj->targets);
 	free(proj);
 }
@@ -83,3 +83,55 @@ fm_project_get_asset_path(fm_project_t *project)
 {
 	return ".";
 }
+
+static bool
+fm_project_resolve_preset_work(fm_project_t *project, const fm_config_preset_t *preset)
+{
+	fm_string_array_copy(&project->udp_ports, &preset->udp_ports);
+	fm_string_array_copy(&project->tcp_ports, &preset->tcp_ports);
+
+	/* clear the scan pointers. yes, we do leak memory */
+	project->discovery_scan = NULL;
+	project->topology_scan = NULL;
+	project->host_scan = NULL;
+	project->port_scan = NULL;
+
+	/* TBD: resolve preset routines */
+
+	return true;
+}
+
+bool
+fm_project_resolve_preset(fm_project_t *project)
+{
+	const fm_config_preset_t *preset;
+
+	preset = fm_config_load_preset(project->preset);
+	if (preset == NULL) {
+		fm_log_error("Unknown preset %s", project->preset);
+		return false;
+	}
+
+	return fm_project_resolve_preset_work(project, preset);
+}
+
+bool
+fm_project_apply_preset(fm_project_t *project, const char *name)
+{
+	const fm_config_preset_t *preset;
+
+	preset = fm_config_load_preset(name);
+	if (preset == NULL) {
+		fm_log_error("Unknown preset %s", name);
+		return false;
+	}
+
+	if (!fm_project_resolve_preset_work(project, preset)) {
+		fm_log_error("Invalid/incomplete preset %s", name);
+		return false;
+	}
+
+	assign_string(&project->preset, name);
+	return true;
+}
+

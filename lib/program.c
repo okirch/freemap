@@ -107,6 +107,12 @@ fm_config_load_library(void)
 	return the_library;
 }
 
+fm_config_preset_t *
+fm_config_load_preset(const char *name)
+{
+	return NULL;
+}
+
 fm_config_routine_t *
 fm_config_load_routine(int stage, const char *name)
 {
@@ -1002,20 +1008,12 @@ fm_config_program_alloc(void)
 }
 
 bool
-fm_config_program_set_stage(fm_config_program_t *program, unsigned int index, const char *name)
+fm_config_program_set_stage(fm_config_program_t *program, unsigned int index, const fm_config_routine_t *routine)
 {
 	if (index >= __FM_SCAN_STAGE_MAX)
 		return false;
 
-	program->stage[index] = NULL;
-	if (name != NULL) {
-		program->stage[index] = fm_config_load_routine(index, name);
-		if (program->stage[index] == NULL) {
-			fm_log_error("Unable to load routine %s for scan stage %u", name, index);
-			return false;
-		}
-	}
-
+	program->stage[index] = routine;
 	return true;
 }
 

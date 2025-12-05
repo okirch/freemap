@@ -104,6 +104,24 @@ fm_scanner_create_stage(fm_scanner_t *scanner, unsigned int stage_id)
 	return stage;
 }
 
+/*
+ * Convert stage id to string
+ */
+const char *
+fm_scan_stage_to_string(unsigned int stage_id)
+{
+	static const char *names[__FM_SCAN_STAGE_MAX] = {
+		[FM_SCAN_STAGE_DISCOVERY] = "discovery",
+		[FM_SCAN_STAGE_TOPO] = "topology",
+		[FM_SCAN_STAGE_HOST] = "host",
+		[FM_SCAN_STAGE_PORT] = "port",
+	};
+
+	if (stage_id >= __FM_SCAN_STAGE_MAX)
+		return NULL;
+	return names[stage_id];
+}
+
 static void
 fm_scanner_queue_probe(fm_scanner_t *scanner, int stage_id, fm_multiprobe_t *multiprobe)
 {

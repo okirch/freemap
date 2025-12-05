@@ -39,9 +39,12 @@ struct fm_cmd_scan_options {
 	const char *	logfile;
 	const char *	program;
 	bool		dump;
+	int		first_stage;
 };
 
-static struct fm_cmd_scan_options scan_options;
+static struct fm_cmd_scan_options scan_options = {
+	.first_stage = __FM_SCAN_STAGE_MAX,
+};
 
 static bool
 handle_scan_options(int c, const char *arg_value)
@@ -78,6 +81,22 @@ fm_command_register_scan(fm_cmdparser_t *parser)
 	fm_cmdparser_add_subcommand(parser, "port-scan", FM_CMDID_PORT_SCAN, NULL, scan_long_options, handle_scan_options);
 }
 
+/*
+ * Helper function for setting scan routines.
+ */
+static void
+set_stage(fm_config_program_t *program, int stage, const fm_config_routine_t *routine)
+{
+	if (routine == NULL)
+		fm_log_fatal("No %s scan configured for this project.", fm_scan_stage_to_string(stage));
+
+	if (!fm_config_program_set_stage(program, stage, routine))
+		fm_log_fatal("cannot set requested %s scan stage", fm_scan_stage_to_string(stage));
+
+	if (stage < scan_options.first_stage)
+		scan_options.first_stage = stage;
+}
+
 int
 fm_command_perform_discovery(fm_command_t *cmd)
 {
@@ -98,8 +117,8 @@ fm_command_perform_discovery(fm_command_t *cmd)
 	program = fm_config_program_alloc();
 
 	/* Set a discovery routine and compile it right away */
-	if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_DISCOVERY, "default")
-	 || !fm_config_program_compile(program, scanner))
+	set_stage(program, FM_SCAN_STAGE_DISCOVERY, project->discovery_scan);
+	if (!fm_config_program_compile(program, scanner))
 		fm_log_fatal("cannot set requested discovery scan stage");
 
 	if (cmd->nvalues != 0) {
@@ -161,7 +180,7 @@ fm_command_perform_scan(fm_command_t *cmd)
 	fm_project_t *project;
 	fm_config_program_t *program = NULL;
 	fm_scanner_t *scanner;
-	unsigned int k, first_stage = FM_SCAN_STAGE_HOST;
+	unsigned int k;
 
 	project = fm_project_load();
 	if (project == NULL) {
@@ -201,28 +220,19 @@ fm_command_perform_scan(fm_command_t *cmd)
 	}
 
 	if (cmd->cmdid == FM_CMDID_TOPO_SCAN) {
-		if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_TOPO, project->topology_probe?: "traceroute"))
-			fm_log_fatal("cannot set requested topology scan stage");
-		first_stage = FM_SCAN_STAGE_TOPO;
+		set_stage(program, FM_SCAN_STAGE_TOPO, project->topology_scan);
 	} else
 	if (cmd->cmdid == FM_CMDID_HOST_SCAN) {
-		if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_HOST, project->reachability_probe?: "default"))
-			fm_log_fatal("cannot set requested topology scan stage");
-		first_stage = FM_SCAN_STAGE_HOST;
+		set_stage(program, FM_SCAN_STAGE_HOST, project->host_scan);
 	} else
 	if (cmd->cmdid == FM_CMDID_PORT_SCAN) {
-		if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_PORT, project->service_probe?: "default"))
-			fm_log_fatal("cannot set requested topology scan stage");
-		first_stage = FM_SCAN_STAGE_PORT;
-	} else
-	if (scan_options.program != NULL) {
-		fm_log_fatal("the entire program mess is gone.");
+		set_stage(program, FM_SCAN_STAGE_PORT, project->port_scan);
 	} else {
-		if (!fm_config_program_set_stage(program, FM_SCAN_STAGE_HOST, project->reachability_probe?: "default")
-		 || !fm_config_program_set_stage(program, FM_SCAN_STAGE_PORT, project->service_probe?: "default"))
-			fm_log_fatal("Could not build scan program");
-		first_stage = FM_SCAN_STAGE_HOST;
+		set_stage(program, FM_SCAN_STAGE_HOST, project->host_scan);
+		set_stage(program, FM_SCAN_STAGE_PORT, project->port_scan);
 	}
+
+	assert(scan_options.first_stage < __FM_SCAN_STAGE_MAX);
 
 	if (!fm_config_program_set_service_catalog(program, "default"))
 		fm_log_fatal("Unknown service catalog \"%s\"", "default");
@@ -236,8 +246,8 @@ fm_command_perform_scan(fm_command_t *cmd)
 	if (scan_options.dump)
 		fm_scanner_dump_program(scanner);
 
-	if (!fm_scanner_ready(scanner, first_stage)) {
-		fprintf(stderr, "scanner is not fully configured\n");
+	if (!fm_scanner_ready(scanner, scan_options.first_stage)) {
+		fm_log_error("scanner is not fully configured");
 		return 1;
 	}
 

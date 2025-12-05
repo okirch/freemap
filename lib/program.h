@@ -29,6 +29,7 @@
 
 typedef struct fm_config_probe fm_config_probe_t;
 typedef struct fm_config_packet fm_config_packet_t;
+typedef struct fm_config_preset fm_config_preset_t;
 
 struct fm_config_probe {
 	const char *		name;
@@ -84,6 +85,18 @@ struct fm_config_service {
 	fm_config_packet_array_t packets;
 };
 
+struct fm_config_preset {
+	const fm_config_module_t *containing_module;
+
+	const char *		name;
+	fm_string_array_t	udp_ports;
+	fm_string_array_t	tcp_ports;
+
+	char *			discovery_scan;
+	char *			topology_scan;
+	char *			host_scan;
+	char *			port_scan;
+};
 
 struct fm_config_program {
 	const fm_config_routine_t *stage[__FM_SCAN_STAGE_MAX];
@@ -92,9 +105,10 @@ struct fm_config_program {
 
 
 extern fm_config_program_t *	fm_config_program_alloc(void);
-extern bool			fm_config_program_set_stage(fm_config_program_t *, unsigned int, const char *);
+extern bool			fm_config_program_set_stage(fm_config_program_t *, unsigned int, const fm_config_routine_t *);
 extern bool			fm_config_program_set_service_catalog(fm_config_program_t *, const char *);
 extern void			fm_config_program_free(fm_config_program_t *);
+extern fm_config_preset_t *	fm_config_load_preset(const char *name);
 
 extern int			fm_config_probe_process_params(const fm_config_probe_t *, fm_uint_array_t *values);
 
