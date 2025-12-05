@@ -370,7 +370,7 @@ fm_config_apply_child(curly_node_t *parent, fm_config_proc_t *proc, void *data, 
 		}
 	}
 
-	fm_config_complain(parent, "unknown child \"%s\"", type);
+	fm_config_complain(node, "unknown child \"%s\"", type);
 	return false;
 }
 
