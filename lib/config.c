@@ -646,14 +646,14 @@ fm_config_render_value(curly_node_t *node, void *data, const fm_config_attr_t *a
 static bool
 fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *data, curly_attr_t *attr)
 {
-	const char *attr_name = curly_attr_get_name(attr);
+	const char *attr_name = curly_attr_get_name(attr), *conv_name;
 	unsigned int i;
 
 	/* Owing to the way we build the processing information, the attr names in these
 	 * tables use C member field names like bla_size, while we want the config file(s)
 	 * to use "bla-size" instead.
 	 */
-	attr_name = fm_attr_string_translate(attr_name, '-', '_');
+	conv_name = fm_attr_string_translate(attr_name, '-', '_');
 
 	for (i = 0; i < MAX_ATTRIBUTES; ++i) {
 		fm_config_attr_t *adef = &proc->attributes[i];
@@ -662,6 +662,7 @@ fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *dat
 			break;
 
 		if (!strcmp(adef->name, attr_name)
+		 || !strcmp(adef->name, conv_name)
 		 || !strcmp(adef->name, "*")) {
 			return fm_config_apply_value(node, data, adef, attr);
 		}
