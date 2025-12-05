@@ -723,6 +723,32 @@ fm_config_process_node(curly_node_t *node, fm_config_proc_t *proc, void *data)
 }
 
 static bool
+fm_config_render_child(curly_node_t *node, fm_config_child_t *child_proc, void *data)
+{
+	fm_config_attr_t *name_attr_def = &child_proc->proc->name;
+	const char *name = NULL;
+	curly_node_t *child;
+
+	if (name_attr_def->type == FM_CONFIG_ATTR_TYPE_BAD) {
+		/* unnamed child node
+		 *   blah-type { ... }
+		 */
+	} else
+	if (name_attr_def->type == FM_CONFIG_ATTR_TYPE_STRING) {
+		void *attr_data = fm_config_addr_apply_offset(data, name_attr_def->offset);
+		name = *(char **) attr_data;
+	} else
+	if (name_attr_def->type) {
+		fm_config_complain(node, "support for %s child node with name not implemented", child_proc->name);
+		return false;
+	}
+
+	child = curly_node_add_child(node, child_proc->name, name);
+
+	return fm_config_render_node(child, child_proc->proc, data);
+}
+
+static bool
 fm_config_render_node(curly_node_t *node, fm_config_proc_t *proc, void *data)
 {
 	unsigned int i;
@@ -738,28 +764,31 @@ fm_config_render_node(curly_node_t *node, fm_config_proc_t *proc, void *data)
 
 	for (i = 0; i < MAX_CHILDREN; ++i) {
 		fm_config_child_t *child_proc = &proc->children[i];
-		fm_config_attr_t *name_attr_def;
-		curly_node_t *child;
-		const char *name;
 		void *child_data;
 
 		if (child_proc->name == NULL)
 			break;
 
-		name_attr_def = &child_proc->proc->name;
-		if (name_attr_def->type == FM_CONFIG_ATTR_TYPE_STRING) {
-			void *attr_data = fm_config_addr_apply_offset(data, name_attr_def->offset);
-			name = *(char **) attr_data;
-		} else
-		if (name_attr_def->type) {
-			fm_config_complain(node, "support for %s child node with name not implemented", child_proc->name);
+		child_data = fm_config_addr_apply_offset(data, child_proc->offset);
+
+		if (child_proc->iterate_children != NULL) {
+			unsigned int index = 0;
+			void *item_data;
+
+			while ((item_data = child_proc->iterate_children(child_proc, child_data, index++)) != NULL) {
+				if (!fm_config_render_child(node, child_proc, item_data))
+					return false;
+			}
+			continue;
+		}
+
+		if (child_proc->alloc_child != NULL) {
+			fm_log_error("cannot marshal %s.%s: node lacks iterate_children() method",
+					curly_node_type(node), child_proc->name);
 			return false;
 		}
 
-		child = curly_node_add_child(node, child_proc->name, name);
-
-		child_data = fm_config_addr_apply_offset(data, child_proc->offset);
-		if (!fm_config_render_node(child, child_proc->proc, child_data))
+		if (!fm_config_render_child(node, child_proc, child_data))
 			return false;
 	}
 

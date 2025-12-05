@@ -54,6 +54,7 @@ struct fm_config_child {
 	fm_config_proc_t *	proc;
 
 	void *			(*alloc_child)(curly_node_t *, void *data);
+	void *			(*iterate_children)(const fm_config_child_t *, void *data, unsigned int index);
 };
 
 struct fm_config_attr {
