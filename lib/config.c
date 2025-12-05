@@ -643,6 +643,108 @@ fm_config_render_value(curly_node_t *node, void *data, const fm_config_attr_t *a
 	return okay;
 }
 
+/*
+ * Handle unknown attributes - convert them to foo=bar notation and store them as strings
+ * probe->extra_args.
+ * If the attribute contains more than one value, we concat them together as
+ *   foo=bar,baz,bloopie
+ */
+static bool
+fm_config_add_wildcard_item(curly_node_t *node, void *attr_data, const curly_attr_t *attr)
+{
+	fm_string_array_t *extra_args = attr_data;
+	const char *attr_name = curly_attr_get_name(attr);
+	const char *attr_value;
+	unsigned int k, count, size, pos;
+	char *formatted;
+
+	count = curly_attr_get_count(attr);
+
+	size = strlen(attr_name) + 1;
+	for(k = 0; k < count; ++k) {
+		attr_value = curly_attr_get_value(attr, k);
+
+		size += strlen(attr_value) + 1;
+	}
+
+	formatted = calloc(size, 1);
+	strcpy(formatted, attr_name);
+
+	for(k = 0, pos = 0; k < count; ++k) {
+		pos += strlen(formatted + pos);
+
+		if (k == 0)
+			formatted[pos++] = '=';
+		else
+			formatted[pos++] = ',';
+
+		strcpy(formatted + pos, curly_attr_get_value(attr, k));
+	}
+
+	assert(formatted[size - 1] == 0);
+
+	fm_string_array_append(extra_args, formatted);
+	free(formatted);
+
+	return true;
+}
+
+
+static bool
+fm_config_apply_wildcard(curly_node_t *node, void *data, const fm_config_attr_t *attr_def, const curly_attr_t *attr)
+{
+	void *attr_data = fm_config_addr_apply_offset(data, attr_def->offset);
+
+	if (attr_def->type != FM_CONFIG_ATTR_TYPE_STRING_ARRAY) {
+		fm_config_complain(node, "wildcard attribute has incompatible type (must be string array)");
+		return false;
+	}
+
+	return fm_config_add_wildcard_item(node, attr_data, attr);
+}
+
+static bool
+fm_config_render_wildcard_item(curly_node_t *node, const char *item)
+{
+	char *copy = strdupa(item);
+	char *attr_name, *s, *attr_value, *next;
+
+	attr_name = copy;
+	if ((s = strchr(copy, '=')) == NULL)
+		return false;
+
+	*s++ = '\0';
+
+	for (attr_value = s; attr_value; attr_value = next) {
+		if ((next = strchr(attr_value, ',')) != NULL)
+			*next++ = '\0';
+		curly_node_add_attr_list(node, attr_name, attr_value);
+	}
+	return true;
+}
+
+static bool
+fm_config_render_wildcard(curly_node_t *node, void *data, const fm_config_attr_t *attr_def)
+{
+	void *attr_data = fm_config_addr_apply_offset(data, attr_def->offset);
+	fm_string_array_t *extra_args;
+	unsigned int i;
+
+	if (attr_def->type != FM_CONFIG_ATTR_TYPE_STRING_ARRAY) {
+		fm_log_error("%s: wildcard attribute has incompatible type (must be string array)", curly_node_type(node));
+		return false;
+	}
+
+	extra_args = attr_data;
+	for (i = 0; i < extra_args->count; ++i) {
+		if (!fm_config_render_wildcard_item(node, extra_args->entries[i])) {
+			fm_log_error("%s: cannot render wildcard attr %s", curly_node_type(node), extra_args->entries[i]);
+			return false;
+		}
+	}
+	return true;
+}
+
 static bool
 fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *data, curly_attr_t *attr)
 {
@@ -661,11 +763,11 @@ fm_config_process_one_attr(curly_node_t *node, fm_config_proc_t *proc, void *dat
 		if (adef->name == NULL)
 			break;
 
-		if (!strcmp(adef->name, attr_name)
-		 || !strcmp(adef->name, conv_name)
-		 || !strcmp(adef->name, "*")) {
+		if (!strcmp(adef->name, attr_name) || !strcmp(adef->name, conv_name))
 			return fm_config_apply_value(node, data, adef, attr);
-		}
+
+		if (!strcmp(adef->name, "*"))
+			return fm_config_apply_wildcard(node, data, adef, attr);
 	}
 
 	/* FIXME: we may be nice and handle cases where users write short-hand node
@@ -758,6 +860,10 @@ fm_config_render_node(curly_node_t *node, fm_config_proc_t *proc, void *data)
 
 		if (attr_def->name == NULL)
 			break;
+		if (!strcmp(attr_def->name, "*")) {
+			if (!fm_config_render_wildcard(node, data, attr_def))
+				return false;
+		} else
 		if (!fm_config_render_value(node, data, attr_def))
 			return false;
 	}

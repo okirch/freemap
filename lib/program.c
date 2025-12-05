@@ -741,52 +741,6 @@ fm_config_packet_root_create(curly_node_t *node, void *data)
 }
 
 /*
- * Handle unknown attributes - convert them to foo=bar notation and store them as strings
- * probe->extra_args.
- * If the attribute contains more than one value, we concat them together as
- *   foo=bar,baz,bloopie
- */
-static bool
-fm_config_probe_set_extra(curly_node_t *node, void *attr_data, const curly_attr_t *attr)
-{
-	fm_string_array_t *extra_args = attr_data;
-	const char *attr_name = curly_attr_get_name(attr);
-	const char *attr_value;
-	unsigned int k, count, size, pos;
-	char *formatted;
-
-	count = curly_attr_get_count(attr);
-
-	size = strlen(attr_name) + 1;
-	for(k = 0; k < count; ++k) {
-		attr_value = curly_attr_get_value(attr, k);
-
-		size += strlen(attr_value) + 1;
-	}
-
-	formatted = calloc(size, 1);
-	strcpy(formatted, attr_name);
-
-	for(k = 0, pos = 0; k < count; ++k) {
-		pos += strlen(formatted + pos);
-
-		if (k == 0)
-			formatted[pos++] = '=';
-		else
-			formatted[pos++] = ',';
-
-		strcpy(formatted + pos, curly_attr_get_value(attr, k));
-	}
-
-	assert(formatted[size - 1] == 0);
-
-	fm_string_array_append(extra_args, formatted);
-	free(formatted);
-
-	return true;
-}
-
-/*
  * Parse a packet payload as a sequence of hex octets
  */
 static bool
@@ -846,7 +800,7 @@ static fm_config_proc_t	fm_config_probe_root = {
 		{ "retries",	offsetof(fm_config_probe_t, probe_params.retries),	FM_CONFIG_ATTR_TYPE_INT },
 		{ "tos",	offsetof(fm_config_probe_t, probe_params.tos),		FM_CONFIG_ATTR_TYPE_INT },
 
-		{ "*",		offsetof(fm_config_probe_t, extra_args),		FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = fm_config_probe_set_extra }
+		{ "*",		offsetof(fm_config_probe_t, extra_args),		FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
 	},
 };
 
