@@ -34,6 +34,16 @@ fm_uint_array_append(fm_uint_array_t *array, unsigned int value)
 }
 
 void
+fm_uint_array_copy(fm_uint_array_t *dst, const fm_uint_array_t *src)
+{
+	fm_uint_array_destroy(dst);
+
+	maybe_realloc_array(dst->entries, dst->count, src->count);
+	memcpy(dst->entries, src->entries, src->count * sizeof(dst->entries[0]));
+	dst->count = src->count;
+}
+
+void
 fm_uint_array_destroy(fm_uint_array_t *array)
 {
 	if (array->entries) {
@@ -91,6 +101,21 @@ fm_string_array_append(fm_string_array_t *sarr, const char *s)
 	if ((sarr->count % chunk) == 0)
 		sarr->entries = realloc(sarr->entries, (sarr->count + chunk) * sizeof(sarr->entries[0]));
 	sarr->entries[sarr->count++] = strdup(s);
+}
+
+void
+fm_string_array_copy(fm_string_array_t *dst, const fm_string_array_t *src)
+{
+	unsigned int i;
+
+	fm_string_array_destroy(dst);
+
+	maybe_realloc_array(dst->entries, dst->count, src->count);
+
+	for (i = 0; i < src->count; ++i)
+		dst->entries[i] = strdup(src->entries[i]);
+
+	dst->count = src->count;
 }
 
 void
