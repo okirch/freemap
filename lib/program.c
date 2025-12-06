@@ -53,11 +53,6 @@ typedef struct fm_config_catalog {
 	fm_string_array_t	names;
 } fm_config_catalog_t;
 
-typedef struct fm_config_probe_array {
-	unsigned int		count;
-	fm_config_probe_t **	entries;
-} fm_config_probe_array_t;
-
 typedef struct fm_config_catalog_array {
 	unsigned int		count;
 	fm_config_catalog_t **	entries;
@@ -72,18 +67,6 @@ struct fm_config_module {
 	fm_config_service_array_t services;
 	fm_config_catalog_array_t service_catalogs;
 	fm_config_preset_array_t presets;
-};
-
-struct fm_config_routine {
-	const char *		name;
-	int			stage;		/* FM_SCAN_STAGE_xxx */
-	bool			optional;
-	fm_config_probe_array_t	probes;
-
-	fm_string_array_t	broadcast_probes;
-	fm_string_array_t	topology_probes;
-	fm_string_array_t	host_probes;
-	fm_string_array_t	port_probes;
 };
 
 struct fm_config_routine_definition {

@@ -44,6 +44,23 @@ struct fm_config_probe {
 	fm_string_array_t	extra_args;
 };
 
+typedef struct fm_config_probe_array {
+	unsigned int		count;
+	fm_config_probe_t **	entries;
+} fm_config_probe_array_t;
+
+struct fm_config_routine {
+	const char *		name;
+	int			stage;		/* FM_SCAN_STAGE_xxx */
+	bool			optional;
+	fm_config_probe_array_t	probes;
+
+	fm_string_array_t	broadcast_probes;
+	fm_string_array_t	topology_probes;
+	fm_string_array_t	host_probes;
+	fm_string_array_t	port_probes;
+};
+
 typedef struct fm_config_module fm_config_module_t;
 typedef struct fm_config_routine fm_config_routine_t;
 typedef struct fm_config_routine_definition fm_config_routine_definition_t;
