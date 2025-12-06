@@ -24,6 +24,8 @@ than setting a bunch of path names. It supports the usual options like --prefix,
 
 # Using
 
+## Initialize your scan project
+
 Rather than putting the entire scan process into one huge pipeline, freemap tries
 to split this up into several stages that can be run independently. The idea is that
 you may want to re-run parts of a scan, possibly with different arguments, without
@@ -37,16 +39,38 @@ This will initialize the current directory as a scan project, and place a config
 file in there called `project.conf`. You can edit this file directly, or you can use
 `freemap` to change settings for you.
 
+Freemap can set up your scan configuration using so-called presets which define a
+set of probes and ports. Initially, it will use the preset "default".
+
+You can modify your scan configuration in two ways. One is to select a different preset,
+like this:
+
 ```
-  freemap add-targets 192.168.1.0/24
-  freemap set topology-scan traceroute
-  freemap set reachability-scan magicscan
-  freemap set service-scan thorough
+  freemap configure preset local
 ```
 
-The first step is crucial, because it defines the scan target(s) you want to probe going
-forward. If you do this, you can run any scan commands without specifying the targets
-on the command line.
+A list of available presets can be obtained using
+
+```
+  freemap configure preset list
+```
+
+The other approach to tuning your scan configuration is by editing the project.conf file
+in your scan project. The ins and outs of that will be explained in a separate document
+(which still needs to be written).
+
+
+## Configure your scan targets
+
+This step is optional, because you can invoke all scan commands with one or more targets
+given as command line arguments. However, having the list of targets defined in your
+project configuration may be more convenient. It can be done like this:
+
+```
+  freemap add-targets 192.168.1.0/24
+```
+
+## Running your scan
 
 Subsequently, you can run individual probing steps:
 
