@@ -20,6 +20,7 @@
 #include <stdarg.h>
 #include <mcheck.h>
 
+#include "xconfig.h"
 #include "freemap.h"
 #include "scanner.h"
 #include "commands.h"
@@ -132,7 +133,7 @@ main(int argc, char **argv)
 
 	fm_config_init_defaults(&fm_global);
 
-	if (!fm_config_load(&fm_global, "/etc/freemap.conf"))
+	if (!fm_config_load(&fm_global, FREEMAP_ETC_PATH "/freemap.conf"))
 		fm_log_fatal("Unable to parse global config file\n");
 
 	/* This location will change once we move to project subdirs */
