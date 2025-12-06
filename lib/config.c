@@ -388,9 +388,13 @@ fm_config_attr_set_int(curly_node_t *node, void *attr_data, const curly_attr_t *
 static bool
 fm_config_attr_render_int(curly_node_t *node, void *attr_data, const char *name)
 {
+	int ivalue = *(int *) attr_data;
 	char value[32];
 
-	snprintf(value, sizeof(value), "%d", *(int *) attr_data);
+	if (ivalue == 0)
+		return true;
+
+	snprintf(value, sizeof(value), "%d", ivalue);
 	curly_node_set_attr(node, name, value);
 	return true;
 }
@@ -419,6 +423,9 @@ static bool
 fm_config_attr_render_bool(curly_node_t *node, void *attr_data, const char *name)
 {
 	bool value = *(bool *) attr_data;
+
+	if (!value)
+		return true;
 
 	curly_node_set_attr(node, name, value? "true" : "false");
 	return true;
@@ -568,7 +575,7 @@ fm_config_apply_value(curly_node_t *node, void *data, const fm_config_attr_t *at
 
 	case FM_CONFIG_ATTR_TYPE_SPECIAL:
 		if (attr_def->setfn == NULL) {
-			fm_config_complain(node, "attribute %s has not set() function", attr_def->name);
+			fm_config_complain(node, "attribute %s has no set() function", attr_def->name);
 			return false;
 		}
 		okay = attr_def->setfn(node, attr_data, attr);
@@ -618,7 +625,7 @@ fm_config_render_value(curly_node_t *node, void *data, const fm_config_attr_t *a
 
 	case FM_CONFIG_ATTR_TYPE_SPECIAL:
 		if (attr_def->getfn == NULL) {
-			fm_config_complain(node, "attribute %s has not get() function", attr_name);
+			fm_config_complain(node, "attribute %s has no get() function", attr_name);
 			return false;
 		}
 		okay = attr_def->getfn(node, attr_data);
