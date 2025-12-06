@@ -769,7 +769,7 @@ fm_config_module_load(fm_config_module_t *module, const char *path)
  * Process a port or port range
  */
 static bool
-fm_scanner_process_port(const char *arg, fm_uint_array_t *array)
+fm_config_routine_parse_port_list_entry(const char *arg, fm_uint_array_t *array)
 {
 	fm_port_range_t range;
 	unsigned int low_port, high_port;
@@ -793,40 +793,55 @@ fm_scanner_process_port(const char *arg, fm_uint_array_t *array)
 
 /*
  * Process the list of ports or port ranges, convert to an int array of ports.
- * Returns -1 on error, or FM_PARAM_TYPE_* to indicate the type of parameter.
  */
-int
-fm_config_probe_process_params(const fm_config_probe_t *parsed_probe, fm_uint_array_t *values)
+static bool
+fm_config_routine_parse_port_list(const fm_string_array_t *strings, const char *proto_name, fm_uint_array_t *values)
 {
-	const char *mode_string = fm_probe_mode_to_string(parsed_probe->mode);
-	const char *probe_name = parsed_probe->name;
-	const fm_string_array_t *strings = &parsed_probe->string_ports;
 	unsigned int i;
 
-	if (strings->count == 0) {
-		if (parsed_probe->mode == FM_PROBE_MODE_PORT) {
-			fm_log_error("%s: %s scan cannot handle port range", probe_name, mode_string);
-			return -1;
-		}
-		return FM_PARAM_TYPE_NONE;
-	}
-
-	if (parsed_probe->mode != FM_PROBE_MODE_PORT) {
-		fm_log_error("%s: %s scan requires ports", probe_name, mode_string);
-		return -1;
-	}
+	if (strings == NULL)
+		return true;
 
 	for (i = 0; i < strings->count; ++i) {
 		const char *arg = strings->entries[i];
 
-		if (!fm_scanner_process_port(arg, values)) {
-			fm_log_error("%s: unable to parse port or port range \"%s\"", probe_name, arg);
+		if (!fm_config_routine_parse_port_list_entry(arg, values)) {
+			fm_log_error("unable to parse %s port or port range \"%s\"", proto_name, arg);
 			fm_uint_array_destroy(values);
-			return -1;
+			return false;
 		}
 	}
 
-	return FM_PARAM_TYPE_PORT;
+	return true;
+}
+
+/*
+ * Finalize the probe definition just loaded.
+ */
+bool
+fm_config_routine_bind_ports(fm_config_routine_t *routine, const char *proto_name, const fm_string_array_t *port_strings)
+{
+	fm_uint_array_t port_values = { 0 };
+	unsigned int i;
+
+	if (!fm_config_routine_parse_port_list(port_strings, proto_name, &port_values))
+		return false;
+
+	for (i = 0; i < routine->probes.count; ++i) {
+		fm_config_probe_t *probe = routine->probes.entries[i];
+
+		if (strcmp(probe->proto_name, proto_name))
+			continue;
+
+		if (port_values.count == 0) {
+			fm_log_error("using port probe %s, but no %s ports defined by project", probe->name, proto_name);
+			return false;
+		}
+
+		fm_uint_array_copy(&probe->ports, &port_values);
+	}
+
+	return true;
 }
 
 /*
@@ -1069,7 +1084,6 @@ static fm_config_proc_t	fm_config_probe_root = {
 		{ "protocol",	offsetof(fm_config_probe_t, proto_name),		FM_CONFIG_ATTR_TYPE_STRING },
 		{ "optional",	offsetof(fm_config_probe_t, optional),			FM_CONFIG_ATTR_TYPE_BOOL },
 		{ "random",	offsetof(fm_config_probe_t, random),			FM_CONFIG_ATTR_TYPE_BOOL },
-		{ "port",	offsetof(fm_config_probe_t, string_ports),		FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
 		{ "ttl",	offsetof(fm_config_probe_t, probe_params.ttl),		FM_CONFIG_ATTR_TYPE_INT },
 		{ "retries",	offsetof(fm_config_probe_t, probe_params.retries),	FM_CONFIG_ATTR_TYPE_INT },
 		{ "tos",	offsetof(fm_config_probe_t, probe_params.tos),		FM_CONFIG_ATTR_TYPE_INT },

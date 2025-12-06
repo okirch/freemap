@@ -124,7 +124,15 @@ fm_config_load(fm_config_t *conf, const char *path)
 bool
 fm_config_load_project(fm_project_t *project, const char *path)
 {
-	return fm_config_load_work(path, &fm_project_root, project);
+	if (!fm_config_load_work(path, &fm_project_root, project))
+		return false;
+
+	if (project->port_scan != NULL) {
+		fm_config_routine_bind_ports(project->port_scan, "udp", &project->udp_ports);
+		fm_config_routine_bind_ports(project->port_scan, "tcp", &project->tcp_ports);
+	}
+
+	return true;
 }
 
 bool

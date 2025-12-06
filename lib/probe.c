@@ -294,7 +294,6 @@ fm_multiprobe_t *
 fm_multiprobe_from_config(fm_probe_class_t *pclass, const fm_config_probe_t *config)
 {
 	fm_multiprobe_t *multiprobe;
-	int param_type;
 
 	if (pclass->configure == NULL)
 		fm_log_fatal("probe class %s does not support multiprobe", pclass->name);
@@ -309,13 +308,10 @@ fm_multiprobe_from_config(fm_probe_class_t *pclass, const fm_config_probe_t *con
 	if (config->optional)
 		multiprobe->action_flags |= FM_SCAN_ACTION_FLAG_OPTIONAL;
 
-	param_type = fm_config_probe_process_params(config, &multiprobe->bucket_list.array);
-	if (param_type < 0)
-		goto failed;
-
-	if (param_type != FM_PARAM_TYPE_NONE) {
-		multiprobe->bucket_list.param_type = param_type;
+	if (config->mode == FM_PROBE_MODE_PORT && config->ports.count) {
+		fm_uint_array_copy(&multiprobe->bucket_list.array, &config->ports);
 		multiprobe->bucket_list.count = multiprobe->bucket_list.array.count;
+		multiprobe->bucket_list.param_type = FM_PARAM_TYPE_PORT;
 	}
 
 	if (!pclass->configure(pclass, multiprobe, &config->extra_args))
@@ -329,10 +325,6 @@ fm_multiprobe_from_config(fm_probe_class_t *pclass, const fm_config_probe_t *con
 		multiprobe->params.retries = 3;
 
 	return multiprobe;
-
-failed:
-	fm_multiprobe_free(multiprobe);
-	return NULL;
 }
 
 
