@@ -96,7 +96,11 @@ fm_project_resolve_preset_work(fm_project_t *project, const fm_config_preset_t *
 	project->host_scan = NULL;
 	project->port_scan = NULL;
 
-	/* TBD: resolve preset routines */
+	if (!fm_config_preset_resolve_stage(preset, FM_SCAN_STAGE_DISCOVERY, &project->discovery_scan)
+	 || !fm_config_preset_resolve_stage(preset, FM_SCAN_STAGE_TOPO, &project->topology_scan)
+	 || !fm_config_preset_resolve_stage(preset, FM_SCAN_STAGE_HOST, &project->host_scan)
+	 || !fm_config_preset_resolve_stage(preset, FM_SCAN_STAGE_PORT, &project->port_scan))
+		return false;
 
 	return true;
 }

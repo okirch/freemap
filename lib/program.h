@@ -37,6 +37,8 @@ struct fm_config_probe {
 
 	bool			optional;
 	bool			random;
+	char *			proto_name;
+	char *			info;
 	fm_probe_params_t	probe_params;
 	fm_string_array_t	string_ports;
 	fm_string_array_t	extra_args;
@@ -44,6 +46,7 @@ struct fm_config_probe {
 
 typedef struct fm_config_module fm_config_module_t;
 typedef struct fm_config_routine fm_config_routine_t;
+typedef struct fm_config_routine_definition fm_config_routine_definition_t;
 typedef struct fm_config_service fm_config_service_t;
 typedef struct fm_config_catalog fm_config_catalog_t;
 
@@ -57,6 +60,11 @@ typedef struct fm_config_routine_array {
 	fm_config_routine_t **	entries;
 } fm_config_routine_array_t;
 
+typedef struct fm_config_routine_definition_array {
+	unsigned int		count;
+	fm_config_routine_definition_t **entries;
+} fm_config_routine_definition_array_t;
+
 typedef struct fm_config_packet_array {
 	unsigned int		count;
 	fm_config_packet_t **	entries;
@@ -66,6 +74,11 @@ typedef struct fm_config_service_array {
 	unsigned int		count;
 	fm_config_service_t **	entries;
 } fm_config_service_array_t;
+
+typedef struct fm_config_preset_array {
+	unsigned int		count;
+	fm_config_preset_t **	entries;
+} fm_config_preset_array_t;
 
 struct fm_config_packet {
 	const char *		module;
@@ -114,9 +127,20 @@ extern int			fm_config_probe_process_params(const fm_config_probe_t *, fm_uint_a
 
 extern fm_config_library_t *	fm_config_library_alloc(const char * const *search_paths);
 extern fm_config_module_t *	fm_config_library_load_module(fm_config_library_t *, const char *name);
-extern fm_config_routine_t *	fm_config_library_resolve_routine(fm_config_library_t *, int, const char *name);
-extern fm_config_catalog_t *	fm_config_library_resolve_service_catalog(fm_config_library_t *, const char *name, fm_config_module_t *);
+extern fm_config_preset_t *	fm_config_library_resolve_preset(fm_config_library_t *, const char *name);
+extern fm_config_routine_t *	fm_config_library_resolve_routine(fm_config_library_t *, int, const char *name, const fm_config_module_t *);
+extern fm_config_catalog_t *	fm_config_library_resolve_service_catalog(fm_config_library_t *, const char *name, const fm_config_module_t *);
+
+extern bool			fm_config_preset_resolve_stage(const fm_config_preset_t *, int stage, fm_config_routine_t **ret);
 
 extern void			fm_config_service_array_append(fm_config_service_array_t *array, fm_config_service_t *service);
+
+/* routine marshaling */
+#ifdef FREEMAP_FILEFMT_H
+extern void *			fm_project_routine_ptr_alloc(curly_node_t *node, void *data);
+extern void *			fm_project_routine_ptr_iterate(const fm_config_child_t *, void *data, unsigned int index);
+extern struct fm_config_proc	fm_config_routine_root;
+#endif
+
 
 #endif /* FREEMAP_PROGRAM_H */

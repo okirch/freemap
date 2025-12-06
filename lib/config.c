@@ -27,6 +27,7 @@
 #include "config.h"
 #include "projects.h"
 #include "filefmt.h"
+#include "program.h"
 #include "logging.h"
 
 static fm_config_proc_t		fm_config_root;
@@ -313,6 +314,12 @@ static fm_config_proc_t		fm_project_main = {
 		ATTRIB_STRING(fm_project_t, preset),
 		ATTRIB_STRING_ARRAY(fm_project_t, tcp_ports),
 		ATTRIB_STRING_ARRAY(fm_project_t, udp_ports),
+	},
+	.children = {
+		{ "discovery-scan",	offsetof(fm_project_t, discovery_scan),	&fm_config_routine_root, .alloc_child = fm_project_routine_ptr_alloc, .iterate_children = fm_project_routine_ptr_iterate },
+		{ "topology-scan",	offsetof(fm_project_t, topology_scan),	&fm_config_routine_root, .alloc_child = fm_project_routine_ptr_alloc, .iterate_children = fm_project_routine_ptr_iterate },
+		{ "host-scan",		offsetof(fm_project_t, host_scan),	&fm_config_routine_root, .alloc_child = fm_project_routine_ptr_alloc, .iterate_children = fm_project_routine_ptr_iterate },
+		{ "port-scan",		offsetof(fm_project_t, port_scan),	&fm_config_routine_root, .alloc_child = fm_project_routine_ptr_alloc, .iterate_children = fm_project_routine_ptr_iterate },
 	},
 };
 
