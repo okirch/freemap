@@ -23,8 +23,9 @@ fm_config_t		fm_global;
 void
 fm_config_init_defaults(fm_config_t *conf)
 {
+#ifndef FREEMAP_DEVELOPMENT
 	fm_string_array_append(&conf->library.search_path, FREEMAP_PROBES_PATH);
-#ifdef FREEMAP_DEVELOPMENT
+#else
 	fm_string_array_append(&conf->library.search_path, "./probes");
 #endif
 
