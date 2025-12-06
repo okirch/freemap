@@ -1,78 +1,119 @@
-discovery-scan default {
-	broadcast-probe icmp {
-	}
+# Standard probes
+
+# Broadcast probes can be used on local networks to discover all IPv6 nodes
+broadcast-probe icmp {
+	protocol icmp;
+}
+
+# Topology probes try to discover the ingress routers of the target network(s)
+topo-probe traceroute {
+	protocol traceroue;
+	packet-proto udp;
+}
+
+topo-probe traceroute-tcp {
+	protocol traceroue;
+	packet-proto tcp;
+}
+
+# Host probes check whether a host is reachable at all
+host-probe arp {
+	info "Check IPv4 host reachability on local network, using ARP requests";
+	protocol arp;
+	# Must be marked as optional, because the probe does not handle IPv6 targets,
+	# and it works on local networks only
+	optional true;
+}
+
+host-probe icmp {
+	info "Check host reachability, using ICMP echo requests";
+	protocol "icmp";
+	icmp-type "echo";
+	ttl 128;
+}
+
+host-probe icmp-info {
+	info "Check host reachability, using ICMP info requests";
+	protocol icmp;
+	icmp-type "info";
+	ttl 128;
+}
+
+# This probe tries to elicit a TCP RST response from the target host.
+# Note, this probe doesn't do anything useful if the host you run
+# on has firewalling enabled (the response will be discarded).
+host-probe tcp-snack {
+	info "Check host reachability by eliciting a RST response to a SYNACK packet (port 80)";
+	protocol tcp;
+	tcp-flags syn, ack;
+	tcp-dst-port 80;
+}
+
+# Port probes
+port-probe udp {
+	info "Standard UDP port scan";
+	protocol udp;
+}
+
+port-probe tcp {
+	info "Standard TCP half-open scan";
+	protocol tcp;
+}
+
+# Scan routines select a set of probes to use
+# Right now, all probes in a scan routine are executed more or less simultaneously, but
+# in the future, we may want to have some sort of flow control ("if
+# probe A succeeds then run probe B, else probe C".... ).
+discovery-scan local {
+	broadcast-probe icmp;
+}
+
+topology-scan default {
+	topo-probe traceroute;
+}
+
+host-scan local {
+	host-probe arp, icmp;
 }
 
 host-scan default {
-	host-probe arp {
-		optional true;
-	}
-	host-probe icmp {
-		ttl	128;
-	}
+	host-probe icmp;
 }
 
 host-scan thorough {
-	host-probe arp {
-		optional true;
-	}
-	host-probe icmp {
-		ttl	128;
-	};
-
-	# This probe tries to elicit a TCP RST response from the target host.
-	# Note, this probe doesn't do anything useful if the host you run
-	# on has firewalling enabled (the response will be discarded).
-	host-probe tcp {
-		tcp-flags syn, ack;
-		tcp-dst-port 80;
-	}
-}
-
-host-scan experimental {
-	port-probe ipproto {
-		optional true;
-		protocol 6, 33;
-	}
-}
-
-topology-scan traceroute {
-	topo-probe traceroute {
-		packet-proto udp;
-	}
-}
-
-topology-scan traceroute-tcp {
-	topo-probe traceroute {
-		packet-proto tcp;
-	}
-}
-
-port-scan minimal {
-	port-probe tcp {
-		port 22, 25, 80;
-	}
-	port-probe udp {
-		port 111;
-	}
+	host-probe arp, icmp, tcp-snack;
 }
 
 port-scan default {
-	port-probe tcp {
-		port 1-20, 21, 22, 25, 53, 80, 137, 138, 139;
-	}
-	port-probe udp {
-		port 53, 111, 2049, 5353, 137, 138, 139;
-	}
+	port-probe tcp, udp;
 }
 
-port-scan thorough {
-	port-probe tcp {
-		port 1-512, 2049, 8080;
-	}
-	port-probe udp {
-		port 1-512, 2049;
-	}
+# Presets define a set of probes
+preset local {
+	tcp-ports 22, 25, 80, 443;
+	udp-ports 53, 111, 2049, 5353;
+
+	discovery-scan local;
+	host-scan local;
+	port-scan default;
+}
+
+preset default {
+	tcp-ports 1-20, 21, 22, 25, 53, 80, 137, 138, 139, 443;
+	udp-ports 53, 111, 2049, 5353, 137, 138, 139;
+
+	topology-scan default;
+	host-scan default;
+	port-scan default;
+}
+
+preset thorough {
+	tcp-ports 1-512, 2049, 8080;
+	udp-ports 1-512, 2049, 5353;
+
+	topology-scan default;
+	host-scan thorough;
+	port-scan default;
 }
 
 service-catalog "default" {
