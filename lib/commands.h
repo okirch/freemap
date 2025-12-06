@@ -25,6 +25,7 @@ enum {
 	FM_CMDID_INIT,
 	FM_CMDID_ADD_TARGETS,
 	FM_CMDID_CONFIGURE,
+	FM_CMDID_INFO,
 	FM_CMDID_SCAN,
 	FM_CMDID_DISCOVERY_SCAN,
 	FM_CMDID_TOPO_SCAN,
@@ -52,6 +53,7 @@ extern void	fm_command_register_report(fm_cmdparser_t *);
 extern int	fm_command_perform_scan(fm_command_t *);
 extern int	fm_command_perform_discovery(fm_command_t *);
 extern int	fm_command_perform_init(fm_command_t *);
+extern int	fm_command_perform_info(fm_command_t *);
 extern int	fm_command_perform_add_targets(fm_command_t *);
 extern int	fm_command_perform_configure(fm_command_t *);
 extern int	fm_command_perform_report(fm_command_t *);

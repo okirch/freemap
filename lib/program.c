@@ -129,6 +129,18 @@ fm_config_load_preset(const char *name)
 	return fm_config_library_resolve_preset(lib, name);
 }
 
+const fm_config_preset_array_t *
+fm_config_list_presets(void)
+{
+	fm_config_library_t *lib;
+
+	if ((lib = fm_config_load_library()) == NULL
+	 || lib->standard == NULL)
+		return NULL;
+
+	return &lib->standard->presets;
+}
+
 fm_config_routine_t *
 fm_config_load_routine(int stage, const char *name)
 {
@@ -486,7 +498,6 @@ fm_config_preset_resolve_stage(const fm_config_preset_t *preset, int stage, fm_c
 		break;
 	}
 
-	fm_log_notice("%s(%d): ref=%s", __func__, stage, reference);
 	if (reference == NULL)
 		return true;
  
@@ -1131,6 +1142,7 @@ static fm_config_proc_t	fm_config_catalog_root = {
 static fm_config_proc_t	fm_config_preset_root = {
 	.name = ATTRIB_STRING(fm_config_preset_t, name),
 	.attributes = {
+		{ "info",		offsetof(fm_config_preset_t, info),		FM_CONFIG_ATTR_TYPE_STRING },
 		{ "tcp-ports",		offsetof(fm_config_preset_t, tcp_ports),	FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
 		{ "udp-ports",		offsetof(fm_config_preset_t, udp_ports),	FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
 		{ "discovery-scan",	offsetof(fm_config_preset_t, discovery_scan),	FM_CONFIG_ATTR_TYPE_STRING },

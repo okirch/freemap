@@ -52,7 +52,7 @@ like this:
 A list of available presets can be obtained using
 
 ```
-  freemap configure preset list
+  freemap info presets
 ```
 
 The other approach to tuning your scan configuration is by editing the project.conf file

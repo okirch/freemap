@@ -156,6 +156,9 @@ main(int argc, char **argv)
 	case FM_CMDID_INIT:
 		return fm_command_perform_init(cmd);
 
+	case FM_CMDID_INFO:
+		return fm_command_perform_info(cmd);
+
 	case FM_CMDID_ADD_TARGETS:
 		return fm_command_perform_add_targets(cmd);
 
