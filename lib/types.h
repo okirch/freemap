@@ -227,7 +227,8 @@ typedef struct fm_pkt {
 } fm_pkt_t;
 
 typedef struct fm_csum_partial {
-	uint32_t	value;
+	uint32_t		value;
+	bool			odd;
 } fm_csum_partial_t;
 
 /*

@@ -230,13 +230,32 @@ fm_parsed_packet_peek_next_header(fm_parsed_pkt_t *cooked)
 static inline void
 fm_csum_partial_update(fm_csum_partial_t *cp, const void *data, size_t noctets)
 {
-        const uint16_t *p = (const uint16_t *) data;
+        const uint16_t *p;
 	unsigned int nwords = noctets / 2;
+	union {
+		uint16_t	word;
+		unsigned char	bytes[2];
+	} u;
 
-	assert((noctets % 2) == 0);
+	if (cp->odd) {
+		u.word = 0;
+		u.bytes[1] = *(unsigned char *) data;
+		cp->value += u.word;
+		cp->odd = false;
+		noctets -= 1;
+		data += 1;
+	}
 
+	p = (const uint16_t *) data;
         while (nwords--)
 		cp->value += *p++;
+
+	if (noctets & 1) {
+		u.word = 0;
+		u.bytes[0] = *(unsigned char *) p;
+		cp->value += u.word;
+		cp->odd = true;
+	}
 }
 
 static inline void
