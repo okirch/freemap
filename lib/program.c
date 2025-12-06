@@ -80,7 +80,8 @@ struct fm_config_routine {
 
 struct fm_config_library {
 	fm_string_array_t	search_path;
-	fm_config_module_array_t	modules;
+	fm_config_module_t *	standard;
+	fm_config_module_array_t modules;
 };
 
 
@@ -101,9 +102,12 @@ fm_config_load_library(void)
 	if (the_library == NULL) {
 		the_library = fm_config_library_alloc(NULL);
 
-		if (!fm_config_library_find_module(the_library, "standard", true))
-			the_library = NULL;
+		the_library->standard = fm_config_library_find_module(the_library, "standard", true);
 	}
+
+	if (the_library->standard == NULL)
+		return NULL;
+
 	return the_library;
 }
 
@@ -409,6 +413,28 @@ fm_config_library_parse_reference(const char **name_p)
 	module_name[len] = '\0';
 
 	return module_name;
+}
+
+static const fm_config_module_t *
+fm_config_library_resolve_reference_partial(fm_config_library_t *lib, const fm_config_module_t *context, const char **name_p)
+{
+	const fm_config_module_t *module;
+	char *module_name;
+
+	module_name = fm_config_library_parse_reference(name_p);
+	if (module_name != NULL) {
+		module = fm_config_library_find_module(lib, module_name, true);
+		free(module_name);
+	} else if (context != NULL) {
+		module = context;
+	} else {
+		module = lib->standard;;
+	}
+
+	if (module == NULL || module->state != LOADED)
+		return NULL;
+
+	return module;
 }
 
 static char *
