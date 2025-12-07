@@ -26,7 +26,9 @@
 #include "buffer.h"
 
 static unsigned int	fm_protocol_directory_count;
-static struct fm_protocol *fm_protocol_directory[256];
+static fm_protocol_t *	fm_protocol_directory[256];
+
+static fm_protocol_t *	fm_standard_protocol[__FM_PROTO_MAX];
 
 /*
  * Using gcc constructors, all our protocol drivers come here when the
@@ -36,6 +38,7 @@ static struct fm_protocol *fm_protocol_directory[256];
 void
 fm_protocol_directory_add(struct fm_protocol *proto)
 {
+	assert(proto->name != NULL);
 	if (proto->id == FM_PROTO_NONE)
 		fm_log_fatal("Attempt to add protocol %s without protocol id", proto->name);
 	if (fm_protocol_directory_count < 256)
@@ -49,151 +52,57 @@ fm_protocol_directory_display(void)
 
 	printf("Found %d protocol drivers:\n", fm_protocol_directory_count);
 	for (i = 0; i < fm_protocol_directory_count; ++i) {
-		struct fm_protocol *ops = fm_protocol_directory[i];
+		const fm_protocol_t *ops = fm_protocol_directory[i];
 
 		printf("%-12s; implements %s\n", ops->name, fm_protocol_id_to_string(ops->id));
 	}
 }
 
-static const struct fm_protocol *
-fm_protocol_directory_select(unsigned int proto_id)
+/*
+ * Set up the table of standard protocols
+ */
+static inline void
+fm_protocol_setup(void)
 {
+	static bool initialized = false;
 	unsigned int i;
 
+	if (initialized)
+		return;
+	initialized = true;
+
 	for (i = 0; i < fm_protocol_directory_count; ++i) {
-		struct fm_protocol *ops = fm_protocol_directory[i];
+		fm_protocol_t *proto = fm_protocol_directory[i];
+		unsigned int id;
 
-		if (ops->id == proto_id)
-			return ops;
+		id = proto->id;
+		if (id != FM_PROTO_NONE && fm_standard_protocol[id] == NULL)
+			fm_standard_protocol[id] = proto;
 	}
-
-	return NULL;
 }
 
 /*
- * Engine setup
+ * Look for protocol by name
  */
-static void
-fm_protocol_engine_create_standard(struct fm_protocol_engine *engine)
-{
-	unsigned int id;
-
-	for (id = 0; id < __FM_PROTO_MAX; ++id) {
-		fm_protocol_t *proto;
-		const char *proto_name;
-
-		proto_name = fm_protocol_id_to_string(id);
-
-		proto = fm_protocol_directory_select(id);
-		if (proto == NULL) {
-			fm_log_debug("%02u %-10s no driver", id, proto_name);
-			continue;
-		}
-
-		fm_log_debug("%02u %-10s use driver %s", id, proto_name, proto->name);
-		engine->driver[id] = proto;
-		assert(engine->driver[id]);
-	}
-}
-
-static void
-fm_protocol_engine_create_other(struct fm_protocol_engine *engine)
+fm_protocol_t *
+fm_protocol_by_name(const char *name)
 {
 	unsigned int i;
 
 	for (i = 0; i < fm_protocol_directory_count; ++i) {
 		fm_protocol_t *proto = fm_protocol_directory[i];
 
-		if (proto->id == FM_PROTO_NONE)
-			continue;
-
-		if (engine->num_alt >= FM_PROTOCOL_ENGINE_MAX)
-			fm_log_fatal("%s: too many protocol drivers", __func__);
-
-		engine->alt_driver[engine->num_alt++] = proto;
-	}
-}
-
-fm_protocol_engine_t *
-fm_protocol_engine_create_default(void)
-{
-	static struct fm_protocol_engine *engine = NULL;;
-
-	if (engine == NULL) {
-		unsigned int id;
-
-		engine = calloc(1, sizeof(*engine));
-		fm_protocol_engine_create_standard(engine);
-		fm_protocol_engine_create_other(engine);
-
-		for (id = 0; id < __FM_PROTO_MAX; ++id) {
-			fm_protocol_t *driver = engine->driver[id];
-
-			if (driver != NULL && driver->id != id) {
-				fm_log_error("created %s protocol driver \"%s\", but it provides protocol id %u",
-						fm_protocol_id_to_string(id),
-						driver->name,
-						driver->id);
-				abort();
-			}
-		}
-	}
-
-	return engine;
-}
-
-/*
- * Get the best protocol driver that implements protocol arp, icmp, udp, tcp, ...
- */
-fm_protocol_t *
-fm_protocol_engine_get_protocol(fm_protocol_engine_t *engine, const char *name)
-{
-	unsigned int id;
-
-	id = fm_protocol_string_to_id(name);
-	if (id != FM_PROTO_NONE)
-		return engine->driver[id];
-	return NULL;
-}
-
-/*
- * Get the protocol driver with the given name.
- * For instance, "icmp" will give you the icmp implementation using the standard
- * BSD socket interface, whereas "icmp-raw" may give you the one based on SOCK_RAW sockets.
- */
-fm_protocol_t *
-fm_protocol_engine_get_protocol_alt(fm_protocol_engine_t *engine, const char *name)
-{
-	unsigned int k;
-
-	for (k = 0; k < engine->num_alt; ++k) {
-		fm_protocol_t *proto = engine->alt_driver[k];
-
 		if (!strcmp(proto->name, name))
 			return proto;
 	}
-
 	return NULL;
-}
-
-fm_protocol_t *
-fm_protocol_by_name(const char *name)
-{
-	fm_protocol_engine_t *engine = fm_protocol_engine_create_default();
-
-	assert(engine != NULL);
-	return fm_protocol_engine_get_protocol(engine, name);
 }
 
 fm_protocol_t *
 fm_protocol_by_id(unsigned int proto_id)
 {
-	fm_protocol_engine_t *engine = fm_protocol_engine_create_default();
-
-	assert(engine != NULL);
-	if (proto_id >= __FM_PROTO_MAX)
-		return NULL;
-	return engine->driver[proto_id];
+	fm_protocol_setup();
+	return fm_standard_protocol[proto_id];
 }
 
 /*
