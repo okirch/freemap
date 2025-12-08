@@ -171,7 +171,7 @@ fm_ip_process_config_arg(fm_ip_header_info_t *ip, const char *arg)
 {
 	if (fm_parse_numeric_argument(arg, "ip-ttl", &ip->ttl)
 	 || fm_parse_numeric_argument(arg, "ip-tos", &ip->tos)
-	 || fm_parse_numeric_argument(arg, "ip-proto", (unsigned int *) &ip->ipproto))
+	 || fm_parse_numeric_argument_symbolic(arg, "ip-proto", fm_ipproto_from_string, (unsigned int *) &ip->ipproto))
 		return true;
 	return false;
 }
