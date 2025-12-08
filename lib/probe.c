@@ -34,6 +34,7 @@
 
 #define debugmsg	fm_debug_probe
 
+static void		fm_multiprobe_free_host_tasklet(fm_multiprobe_t *, fm_host_tasklet_t *);
 static void		fm_multiprobe_destroy(fm_multiprobe_t *multiprobe);
 static void		fm_target_control_init_default(fm_target_control_t *, fm_target_t *);
 static void		fm_tasklet_set_service_probe(fm_tasklet_t *, const fm_service_probe_t *);
@@ -342,10 +343,10 @@ fm_multiprobe_destroy(fm_multiprobe_t *multiprobe)
 	fm_host_tasklet_t *host_task;
 
 	while ((host_task = hlist_head_get_first(&multiprobe->ready)) != NULL)
-		fm_host_tasklet_free(host_task);
+		fm_multiprobe_free_host_tasklet(multiprobe, host_task);
 
 	while ((host_task = hlist_head_get_first(&multiprobe->waiting)) != NULL)
-		fm_host_tasklet_free(host_task);
+		fm_multiprobe_free_host_tasklet(multiprobe, host_task);
 
 	/* protocol tear-down */
 	multiprobe->ops->destroy(multiprobe);
@@ -448,7 +449,7 @@ fm_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_target_t *target)
 
 	if (!multiprobe->ops->add_target || !multiprobe->ops->add_target(multiprobe, host_task, target)) {
 		fm_log_error("%s: unable to add target %s", multiprobe->name, target->id);
-		fm_host_tasklet_free(host_task);
+		fm_multiprobe_free_host_tasklet(multiprobe, host_task);
 		return false;
 	}
 
@@ -463,6 +464,14 @@ fm_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_target_t *target)
 
 	debugmsg("%s: created", host_task->name);
 	return true;
+}
+
+void
+fm_multiprobe_free_host_tasklet(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task)
+{
+	if (multiprobe->ops->destroy_host != NULL)
+		multiprobe->ops->destroy_host(multiprobe, host_task);
+	fm_host_tasklet_free(host_task);
 }
 
 /*
@@ -521,7 +530,7 @@ fm_multiprobe_add_link_level_broadcast(fm_multiprobe_t *multiprobe, int af,
 
 	if (!multiprobe->ops->add_broadcast(multiprobe, host_task, nic, &lladdr, &llbcast, net_src_addr, &network_broadcast)) {
 		fm_log_error("%s: unable to add brodcast via %s", multiprobe->name, ifname);
-		fm_host_tasklet_free(host_task);
+		fm_multiprobe_free_host_tasklet(multiprobe, host_task);
 		return false;
 	}
 
@@ -728,6 +737,9 @@ fm_multiprobe_transmit_tasklet(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *h
 			timeout = fm_time_now() + 1;
 		}
 		tasklet->timeout = timeout;
+	} else if (error == FM_TASK_COMPLETE) {
+		/* We're done. */
+		tasklet->state = FM_TASKLET_STATE_DONE;
 	} else
 	if (first_transmission) {
 		/* complain about probes that are so broken they don't even manage to
@@ -913,7 +925,7 @@ fm_multiprobe_get_completed(fm_multiprobe_t *multiprobe)
 	if ((host_task = hlist_head_get_first(&multiprobe->done)) != NULL) {
 		fm_target_t *target = host_task->target;
 
-		fm_host_tasklet_free(host_task);
+		fm_multiprobe_free_host_tasklet(multiprobe, host_task);
 		return target;
 	}
 
