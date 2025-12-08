@@ -284,21 +284,28 @@ fm_scanner_dump_program(fm_scanner_t *scanner)
 bool
 fm_scanner_add_probe(fm_scanner_t *scanner, int stage, const fm_config_probe_t *parsed_probe)
 {
-	const char *probe_name = parsed_probe->name;
+	const char *proto_name;
 	int mode = parsed_probe->mode;
 	fm_probe_class_t *pclass;
 	fm_multiprobe_t *multiprobe;
 
-	pclass = fm_probe_class_find(probe_name, mode);
+	if ((proto_name = parsed_probe->proto_name) == NULL) {
+		fm_log_error("Probe %s does not specify which protocol driver to use", parsed_probe->name);
+		return false;
+	}
+
+	pclass = fm_probe_class_find(proto_name, mode);
 	if (pclass == NULL) {
 		if (!parsed_probe->optional) {
-			fm_log_error("Unknown host %s class %s\n",
-					fm_probe_mode_to_string(mode),
-					probe_name);
+			fm_log_error("%s probe %s specifies unknown protocol driver %s",
+					fm_probe_mode_to_string(mode), parsed_probe->name,
+					proto_name);
 			return false;
 		}
 
-		fm_log_debug("Ignoring optional %s %s probe", fm_probe_mode_to_string(mode), probe_name);
+		fm_log_debug("Ignoring %s probe %s (unknown protocol driver %s)",
+				fm_probe_mode_to_string(mode), parsed_probe->name,
+				proto_name);
 		return true;
 	}
 
