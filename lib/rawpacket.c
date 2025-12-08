@@ -767,11 +767,18 @@ fm_raw_packet_pull_tcp_header(fm_buffer_t *bp, fm_tcp_header_info_t *tcp_info)
 {
 	struct tcphdr *th;
 
-	if (!(th = fm_buffer_peek(bp, sizeof(*th))))
+	if ((th = fm_buffer_peek(bp, sizeof(*th))) != NULL) {
+		/* regular case: full tcp header */
+		if (!fm_buffer_pull(bp, th->th_off << 2))
+			return false;
+	} else
+	if (fm_buffer_available(bp) == 8) {
+		/* probably a TCP header within an ICMP error message, where the
+		 * original RFCs say sending 8 bytes of transport header is sufficient. */
+		th = fm_buffer_pull(bp, 8);
+	} else {
 		return false;
-
-	if (!fm_buffer_pull(bp, th->th_off << 2))
-		return false;
+	}
 
 	tcp_info->src_port = ntohs(th->th_sport);
 	tcp_info->dst_port = ntohs(th->th_dport);
