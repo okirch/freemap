@@ -41,7 +41,7 @@ typedef struct fm_arp_extant_info {
 
 static void		get_eth_address(const struct sockaddr_ll *, unsigned char *, unsigned int);
 
-static fm_socket_t *	fm_arp_create_socket(fm_protocol_t *proto, int ipproto);
+static fm_socket_t *	fm_arp_create_socket(fm_protocol_t *proto, int ipproto, const fm_address_t *bind_addr);
 static fm_extant_t *	fm_arp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_arp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 
@@ -69,7 +69,7 @@ static struct fm_protocol	fm_arp_ops = {
 FM_PROTOCOL_REGISTER(fm_arp_ops);
 
 static fm_socket_t *
-fm_arp_create_socket(fm_protocol_t *proto, int dummy)
+fm_arp_create_socket(fm_protocol_t *proto, int dummy, const fm_address_t *bind_addr)
 {
 	fm_socket_t *sock;
 

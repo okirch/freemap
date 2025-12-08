@@ -53,7 +53,7 @@ typedef struct tcp_extant_info {
 } fm_tcp_extant_info_t;
 
 
-static fm_socket_t *	fm_tcp_create_socket(fm_protocol_t *proto, int af);
+static fm_socket_t *	fm_tcp_create_socket(fm_protocol_t *proto, int af, const fm_address_t *bind_addr);
 static fm_extant_t *	fm_tcp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_tcp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 
@@ -83,7 +83,7 @@ static struct fm_protocol	fm_tcp_sock_ops = {
 FM_PROTOCOL_REGISTER(fm_tcp_sock_ops);
 
 static fm_socket_t *
-fm_tcp_create_socket(fm_protocol_t *proto, int af)
+fm_tcp_create_socket(fm_protocol_t *proto, int af, const fm_address_t *bind_addr)
 {
 	fm_socket_t *sock;
 

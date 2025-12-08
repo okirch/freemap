@@ -1117,21 +1117,15 @@ fm_socket_pool_get_socket(fm_socket_pool_t *pool, const fm_address_t *local_addr
 			return entry->sock;
 	}
 
-	sock = fm_protocol_create_socket(pool->driver, local_addr->family);
-	if (sock == NULL)
+	sock = fm_protocol_create_socket(pool->driver, local_addr->family, local_addr);
+	if (sock == NULL) {
+		fm_log_error("Cannot create %s socket", pool->driver->name);
 		return NULL;
+	}
 
 	if (fm_global.scanner.socket_send_buffer != 0
 	 && !fm_socket_option_set(sock, "SO_SNDBUF", SOL_SOCKET, SO_SNDBUFFORCE, fm_global.scanner.socket_send_buffer)) {
 		fm_log_warning("Unable to bump send buffer size");
-	}
-
-	if (!fm_socket_bind(sock, local_addr)) {
-		fm_log_error("Cannot bind %s socket to address %s: %m",
-				pool->driver->name,
-				fm_address_format(local_addr));
-		fm_socket_free(sock);
-		return NULL;
 	}
 
 	/* Mark this socket as shared, so it doesn't get deleted accidentally */

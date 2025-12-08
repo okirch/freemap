@@ -183,17 +183,29 @@ fm_protocol_attach_rtt_estimator(fm_probe_class_t *pclass, fm_target_t *target, 
 }
 
 fm_socket_t *
-fm_protocol_create_socket(fm_protocol_t *proto, int ipproto)
+fm_protocol_create_socket(fm_protocol_t *proto, int family, const fm_address_t *bind_addr)
 {
 	fm_socket_t *sock;
 
 	if (proto->create_socket == NULL)
 		return NULL;
-	sock = proto->create_socket(proto, ipproto);
 
-	if (sock && sock->proto == NULL) {
-		fm_log_warning("protocol driver %s forgot to attach itself to new socket", proto->name);
-		fm_socket_attach_protocol(sock, proto);
+	if (bind_addr && bind_addr->family != family)
+		return NULL;
+
+	sock = proto->create_socket(proto, family, bind_addr);
+	if (sock != NULL) {
+		assert(sock->proto != NULL);
+
+		/* The protocol driver may have bound the socket already; if not, we'll do that now */
+		if (sock->local_address.family == AF_UNSPEC && bind_addr != NULL
+		 && !fm_socket_bind(sock, bind_addr)) {
+			fm_log_error("Cannot bind %s socket to address %s: %m",
+					proto->name,
+					fm_address_format(bind_addr));
+			fm_socket_free(sock);
+			return NULL;
+		}
 	}
 
 	return sock;

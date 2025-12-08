@@ -46,7 +46,7 @@ typedef struct fm_udp_extant_info {
 	unsigned int		dst_port;
 } fm_udp_extant_info_t;
 
-static fm_socket_t *	fm_udp_create_socket(fm_protocol_t *proto, int af);
+static fm_socket_t *	fm_udp_create_socket(fm_protocol_t *proto, int af, const fm_address_t *bind_addr);
 static fm_extant_t *	fm_udp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 static fm_extant_t *	fm_udp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *);
 
@@ -81,7 +81,7 @@ FM_PROTOCOL_REGISTER(fm_udp_bsdsock_ops);
  * In the error case, the packet the kernel will give us does *not* include any headers
  */
 static fm_socket_t *
-fm_udp_create_socket(fm_protocol_t *proto, int af)
+fm_udp_create_socket(fm_protocol_t *proto, int af, const fm_address_t *bind_addr)
 {
 	fm_socket_t *sock;
 

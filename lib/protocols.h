@@ -37,7 +37,7 @@ struct fm_protocol {
 
 	void		(*destroy)(fm_protocol_t *);
 
-	fm_socket_t *	(*create_socket)(fm_protocol_t *, int af);
+	fm_socket_t *	(*create_socket)(fm_protocol_t *, int af, const fm_address_t *bind_addr);
 
 	fm_extant_t *	(*locate_error)(fm_protocol_t *, fm_pkt_t *, hlist_iterator_t *);
 	fm_extant_t *	(*locate_response)(fm_protocol_t *, fm_pkt_t *, hlist_iterator_t *);
@@ -60,7 +60,7 @@ extern void		fm_protocol_directory_display(void);
 extern fm_protocol_t *	fm_protocol_by_name(const char *);
 extern fm_protocol_t *	fm_protocol_by_id(unsigned int);
 
-extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);
+extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af, const fm_address_t *bind_addr);
 
 extern fm_extant_t *	fm_protocol_locate_error(fm_protocol_t *, fm_pkt_t *, hlist_iterator_t *);
 extern fm_extant_t *	fm_protocol_locate_response(fm_protocol_t *, fm_pkt_t *, hlist_iterator_t *);

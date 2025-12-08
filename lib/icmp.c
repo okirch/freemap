@@ -39,7 +39,7 @@
 #include "socket.h"
 #include "logging.h"
 
-static fm_socket_t *	fm_icmp_create_socket(fm_protocol_t *proto, int ipproto);
+static fm_socket_t *	fm_icmp_create_socket(fm_protocol_t *proto, int ipproto, const fm_address_t *bind_addr);
 
 static int		fm_icmp_protocol_for_family(int af);
 static void		fm_icmp_request_build_extant_info(fm_icmp_extant_info_t *info, int v4_request_type, int v4_response_type, int id, int seq);
@@ -187,7 +187,7 @@ fm_icmp_locate_response(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *i
  * SOCK_RAW sockets
  */
 static fm_socket_t *
-fm_icmp_create_socket(fm_protocol_t *proto, int af)
+fm_icmp_create_socket(fm_protocol_t *proto, int af, const fm_address_t *bind_addr)
 {
 	fm_socket_t *sock;
 	int ipproto;

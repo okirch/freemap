@@ -888,15 +888,12 @@ fm_topo_shared_sockets_get(fm_protocol_t *packet_proto, const fm_address_t *dst_
 static fm_socket_t *
 fm_topo_shared_socket_open(fm_topo_shared_sockets_t *shared, unsigned ttl)
 {
-	fm_address_t local_addr;
 	fm_socket_t *sock;
 
 	if ((sock = shared->socks[ttl]) == NULL) {
-		sock = fm_protocol_create_socket(shared->packet_proto, shared->family);
-		sock->trace = true;
+		sock = fm_protocol_create_socket(shared->packet_proto, shared->family, &shared->local_address);
+		assert(sock != NULL);
 
-		memset(&local_addr, 0, sizeof(local_addr));
-		local_addr.family = shared->family;
 		if (!fm_socket_bind(sock, &shared->local_address))
 			fm_log_fatal("%s: cannot bind socket", __func__);
 
