@@ -67,10 +67,14 @@ fm_topo_state_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const
 
 	if (extra_params != NULL)
 		topo->topo_params = *extra_params;
+	if (topo->topo_params.packet_proto == NULL)
+		topo->topo_params.packet_proto = fm_global.traceroute.packet_probe;
+	if (topo->topo_params.packet_proto == NULL)
+		topo->topo_params.packet_proto = "udp";
 	if (topo->topo_params.max_depth == 0)
-		topo->topo_params.max_depth = 16;
+		topo->topo_params.max_depth = fm_global.traceroute.max_depth;
 	if (topo->topo_params.max_hole_size == 0)
-		topo->topo_params.max_hole_size = 5;
+		topo->topo_params.max_hole_size = fm_global.traceroute.max_hole_size;
 
 	topo->packet_probe_class = fm_topo_get_packet_probe_class(topo->topo_params.packet_proto);
 	if (topo->packet_probe_class == NULL)

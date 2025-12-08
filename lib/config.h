@@ -109,6 +109,16 @@ struct fm_config {
 		/* timeout for response to arrive */
 		unsigned int	timeout;
 	} rawip;
+	struct fm_config_traceroute {
+		/* The underlying probe to use */
+		char *		packet_probe;
+
+		/* Maximum path length */
+		unsigned int	max_depth;
+
+		/* Maximum size of holes in path */
+		unsigned int	max_hole_size;
+	} traceroute;
 };
 
 extern fm_config_t		fm_global;

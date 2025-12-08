@@ -84,4 +84,8 @@ fm_config_init_defaults(fm_config_t *conf)
 	conf->rawip.retries = 3;
 	conf->rawip.packet_spacing = 250;
 	conf->rawip.timeout = 1000;
+
+	conf->traceroute.packet_probe = strdup("udp");
+	conf->traceroute.max_depth = 16;
+	conf->traceroute.max_hole_size = 5;
 }
