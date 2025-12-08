@@ -1068,6 +1068,32 @@ fm_config_packet_set_payload(curly_node_t *node, void *attr_data, const curly_at
 	return true;
 }
 
+static bool
+fm_config_packet_get_payload(curly_node_t *node, void *attr_data, const char *attr_name)
+{
+	fm_buffer_t **bufp = attr_data;
+	fm_buffer_t *bp;
+	const unsigned char *data;
+	unsigned int i, len;
+
+	if ((bp = *bufp) == NULL)
+		return true;
+
+	len = fm_buffer_available(bp);
+	if (len == 0)
+		return true;
+
+	data = fm_buffer_head(bp);
+	for (i = 0; i < len; ++i) {
+		char value[16];
+
+		snprintf(value, sizeof(value), "0x%02x", data[i]);
+		curly_node_add_attr_list(node, attr_name, value);
+	}
+
+	return true;
+}
+
 /*
  * curly file structure for library
  */
@@ -1081,6 +1107,7 @@ static fm_config_proc_t	fm_config_probe_root = {
 		{ "ttl",	offsetof(fm_config_probe_t, probe_params.ttl),		FM_CONFIG_ATTR_TYPE_INT },
 		{ "retries",	offsetof(fm_config_probe_t, probe_params.retries),	FM_CONFIG_ATTR_TYPE_INT },
 		{ "tos",	offsetof(fm_config_probe_t, probe_params.tos),		FM_CONFIG_ATTR_TYPE_INT },
+		{ "payload",	offsetof(fm_config_probe_t, payload),			FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = fm_config_packet_set_payload, .getfn = fm_config_packet_get_payload },
 
 		{ "*",		offsetof(fm_config_probe_t, extra_args),		FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
 	},

@@ -62,7 +62,7 @@ struct fm_config_attr {
 	int			type;
 
 	bool			(*setfn)(curly_node_t *node, void *attr_data, const curly_attr_t *attr);
-	bool			(*getfn)(curly_node_t *node, void *attr_data);
+	bool			(*getfn)(curly_node_t *node, void *attr_data, const char *attr_name);
 };
 
 #define MAX_CHILDREN		16

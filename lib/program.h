@@ -41,6 +41,7 @@ struct fm_config_probe {
 	char *			info;
 	fm_probe_params_t	probe_params;
 	fm_uint_array_t		ports;
+	fm_buffer_t *		payload;
 	fm_string_array_t	extra_args;
 };
 

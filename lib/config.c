@@ -650,7 +650,7 @@ fm_config_render_value(curly_node_t *node, void *data, const fm_config_attr_t *a
 			fm_config_complain(node, "attribute %s has no get() function", attr_name);
 			return false;
 		}
-		okay = attr_def->getfn(node, attr_data);
+		okay = attr_def->getfn(node, attr_data, attr_name);
 		break;
 
 	case FM_CONFIG_ATTR_TYPE_INT_ARRAY:
