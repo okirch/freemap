@@ -545,8 +545,8 @@ fm_icmp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipr
 	/* Set the default timings and retries */
 	multiprobe->timings.packet_spacing = fm_global.icmp.packet_spacing * 1e-3;
 	multiprobe->timings.timeout = fm_global.icmp.timeout * 1e-3;
-	if (multiprobe->params.retries == 0)
-		multiprobe->params.retries = fm_global.icmp.retries;
+	if (multiprobe->retries == 0)
+		multiprobe->retries = fm_global.icmp.retries;
 
 	icmp = fm_icmp_control_alloc(pclass->proto);
 	if (icmp == NULL)

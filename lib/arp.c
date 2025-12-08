@@ -386,8 +386,8 @@ fm_arp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipro
 	/* Set the default timings and retries */
 	multiprobe->timings.packet_spacing = fm_global.arp.packet_spacing * 1e-3;
 	multiprobe->timings.timeout = fm_global.arp.timeout * 1e-3;
-	if (multiprobe->params.retries == 0)
-		multiprobe->params.retries = fm_global.arp.retries;
+	if (multiprobe->retries == 0)
+		multiprobe->retries = fm_global.arp.retries;
 
 	if (extra_string_args && extra_string_args->count != 0) {
 		fm_log_error("%s: found unsupported extra parameters", multiprobe->name);
@@ -424,14 +424,10 @@ FM_PROBE_CLASS_REGISTER(fm_arp_host_probe_class)
 bool
 fm_arp_discover(fm_protocol_t *proto, fm_target_t *target, int retries)
 {
-	fm_probe_params_t params;
 	fm_multiprobe_t *multiprobe;
 
-	memset(&params, 0, sizeof(params));
-	params.retries = retries? : FM_ARP_PROBE_RETRIES;
-
 	multiprobe = fm_multiprobe_alloc(FM_PROBE_MODE_HOST, "arp-query");
-	if (!fm_multiprobe_configure(multiprobe, &fm_arp_host_probe_class, &params, NULL)
+	if (!fm_multiprobe_configure(multiprobe, &fm_arp_host_probe_class, NULL)
 	 || !fm_multiprobe_add_target(multiprobe, target)) {
 		fm_multiprobe_free(multiprobe);
 		return false;

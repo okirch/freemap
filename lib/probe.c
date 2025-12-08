@@ -303,8 +303,7 @@ fm_multiprobe_from_config(fm_probe_class_t *pclass, const fm_config_probe_t *con
 	multiprobe->probe_class = pclass;
 	multiprobe->action_flags = pclass->action_flags;
 
-	/* copy the standard parameters (ttl, tos, ...) */
-	multiprobe->params = config->probe_params;
+	multiprobe->retries = config->retries;
 
 	if (config->optional)
 		multiprobe->action_flags |= FM_SCAN_ACTION_FLAG_OPTIONAL;
@@ -322,8 +321,8 @@ fm_multiprobe_from_config(fm_probe_class_t *pclass, const fm_config_probe_t *con
 		multiprobe->timings.packet_spacing = 0.5;
 	if (multiprobe->timings.timeout == 0)
 		multiprobe->timings.timeout = 0.5;
-	if (multiprobe->params.retries == 0)
-		multiprobe->params.retries = 3;
+	if (multiprobe->retries == 0)
+		multiprobe->retries = 3;
 
 	return multiprobe;
 }
@@ -356,14 +355,12 @@ fm_multiprobe_destroy(fm_multiprobe_t *multiprobe)
 
 /* FIXME: nuke */
 bool
-fm_multiprobe_configure(fm_multiprobe_t *multiprobe, fm_probe_class_t *pclass, const fm_probe_params_t *params, const void *extra_params)
+fm_multiprobe_configure(fm_multiprobe_t *multiprobe, fm_probe_class_t *pclass, const void *extra_params)
 {
 	if (pclass->configure == NULL) {
 		fm_log_error("probe class %s does not support multiprobe", pclass->name);
 		return false;
 	}
-
-	multiprobe->params = *params;
 
 	if (!pclass->configure(pclass, multiprobe, extra_params))
 		return false;
@@ -372,8 +369,8 @@ fm_multiprobe_configure(fm_multiprobe_t *multiprobe, fm_probe_class_t *pclass, c
 		multiprobe->timings.packet_spacing = 0.5;
 	if (multiprobe->timings.timeout == 0)
 		multiprobe->timings.timeout = 0.5;
-	if (multiprobe->params.retries == 0)
-		multiprobe->params.retries = 3;
+	if (multiprobe->retries == 0)
+		multiprobe->retries = 3;
 
 	return true;
 }
@@ -560,7 +557,7 @@ fm_multiprobe_create_tasklet(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *hos
 	tasklet->host = host_task;
 	tasklet->probe_index = host_task->probe_index++;
 	tasklet->timeout = fm_time_now();
-	tasklet->send_retries = multiprobe->params.retries;
+	tasklet->send_retries = multiprobe->retries;
 	tasklet->resp_required = 1;
 
 	param_type = multiprobe->bucket_list.param_type;

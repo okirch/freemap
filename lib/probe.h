@@ -126,6 +126,7 @@ struct fm_multiprobe {
 	 * datagram based service */
 	const fm_service_catalog_t *service_catalog;
 
+	unsigned int		retries;
 	struct {
 		double		packet_spacing;
 		double		timeout;
@@ -135,8 +136,6 @@ struct fm_multiprobe {
 		void		(*callback)(const fm_pkt_t *pkt, void *user_data);
 		void *		user_data;
 	} data_tap;
-
-	fm_probe_params_t	params;
 
 	void *			control;
 
@@ -166,7 +165,7 @@ extern bool		fm_multiprobe_is_idle(const fm_multiprobe_t *);
 extern void		fm_multiprobe_transmit(fm_multiprobe_t *, fm_sched_stats_t *sched_stats);
 extern fm_error_t	fm_multiprobe_transmit_ttl_probe(fm_multiprobe_t *multiprobe, fm_target_control_t *target_control,
 					unsigned int ttl, fm_extant_t **, double *timeout_ret);
-extern bool		fm_multiprobe_configure(fm_multiprobe_t *, fm_probe_class_t *, const fm_probe_params_t *, const void *);
+extern bool		fm_multiprobe_configure(fm_multiprobe_t *, fm_probe_class_t *, const void *);
 extern fm_target_t *	fm_multiprobe_get_completed(fm_multiprobe_t *);
 extern void		fm_multiprobe_install_status_callback(fm_multiprobe_t *, fm_multiprobe_status_callback_t *, void *);
 extern void		fm_multiprobe_install_data_tap(fm_multiprobe_t *,

@@ -48,21 +48,13 @@ static fm_tgateway_t *		fm_tgateway_for_address(unsigned int, const fm_address_t
  * topology scan state
  */
 static fm_topo_control_t *
-fm_topo_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const fm_topo_extra_params_t *extra_params)
+fm_topo_control_alloc(fm_protocol_t *proto)
 {
 	fm_topo_control_t *topo;
 
 	topo = calloc(1, sizeof(*topo));
 	topo->proto = proto;
-	topo->params = *params;
 
-	if (topo->params.port == 0)
-		topo->params.port = 65534; /* make this configurable. The IANA reserved port is 33434; the traceroute cmd uses 80 for TCP... */
-	if (topo->params.retries <= FM_RTT_SAMPLES_WANTED)
-		topo->params.retries = FM_RTT_SAMPLES_WANTED;
-
-	if (extra_params != NULL)
-		topo->topo_params = *extra_params;
 	if (topo->topo_params.packet_proto == NULL)
 		topo->topo_params.packet_proto = fm_global.traceroute.packet_probe;
 	if (topo->topo_params.packet_proto == NULL)
@@ -282,11 +274,10 @@ static bool
 fm_topo_create_packet_probe(fm_topo_control_t *topo)
 {
 	fm_multiprobe_t *packet_probe;
-	fm_probe_params_t params = { .port = 65534, };
 
 	packet_probe = fm_multiprobe_alloc(FM_PROBE_MODE_TOPO, topo->packet_probe_class->name);
 
-	if (!fm_multiprobe_configure(packet_probe, topo->packet_probe_class, &params, &topo->packet_probe_params)) {
+	if (!fm_multiprobe_configure(packet_probe, topo->packet_probe_class, &topo->packet_probe_params)) {
 		fm_multiprobe_free(packet_probe);
 		return false;
 	}
@@ -1091,7 +1082,7 @@ fm_topo_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipr
 		multiprobe->params.retries = fm_global.traceroute.retries;
 #endif
 
-	topo = fm_topo_control_alloc(pclass->proto, &multiprobe->params, NULL);
+	topo = fm_topo_control_alloc(pclass->proto);
 	if (topo == NULL)
 		return false;
 
@@ -1105,6 +1096,9 @@ fm_topo_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipr
 
 	if (!fm_topo_state_set_packet_defaults(topo))
 		return false;
+
+	if (multiprobe->retries <= FM_RTT_SAMPLES_WANTED)
+		multiprobe->retries = FM_RTT_SAMPLES_WANTED;
 
 	multiprobe->ops = &fm_topo_multiprobe_ops;
 	multiprobe->control = topo;

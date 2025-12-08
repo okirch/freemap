@@ -219,8 +219,8 @@ fm_ipproto_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *mult
 	/* Set the default timings and retries */
 	multiprobe->timings.packet_spacing = fm_global.rawip.packet_spacing * 1e-3;
 	multiprobe->timings.timeout = fm_global.rawip.timeout * 1e-3;
-	if (multiprobe->params.retries == 0)
-		multiprobe->params.retries = fm_global.rawip.retries;
+	if (multiprobe->retries == 0)
+		multiprobe->retries = fm_global.rawip.retries;
 
 	control = fm_ipproto_control_alloc(pclass->proto);
 	if (control == NULL)

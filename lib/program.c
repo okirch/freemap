@@ -1104,9 +1104,7 @@ static fm_config_proc_t	fm_config_probe_root = {
 		{ "protocol",	offsetof(fm_config_probe_t, proto_name),		FM_CONFIG_ATTR_TYPE_STRING },
 		{ "optional",	offsetof(fm_config_probe_t, optional),			FM_CONFIG_ATTR_TYPE_BOOL },
 		{ "random",	offsetof(fm_config_probe_t, random),			FM_CONFIG_ATTR_TYPE_BOOL },
-		{ "ttl",	offsetof(fm_config_probe_t, probe_params.ttl),		FM_CONFIG_ATTR_TYPE_INT },
-		{ "retries",	offsetof(fm_config_probe_t, probe_params.retries),	FM_CONFIG_ATTR_TYPE_INT },
-		{ "tos",	offsetof(fm_config_probe_t, probe_params.tos),		FM_CONFIG_ATTR_TYPE_INT },
+		{ "retries",	offsetof(fm_config_probe_t, retries),			FM_CONFIG_ATTR_TYPE_INT },
 		{ "payload",	offsetof(fm_config_probe_t, payload),			FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = fm_config_packet_set_payload, .getfn = fm_config_packet_get_payload },
 
 		{ "*",		offsetof(fm_config_probe_t, extra_args),		FM_CONFIG_ATTR_TYPE_STRING_ARRAY },

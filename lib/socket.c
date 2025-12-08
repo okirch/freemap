@@ -73,15 +73,6 @@ fm_pkt_free(fm_pkt_t *pkt)
 	free(pkt);
 }
 
-void
-fm_pkt_apply_probe_params(fm_pkt_t *pkt, const fm_probe_params_t *params, unsigned int mask)
-{
-	if (mask & FM_PARAM_TYPE_TTL_MASK)
-		pkt->info.ttl = params->ttl;
-	if (mask & FM_PARAM_TYPE_TOS_MASK)
-		pkt->info.tos = params->tos;
-}
-
 bool
 fm_pkt_apply_param(fm_pkt_t *pkt, int param_type, unsigned int param_value)
 {

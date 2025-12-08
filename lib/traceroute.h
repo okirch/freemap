@@ -69,8 +69,6 @@ typedef struct fm_topo_control {
 
 	int			family;
 
-	fm_probe_params_t	params;
-
 	fm_topo_extra_params_t	topo_params;
 	fm_protocol_t *		packet_proto;
 	fm_probe_class_t *	packet_probe_class;

@@ -426,8 +426,8 @@ fm_tcp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipro
 	/* Set the default timings and retries */
 	multiprobe->timings.packet_spacing = fm_global.tcp.packet_spacing * 1e-3;
 	multiprobe->timings.timeout = fm_global.tcp.timeout * 1e-3;
-	if (multiprobe->params.retries == 0)
-		multiprobe->params.retries = fm_global.tcp.retries;
+	if (multiprobe->retries == 0)
+		multiprobe->retries = fm_global.tcp.retries;
 
 	tcp = fm_tcp_control_alloc(pclass->proto);
 	if (tcp == NULL)
