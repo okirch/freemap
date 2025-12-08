@@ -88,6 +88,11 @@ fm_tcp_header_info_finalize(const fm_tcp_header_info_t *tcp, int param_type, int
 {
 	static fm_tcp_header_info_t copy;
 
+	if (param_type == FM_PARAM_TYPE_TTL) {
+		copy = *tcp;
+		copy.src_port += param_value;
+		return &copy;
+	}
 	if (param_type == FM_PARAM_TYPE_PORT) {
 		copy = *tcp;
 		copy.dst_port = param_value;
@@ -129,6 +134,9 @@ fm_udp_header_info_finalize(const fm_udp_header_info_t *udp, int param_type, int
 		copy.payload.len = fm_buffer_available(payload);
 		copy.payload.data = fm_buffer_head(payload);
 	}
+
+	if (param_type == FM_PARAM_TYPE_TTL)
+		copy.src_port += param_value;
 
 	if (param_type == FM_PARAM_TYPE_PORT)
 		copy.dst_port = param_value;
