@@ -50,6 +50,10 @@ struct fm_target_control {
 			/* counter for icmp seq generation: */
 			uint16_t		retries;
 		} icmp;
+		struct {
+			struct fm_topo_host_control *topo_control;
+			fm_target_control_t *	packet_control;
+		} traceroute;
 	};
 };
 

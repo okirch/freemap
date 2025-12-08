@@ -86,13 +86,17 @@ typedef struct fm_topo_control {
 	fm_probe_class_t *	packet_probe_class;
 	fm_string_array_t	packet_probe_params;
 	fm_multiprobe_t *	packet_probe;
-
-	fm_tgateway_t *		unknown_gateway;
 } fm_topo_control_t;
 
 /* Per target state */
 typedef struct fm_topo_host_control {
+	const char *		id;
+	fm_address_t		host_address;
 	fm_host_asset_t *	host_asset;
+
+	fm_topo_extra_params_t	topo_params;
+
+	fm_tgateway_t *		unknown_gateway;
 
 	unsigned int		next_ttl;
 	unsigned int		destination_ttl;
