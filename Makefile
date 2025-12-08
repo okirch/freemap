@@ -36,6 +36,7 @@ OBJS	= lib/projects.o \
 	  lib/services.o \
 	  lib/subcommand.o \
 	  lib/logging.o \
+	  lib/crc32c.o \
 	  lib/buffer.o \
 	  lib/utils.o
 LIB	= libfreemap.a
@@ -77,3 +78,5 @@ $(LIB): $(OBJS)
 freemap: $(freemap_OBJS) $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(freemap_OBJS) $(OBJS) -lc_malloc_debug
 
+crc32c: lib/crc32c.c
+	$(CC) $(CFLAGS) -o $@ -DAS_UTILITY lib/crc32c.c
