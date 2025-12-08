@@ -39,8 +39,6 @@ void
 fm_protocol_directory_add(struct fm_protocol *proto)
 {
 	assert(proto->name != NULL);
-	if (proto->id == FM_PROTO_NONE)
-		fm_log_fatal("Attempt to add protocol %s without protocol id", proto->name);
 	if (fm_protocol_directory_count < 256)
 		fm_protocol_directory[fm_protocol_directory_count++] = proto;
 }
