@@ -118,6 +118,9 @@ struct fm_config {
 
 		/* Maximum size of holes in path */
 		unsigned int	max_hole_size;
+
+		/* Other options for the underlying probe */
+		fm_string_array_t packet_options;
 	} traceroute;
 };
 

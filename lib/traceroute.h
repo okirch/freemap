@@ -89,6 +89,7 @@ typedef struct fm_topo_state {
 	fm_topo_extra_params_t	topo_params;
 	fm_protocol_t *		packet_proto;
 	fm_probe_class_t *	packet_probe_class;
+	fm_string_array_t	packet_probe_params;
 	fm_multiprobe_t *	packet_probe;
 
 	unsigned int		next_ttl;
