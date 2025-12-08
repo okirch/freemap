@@ -208,6 +208,9 @@ extern bool		fm_arp_discover(fm_protocol_t *proto, fm_target_t *target, int retr
 extern const char *	fm_protocol_id_to_string(unsigned int id);
 extern unsigned int	fm_protocol_string_to_id(const char *name);
 
+extern int		fm_ipproto_from_string(const char *name);
+extern const char *	fm_ipproto_to_string(unsigned int ipproto);
+
 extern fm_wellknown_service_t *fm_wellknown_service_for_port(const char *protool_id, unsigned int port);
 
 #endif /* FREEMAP_FREEMAP_H */

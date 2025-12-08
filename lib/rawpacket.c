@@ -1105,3 +1105,51 @@ fm_raw_packet_pull_arp_header(fm_buffer_t *bp, fm_arp_header_info_t *arp_info)
 
 	return true;
 }
+
+/*
+ * Printable names for IPPROTO_* constants
+ */
+static const char *	ipproto_names[256] = {
+	[IPPROTO_ICMP]		= "icmp",
+	[IPPROTO_IGMP]		= "igmp",
+	[IPPROTO_IPIP]		= "ipip",
+	[IPPROTO_TCP]		= "tcp",
+	[IPPROTO_UDP]		= "udp",
+	[IPPROTO_DCCP]		= "dccp",
+	[IPPROTO_SCTP]		= "sctp",
+	[IPPROTO_UDPLITE]	= "udp-lite",
+	[IPPROTO_MPLS]		= "mpls",
+	[IPPROTO_GRE]		= "gre",
+	[IPPROTO_ESP]		= "ipsec-esp",
+	[IPPROTO_AH]		= "ipsec-ah",
+	[IPPROTO_L2TP]		= "l2tp",
+};
+
+int
+fm_ipproto_from_string(const char *name)
+{
+	unsigned int i;
+
+	for (i = 0; i < 256; ++i) {
+		const char *prot_name = ipproto_names[i];
+
+		if (prot_name && !strcmp(prot_name, name))
+			return i;
+	}
+	return -1;
+}
+
+const char *
+fm_ipproto_to_string(unsigned int ipproto)
+{
+	static char namebuf[32];
+	const char *name = NULL;
+
+	if (ipproto < 256)
+		name = ipproto_names[ipproto];
+	if (name == NULL) {
+		snprintf(namebuf, sizeof(namebuf), "ipproto-%u", ipproto);
+		name = namebuf;
+	}
+	return name;
+}
