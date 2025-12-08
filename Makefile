@@ -13,6 +13,7 @@ OBJS	= lib/projects.o \
 	  lib/udp.o \
 	  lib/icmp.o \
 	  lib/arp.o \
+	  lib/rawip.o \
 	  lib/rawpacket.o \
 	  lib/traceroute.o \
 	  lib/ratelimit.o \
