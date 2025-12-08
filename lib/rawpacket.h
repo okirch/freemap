@@ -187,6 +187,7 @@ extern bool		fm_raw_packet_pull_icmpv6_header(fm_buffer_t *bp, fm_icmp_header_in
 extern bool		fm_raw_packet_pull_arp_header(fm_buffer_t *bp, fm_arp_header_info_t *arp);
 
 extern bool		fm_icmp_header_is_host_unreachable(const fm_icmp_header_info_t *icmp_info);
+extern bool		fm_icmp_header_is_proto_unreachable(const fm_icmp_header_info_t *icmp_info);
 extern void		fm_raw_packet_map_icmpv6_codes(fm_icmp_header_info_t *icmp_info, unsigned int type, unsigned int code);
 extern fm_icmp_msg_type_t *fm_icmp_msg_type_by_name(const char *name);
 extern fm_icmp_msg_type_t *fm_icmp_msg_type_get_reply(fm_icmp_msg_type_t *req);

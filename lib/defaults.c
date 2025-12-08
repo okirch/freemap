@@ -78,4 +78,10 @@ fm_config_init_defaults(fm_config_t *conf)
 	conf->arp.retries = 3;
 	conf->arp.packet_spacing = 250;
 	conf->arp.timeout = 1000;
+
+	/* raw IP reachability probe. We transmit 3 ARP requests,
+	 * 250 msec apart, then wait for up to 1 second for a response. */
+	conf->rawip.retries = 3;
+	conf->rawip.packet_spacing = 250;
+	conf->rawip.timeout = 1000;
 }

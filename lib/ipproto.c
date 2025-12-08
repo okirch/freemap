@@ -14,466 +14,244 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
- * Scanning IP protocols
+ * Scanning for IP protocols
  */
 
-#include <net/ethernet.h>
-#include <linux/if_ether.h>
-#include <linux/if_packet.h>
-#include <linux/if_arp.h>
-#include <netinet/ip.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "scanner.h"
 #include "protocols.h"
-#include "target.h" /* for fm_probe_t */
+#include "target.h"
 #include "socket.h"
-#include "rawpacket.h"
+#include "services.h"
+#include "probe_private.h"
+#include "rawip.h"
+#include "logging.h"
 #include "buffer.h"
-#include "utils.h"
 
-typedef struct fm_ipproto_request {
+typedef struct fm_ipproto_control {
 	fm_protocol_t *		proto;
-	fm_target_t *		target;
 
 	fm_socket_t *		sock;
-	bool			sock_is_shared;
 
-	int			family;
-	fm_address_t		host_address;
-	fm_probe_params_t	params;
+	fm_ip_header_info_t	ip_info;
 
-	fm_ip_header_info_t	ip;
-	fm_routing_info_t	rtinfo;
+	struct {
+		const unsigned char *	data;
+		unsigned int		len;
+	} payload;
+} fm_ipproto_control_t;
 
-	bool			wait_for_ndisc;
-} fm_ipproto_request_t;
-
-typedef struct fm_ipproto_extant_info {
-	unsigned int		proto;
-} fm_ipproto_extant_info_t;
-
-static fm_socket_t *	fm_ipproto_create_socket(fm_protocol_t *proto, int ipproto);
-
-static fm_ipproto_request_t *fm_ipproto_probe_get_request(const fm_probe_t *probe);
-static void		fm_ipproto_probe_set_request(fm_probe_t *probe, fm_ipproto_request_t *req);
-
-static struct fm_protocol	fm_ipproto_ops = {
-	.obj_size	= sizeof(fm_protocol_t),
-	.name		= "ipproto",
-	.id		= FM_PROTO_IP,
-
-	.create_socket	= fm_ipproto_create_socket,
-
-	/* We do not expect to receive a response, but we at least need an error handler */
-};
-
-FM_PROTOCOL_REGISTER(fm_ipproto_ops);
-
-static fm_socket_t *
-fm_ipproto_create_socket(fm_protocol_t *proto, int ipproto)
+/*
+ * rawip action
+ */
+static void
+fm_ipproto_control_free(fm_ipproto_control_t *control)
 {
-	return NULL;
+	if (control->sock != NULL)
+		fm_socket_release(control->sock);
+
+	control->sock = NULL;
+	free(control);
 }
 
-static fm_socket_t *
-fm_rawip_create_socket(fm_protocol_t *proto, const fm_address_t *addr)
+static fm_ipproto_control_t *
+fm_ipproto_control_alloc(fm_protocol_t *proto)
 {
-	fm_address_t lladdr = *addr;
-	fm_socket_t *sock;
+	static const unsigned char empty_dummy[64] = {};
+	fm_ipproto_control_t *control;
 
-	if (lladdr.family != AF_PACKET)
-		return NULL;
+	control = calloc(1, sizeof(*control));
+	control->proto = proto;
 
-	((struct sockaddr_ll *) &lladdr)->sll_protocol = htons(ETH_P_IP);
+	control->ip_info.ipproto = 66;
+	control->ip_info.ttl = 64;
+	control->ip_info.tos = 0;
 
-	sock = fm_raw_socket_get(&lladdr, proto, SOCK_RAW);
+	control->payload.data = empty_dummy;
+	control->payload.len = sizeof(empty_dummy);
+
+	return control;
+}
+
+/*
+ * Initialize protocol-specific part of target control.
+ * When we get here, most of the generic members have already been set.
+ */
+static bool
+fm_ipproto_control_init_target(const fm_ipproto_control_t *control, fm_target_control_t *target_control, fm_target_t *target)
+{
+	fm_socket_t *sock = NULL;
+
+	sock = fm_rawip_create_shared_socket(target, control->ip_info.ipproto);
 	if (sock == NULL)
-		return NULL;
+		return false;
 
-	fm_socket_enable_recverr(sock);
+	target_control->sock = sock;
 
-	return sock;
+	target_control->ip_info = control->ip_info;
+	target_control->ip_info.src_addr = target_control->src_addr;
+	target_control->ip_info.dst_addr = target_control->dst_addr;
+
+	return true;
 }
 
 /*
- * IPPROTO action
+ * Build the packet.
  */
-static void
-fm_ipproto_request_free(fm_ipproto_request_t *req)
-{
-	/* beware, do not free the socket; it's shared globally */
-	free(req);
-}
-
-static fm_ipproto_request_t *
-fm_ipproto_request_alloc(fm_protocol_t *proto, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
-{
-	fm_ipproto_request_t *req;
-
-	if (target->address.family != AF_INET) {
-		fm_log_error("Cannot implement ipproto probe for %s: not supported",
-				fm_address_format(&target->address));
-		return NULL;
-	}
-
-	if (params->port == 0) {
-		fm_log_error("%s: trying to create a req request without destination port");
-		return NULL;
-	}
-
-	req = calloc(1, sizeof(*req));
-	req->proto = proto;
-	req->target = target;
-	req->params = *params;
-
-	if (req->params.retries == 0)
-		req->params.retries = 3; /* fm_global.ipproto.retries; */
-
-	req->family = target->address.family;
-	req->host_address = target->address;
-
-	req->ip.src_addr = target->local_bind_address;
-	req->ip.dst_addr = target->address;
-
-	/* it's not a port, it's a proto */
-	req->ip.ipproto = params->port;
-
-	memset(&req->rtinfo, 0, sizeof(req->rtinfo));
-
-	req->rtinfo.dst.network_address = req->host_address;
-	if (!fm_routing_lookup(&req->rtinfo)) {
-		fm_ipproto_request_free(req);
-		return NULL;
-	}
-
-	if (req->rtinfo.incomplete_neighbor_entry) {
-		if (!fm_neighbor_initiate_discovery(req->rtinfo.incomplete_neighbor_entry)) {
-			fm_log_error("%s: neighbor discovery failed", fm_address_format(&target->address));
-			fm_ipproto_request_free(req);
-			return NULL;
-		}
-		req->wait_for_ndisc = true;
-	}
-
-	return req;
-}
-
-static void
-fm_ipproto_request_set_socket(fm_ipproto_request_t *req, fm_socket_t *sock)
-{
-	req->sock = sock;
-	req->sock_is_shared = true;
-}
-
-/*
- * Do the scheduling
- */
-static fm_error_t
-fm_ipproto_request_schedule(fm_ipproto_request_t *req, fm_time_t *expires)
-{
-	if (req->params.retries == 0)
-		return FM_TIMED_OUT;
-
-	/* After sending the last probe, we wait until the full timeout has expired.
-	 * For any earlier probe, we wait for the specified packet spacing */
-	if (req->params.retries == 1)
-		*expires = fm_time_now() + 1000;
-	else
-		*expires = fm_time_now() + 250;
-	return 0;
-}
-
-
 static fm_pkt_t *
-fm_ipproto_build_proto_probe(fm_ipproto_request_t *req)
+fm_ipproto_build_packet(const fm_ipproto_control_t *control, fm_target_control_t *target_control,
+		const fm_ip_header_info_t *ip_info)
 {
-	fm_routing_info_t *rtinfo = &req->rtinfo;
 	fm_pkt_t *pkt;
-	fm_buffer_t *bp;
 
-	if (rtinfo->dst.network_address.family != AF_INET)
-		return NULL;
+	pkt = fm_pkt_alloc(target_control->family, 256);
+	fm_pkt_set_peer_address_raw(pkt, &target_control->dst_addr, control->ip_info.ipproto);
 
-	/* should be plenty */
-	bp = fm_buffer_alloc(1500);
-
-	if (!fm_raw_packet_add_link_header(bp, &rtinfo->src.link_address, &rtinfo->nh.link_address)
-	 || !fm_raw_packet_add_network_header(bp, &rtinfo->src.network_address, &rtinfo->nh.network_address,
-		 	req->ip.ipproto, 64, 0,
-			44)) {
-		fm_buffer_free(bp);
+	if (!fm_raw_packet_add_ip_header(pkt->payload, ip_info, control->payload.len)
+	 || !fm_buffer_append(pkt->payload, control->payload.data, control->payload.len)) {
+		fm_pkt_free(pkt);
 		return NULL;
 	}
-
-	/* put random trash into payload, we don't care */
-	memset(fm_buffer_push(bp, 44), 0, 44);
-
-	pkt = fm_pkt_alloc(req->family, 0);
-	pkt->peer_addr = rtinfo->nh.link_address;
-	pkt->payload = bp;
 
 	return pkt;
 }
 
-static bool
-fm_ipproto_request_event_handler(fm_ipproto_request_t *req, fm_event_t event)
-{
-	if (event != FM_EVENT_ID_NEIGHBOR_CACHE)
-		return false;
-
-	/* This does not do another full routing lookup, it just checks
-	 * whether the neighbor discovery completed.
-	 * NB, discovery may have failed, and we need to check for that in
-	 * the send() function.
-	 */
-	return fm_routing_lookup_complete(&req->rtinfo);
-}
-
+/*
+ * Send the control request.
+ * The probe argument is only here because we need to notify it when done.
+ */
 static fm_error_t
-fm_ipproto_request_send(fm_ipproto_request_t *req, fm_ipproto_extant_info_t *extant_info)
+fm_ipproto_request_send(const fm_ipproto_control_t *control, fm_target_control_t *target_control, int param_type, int param_value,
+		const fm_buffer_t *application_payload,
+		fm_extant_t **extant_ret)
 {
-	fm_routing_info_t *rtinfo = &req->rtinfo;
-	fm_ip_header_info_t *ip = &req->ip;
+	fm_rawip_extant_info_t extant_info;
+	const fm_ip_header_info_t *ip_info;
+	fm_target_t *target = target_control->target;
+	fm_socket_t *sock;
 	fm_pkt_t *pkt;
+	fm_error_t err;
 
-	if (rtinfo->nh.link_address.family == AF_UNSPEC) {
-		fm_log_error("%s: neighbor discovery failed",
-				fm_address_format(&ip->dst_addr));
+	ip_info = fm_ip_header_info_finalize(&target_control->ip_info, param_type, param_value);
+
+	sock = target_control->sock;
+	if (sock == NULL) {
+		fm_log_error("Unable to create rawip socket for %s: %m", target->id);
 		return FM_SEND_ERROR;
 	}
 
-	/* This creates a globally shared socket. */
-	if (req->sock == NULL) {
-		req->sock = fm_rawip_create_socket(req->proto, &rtinfo->nh.link_address);
-		if (req->sock == NULL) {
-			fm_log_error("Unable to create packet socket for %s: %m",
-					fm_address_format(&ip->dst_addr));
-			return FM_SEND_ERROR;
-		}
-	}
+	pkt = fm_ipproto_build_packet(control, target_control, ip_info);
 
-	if (!(pkt = fm_ipproto_build_proto_probe(req))) {
-		fm_log_error("Unable to build IP proto probe");
+	err = fm_socket_send_pkt_and_burn(sock, pkt);
+	if (err < 0) {
+		fm_log_error("Unable to send rawip packet: %m");
 		return FM_SEND_ERROR;
 	}
 
-	if (fm_debug_level) {
-		struct sockaddr_ll *lladdr = fm_address_to_link(&rtinfo->nh.link_address);
-		const fm_interface_t *nic;
-		fm_buffer_t *bp = pkt->payload;
+	fm_rawip_extant_info_build(ip_info->ipproto, &extant_info);
+	*extant_ret = fm_socket_add_extant(sock, target->host_asset,
+			target_control->family, ip_info->ipproto,
+			&extant_info, sizeof(extant_info));
 
-		assert(lladdr != NULL);
-		nic = fm_interface_by_index(lladdr->sll_ifindex);
-		fm_log_debug("About to send raw packet via %s", fm_interface_get_name(nic));
-		fm_print_hexdump(bp->data, bp->wpos);
-	}
-
-	if (!fm_socket_send_pkt_and_burn(req->sock, pkt)) {
-		fm_log_error("Unable to send IP proto probe: %m");
-		return FM_SEND_ERROR;
-	}
+	assert(*extant_ret);
 
 	/* update the asset state */
-	fm_target_update_host_state(req->target, FM_PROTO_IP, FM_ASSET_STATE_PROBE_SENT);
+	fm_target_update_host_state(target, FM_PROTO_IP, FM_ASSET_STATE_PROBE_SENT);
 
-	req->params.retries -= 1;
 	return 0;
 }
 
 /*
- * ipproto probes
+ * New multiprobe implementation
  */
-struct fm_ipproto_host_probe {
-	fm_probe_t		base;
-	fm_ipproto_request_t *	request;
+static bool
+fm_ipproto_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task, fm_target_t *target)
+{
+	const fm_ipproto_control_t *control = multiprobe->control;
+
+	return fm_ipproto_control_init_target(control, &host_task->control, target);
+}
+
+static fm_error_t
+fm_ipproto_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task,
+		int param_type, int param_value,
+		const fm_buffer_t *application_payload,
+		fm_extant_t **extant_ret, double *timeout_ret)
+{
+	const fm_ipproto_control_t *control = multiprobe->control;
+
+	return fm_ipproto_request_send(control, &host_task->control,
+			param_type, param_value,
+			application_payload, extant_ret);
+}
+
+static void
+fm_ipproto_multiprobe_destroy(fm_multiprobe_t *multiprobe)
+{
+	fm_ipproto_control_t *control = multiprobe->control;
+
+	multiprobe->control = NULL;
+	fm_ipproto_control_free(control);
+}
+
+static fm_multiprobe_ops_t	fm_ipproto_multiprobe_ops = {
+	.add_target		= fm_ipproto_multiprobe_add_target,
+	.transmit		= fm_ipproto_multiprobe_transmit,
+	.destroy		= fm_ipproto_multiprobe_destroy,
 };
 
-static fm_error_t
-fm_ipproto_host_probe_schedule(fm_probe_t *probe)
+static bool
+fm_ipproto_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const fm_string_array_t *extra_args)
 {
-	fm_ipproto_request_t *req;
+	fm_ipproto_control_t *control;
+	unsigned int i;
 
-	req = fm_ipproto_probe_get_request(probe);
-	if (req == NULL)
-		return FM_NOT_SUPPORTED;
-
-	return fm_ipproto_request_schedule(req, &probe->job.expires);
-}
-
-
-static fm_error_t
-fm_ipproto_host_probe_send(fm_probe_t *probe)
-{
-	fm_ipproto_request_t *req;
-	fm_ipproto_extant_info_t extant_info;
-	fm_error_t error;
-
-	if (!(req = fm_ipproto_probe_get_request(probe)))
-		return FM_NOT_SUPPORTED;
-
-	error = fm_ipproto_request_send(req, &extant_info);
-	if (error == 0)
-		fm_extant_alloc(probe, req->family, req->ip.ipproto, NULL, 0);
-
-	return error;
-}
-
-#if 0
-static fm_error_t
-fm_ipproto_host_probe_send(fm_probe_t *probe)
-{
-	struct fm_ipproto_host_probe *ipprobe = (struct fm_ipproto_host_probe *) probe;
-	fm_routing_info_t *rtinfo = &ipprobe->rtinfo;
-	fm_ip_header_info_t *ip = &ipprobe->ip;
-	fm_socket_t *sock;
-	fm_buffer_t *bp;
-
-	if (rtinfo->nh.link_address.family == AF_UNSPEC) {
-		fm_log_error("%s: neighbor discovery failed",
-				fm_address_format(&ip->dst_addr));
-		return FM_SEND_ERROR;
+	if (multiprobe->control != NULL) {
+		fm_log_error("cannot reconfigure probe %s", multiprobe->name);
+		return false;
 	}
 
-	sock = fm_rawip_create_socket(probe->proto, &rtinfo->nh.link_address);
-	if (sock == NULL) {
-		fm_log_error("Unable to create packet socket for %s: %m",
-				fm_address_format(&ip->dst_addr));
-		return FM_SEND_ERROR;
-	}
+	/* Set the default timings and retries */
+	multiprobe->timings.packet_spacing = fm_global.rawip.packet_spacing * 1e-3;
+	multiprobe->timings.timeout = fm_global.rawip.timeout * 1e-3;
+	if (multiprobe->params.retries == 0)
+		multiprobe->params.retries = fm_global.rawip.retries;
 
-	if (!(bp = fm_ipproto_build_proto_probe(rtinfo, ip->ipproto))) {
-		fm_log_error("Unable to build IP proto probe");
-		return FM_SEND_ERROR;
-	}
+	control = fm_ipproto_control_alloc(pclass->proto);
+	if (control == NULL)
+		return false;
 
-	if (fm_debug_level) {
-		struct sockaddr_ll *lladdr = fm_address_to_link(&rtinfo->nh.link_address);
-		const fm_interface_t *nic;
+	/* process extra_args if given */
+	for (i = 0; i < extra_args->count; ++i) {
+		const char *arg = extra_args->entries[i];
 
-		assert(lladdr != NULL);
-		nic = fm_interface_by_index(lladdr->sll_ifindex);
-		fm_log_debug("About to send raw packet via %s", fm_interface_get_name(nic));
-		fm_print_hexdump(bp->data, bp->wpos);
-	}
-
-	if (!fm_socket_send(sock, &rtinfo->nh.link_address, bp->data, bp->wpos)) {
-		fm_log_error("Unable to send IP proto probe: %m");
-		return FM_SEND_ERROR;
-	}
-
-	fm_ipproto_expect_response(probe, rtinfo->dst.network_address.family, ip->ipproto);
-
-	/* update the asset state */
-	fm_target_update_host_state(probe->target, FM_PROTO_IP, FM_ASSET_STATE_PROBE_SENT);
-
-	ipprobe->send_retries -= 1;
-
-	return 0;
-}
+#ifdef notyet
+		if (!strncmp(arg, "rawip-", 6) && fm_rawip_process_config_arg(&control->udp_info, arg))
+			continue;
 #endif
 
-/*
- * Event handling callback
- */
-static bool
-fm_ipproto_event_handler(fm_job_t *job, fm_event_t event)
-{
-	fm_probe_t *probe;
-	fm_ipproto_request_t *req;
+		if (!strncmp(arg, "ip-", 3) && fm_ip_process_config_arg(&control->ip_info, arg))
+			continue;
 
-	probe = fm_probe_from_job(job);
-
-	req = fm_ipproto_probe_get_request(probe);
-	if (req == NULL)
+		fm_log_error("%s: unsupported or invalid option %s", multiprobe->name, arg);
 		return false;
+	}
 
-	return fm_ipproto_request_event_handler(req, event);
+	multiprobe->ops = &fm_ipproto_multiprobe_ops;
+	multiprobe->control = control;
+	return true;
 }
 
-static fm_error_t
-fm_ipproto_host_probe_set_socket(fm_probe_t *probe, fm_socket_t *sock)
-{
-	fm_ipproto_request_t *req = fm_ipproto_probe_get_request(probe);
-
-	if (req == NULL)
-		return FM_NOT_SUPPORTED;
-
-	fm_ipproto_request_set_socket(req, sock);
-	return 0;
-}
-
-static void
-fm_ipproto_host_probe_destroy(fm_probe_t *probe)
-{
-	fm_ipproto_probe_set_request(probe, NULL);
-}
-
-static struct fm_probe_ops fm_ipproto_host_probe_ops = {
-	.obj_size	= sizeof(struct fm_ipproto_host_probe),
-	.name 		= "ipproto",
-
-	.destroy	= fm_ipproto_host_probe_destroy,
-	.send		= fm_ipproto_host_probe_send,
-	.schedule	= fm_ipproto_host_probe_schedule,
-	.set_socket	= fm_ipproto_host_probe_set_socket,
-};
-
-static fm_ipproto_request_t *
-fm_ipproto_probe_get_request(const fm_probe_t *probe)
-{
-	if (probe->ops != &fm_ipproto_host_probe_ops)
-		return NULL;
-
-	return ((struct fm_ipproto_host_probe *) probe)->request;
-}
-
-static void
-fm_ipproto_probe_set_request(fm_probe_t *probe, fm_ipproto_request_t *req)
-{
-	struct fm_ipproto_host_probe *ipproto_probe;
-
-	if (probe->ops != &fm_ipproto_host_probe_ops)
-		return;
-
-	ipproto_probe = (struct fm_ipproto_host_probe *) probe;
-	if (ipproto_probe->request != NULL)
-		fm_ipproto_request_free(ipproto_probe->request);
-	ipproto_probe->request = req;
-}
-
-
-static fm_probe_t *
-fm_ipproto_create_host_probe(fm_probe_class_t *pclass, fm_target_t *target, const fm_probe_params_t *params, const void *extra_params)
-{
-	fm_protocol_t *proto = pclass->proto; /* this is just a dummy for now until we have a real rawip protocol */
-	fm_ipproto_request_t *req;
-	fm_probe_t *probe;
-	char name[32];
-
-	req = fm_ipproto_request_alloc(proto, target, params, extra_params);
-	if (req == NULL)
-		return NULL;
-
-	snprintf(name, sizeof(name), "req/port=%u,ttl=%u", params->port, params->ttl);
-	probe = fm_probe_alloc(name, &fm_ipproto_host_probe_ops, target);
-	fm_ipproto_probe_set_request(probe, req);
-
-	if (req->wait_for_ndisc)
-		fm_probe_wait_for_event(probe, fm_ipproto_event_handler, FM_EVENT_ID_NEIGHBOR_CACHE);
-
-	fm_log_debug("Created IP protocol socket probe for %s\n", fm_address_format(&req->host_address));
-	return probe;
-}
-
-static struct fm_probe_class fm_ipproto_host_probe_class = {
+static struct fm_probe_class fm_ipproto_port_probe_class = {
 	.name		= "ipproto",
-	.proto_id	= FM_PROTO_IP,
-	.modes		= FM_PROBE_MODE_HOST,
-	.create_probe	= fm_ipproto_create_host_probe,
+	.proto_id	= FM_PROTO_NONE,
+	.modes		= FM_PROBE_MODE_TOPO|FM_PROBE_MODE_HOST,
+	.configure	= fm_ipproto_configure_probe,
 };
 
-FM_PROBE_CLASS_REGISTER(fm_ipproto_host_probe_class)
+FM_PROBE_CLASS_REGISTER(fm_ipproto_port_probe_class)

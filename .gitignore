@@ -10,3 +10,4 @@ tests/addrs
 tests/ratelimit
 tests/argparse
 fakenet/fakenet
+crc32c

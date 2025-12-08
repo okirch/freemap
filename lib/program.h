@@ -41,7 +41,25 @@ struct fm_config_probe {
 	char *			info;
 	fm_probe_params_t	probe_params;
 	fm_uint_array_t		ports;
+	fm_buffer_t *		payload;
 	fm_string_array_t	extra_args;
+};
+
+typedef struct fm_config_probe_array {
+	unsigned int		count;
+	fm_config_probe_t **	entries;
+} fm_config_probe_array_t;
+
+struct fm_config_routine {
+	const char *		name;
+	int			stage;		/* FM_SCAN_STAGE_xxx */
+	bool			optional;
+	fm_config_probe_array_t	probes;
+
+	fm_string_array_t	broadcast_probes;
+	fm_string_array_t	topology_probes;
+	fm_string_array_t	host_probes;
+	fm_string_array_t	port_probes;
 };
 
 typedef struct fm_config_module fm_config_module_t;
@@ -102,6 +120,7 @@ struct fm_config_preset {
 	const fm_config_module_t *containing_module;
 
 	const char *		name;
+	char *			info;
 	fm_string_array_t	udp_ports;
 	fm_string_array_t	tcp_ports;
 
@@ -122,6 +141,7 @@ extern bool			fm_config_program_set_stage(fm_config_program_t *, unsigned int, c
 extern bool			fm_config_program_set_service_catalog(fm_config_program_t *, const char *);
 extern void			fm_config_program_free(fm_config_program_t *);
 extern fm_config_preset_t *	fm_config_load_preset(const char *name);
+extern const fm_config_preset_array_t *fm_config_list_presets(void);
 
 extern bool			fm_config_routine_bind_ports(fm_config_routine_t *, const char *proto_name, const fm_string_array_t *ports);
 

@@ -144,6 +144,22 @@ fm_pkt_is_dest_unreachable(const fm_pkt_t *pkt)
 	return false;
 }
 
+bool
+fm_pkt_is_proto_unreachable(const fm_pkt_t *pkt)
+{
+	const struct sock_extended_err *ee;
+	if (pkt == NULL || (ee = pkt->info.ee) == NULL)
+		return false;
+
+	if (ee->ee_origin == SO_EE_ORIGIN_ICMP)
+		return ee->ee_type == ICMP_DEST_UNREACH && ee->ee_code == ICMP_PROT_UNREACH;
+
+	if (ee->ee_origin == SO_EE_ORIGIN_ICMP6)
+		return ee->ee_type == ICMP6_PARAM_PROB && ee->ee_code == ICMP6_PARAMPROB_NEXTHEADER;
+
+	return false;
+}
+
 /*
  * This should be called in the transmit path when using raw sockets.
  * On raw sockets, the port field is supposed to be either 0 or contain the transport
@@ -1117,21 +1133,15 @@ fm_socket_pool_get_socket(fm_socket_pool_t *pool, const fm_address_t *local_addr
 			return entry->sock;
 	}
 
-	sock = fm_protocol_create_socket(pool->driver, local_addr->family);
-	if (sock == NULL)
+	sock = fm_protocol_create_socket(pool->driver, local_addr->family, local_addr);
+	if (sock == NULL) {
+		fm_log_error("Cannot create %s socket", pool->driver->name);
 		return NULL;
+	}
 
 	if (fm_global.scanner.socket_send_buffer != 0
 	 && !fm_socket_option_set(sock, "SO_SNDBUF", SOL_SOCKET, SO_SNDBUFFORCE, fm_global.scanner.socket_send_buffer)) {
 		fm_log_warning("Unable to bump send buffer size");
-	}
-
-	if (!fm_socket_bind(sock, local_addr)) {
-		fm_log_error("Cannot bind %s socket to address %s: %m",
-				pool->driver->name,
-				fm_address_format(local_addr));
-		fm_socket_free(sock);
-		return NULL;
 	}
 
 	/* Mark this socket as shared, so it doesn't get deleted accidentally */

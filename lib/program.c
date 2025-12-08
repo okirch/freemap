@@ -53,11 +53,6 @@ typedef struct fm_config_catalog {
 	fm_string_array_t	names;
 } fm_config_catalog_t;
 
-typedef struct fm_config_probe_array {
-	unsigned int		count;
-	fm_config_probe_t **	entries;
-} fm_config_probe_array_t;
-
 typedef struct fm_config_catalog_array {
 	unsigned int		count;
 	fm_config_catalog_t **	entries;
@@ -72,18 +67,6 @@ struct fm_config_module {
 	fm_config_service_array_t services;
 	fm_config_catalog_array_t service_catalogs;
 	fm_config_preset_array_t presets;
-};
-
-struct fm_config_routine {
-	const char *		name;
-	int			stage;		/* FM_SCAN_STAGE_xxx */
-	bool			optional;
-	fm_config_probe_array_t	probes;
-
-	fm_string_array_t	broadcast_probes;
-	fm_string_array_t	topology_probes;
-	fm_string_array_t	host_probes;
-	fm_string_array_t	port_probes;
 };
 
 struct fm_config_routine_definition {
@@ -144,6 +127,18 @@ fm_config_load_preset(const char *name)
 		return NULL;
 
 	return fm_config_library_resolve_preset(lib, name);
+}
+
+const fm_config_preset_array_t *
+fm_config_list_presets(void)
+{
+	fm_config_library_t *lib;
+
+	if ((lib = fm_config_load_library()) == NULL
+	 || lib->standard == NULL)
+		return NULL;
+
+	return &lib->standard->presets;
 }
 
 fm_config_routine_t *
@@ -503,7 +498,6 @@ fm_config_preset_resolve_stage(const fm_config_preset_t *preset, int stage, fm_c
 		break;
 	}
 
-	fm_log_notice("%s(%d): ref=%s", __func__, stage, reference);
 	if (reference == NULL)
 		return true;
  
@@ -1074,6 +1068,32 @@ fm_config_packet_set_payload(curly_node_t *node, void *attr_data, const curly_at
 	return true;
 }
 
+static bool
+fm_config_packet_get_payload(curly_node_t *node, void *attr_data, const char *attr_name)
+{
+	fm_buffer_t **bufp = attr_data;
+	fm_buffer_t *bp;
+	const unsigned char *data;
+	unsigned int i, len;
+
+	if ((bp = *bufp) == NULL)
+		return true;
+
+	len = fm_buffer_available(bp);
+	if (len == 0)
+		return true;
+
+	data = fm_buffer_head(bp);
+	for (i = 0; i < len; ++i) {
+		char value[16];
+
+		snprintf(value, sizeof(value), "0x%02x", data[i]);
+		curly_node_add_attr_list(node, attr_name, value);
+	}
+
+	return true;
+}
+
 /*
  * curly file structure for library
  */
@@ -1087,6 +1107,7 @@ static fm_config_proc_t	fm_config_probe_root = {
 		{ "ttl",	offsetof(fm_config_probe_t, probe_params.ttl),		FM_CONFIG_ATTR_TYPE_INT },
 		{ "retries",	offsetof(fm_config_probe_t, probe_params.retries),	FM_CONFIG_ATTR_TYPE_INT },
 		{ "tos",	offsetof(fm_config_probe_t, probe_params.tos),		FM_CONFIG_ATTR_TYPE_INT },
+		{ "payload",	offsetof(fm_config_probe_t, payload),			FM_CONFIG_ATTR_TYPE_SPECIAL, .setfn = fm_config_packet_set_payload, .getfn = fm_config_packet_get_payload },
 
 		{ "*",		offsetof(fm_config_probe_t, extra_args),		FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
 	},
@@ -1148,6 +1169,7 @@ static fm_config_proc_t	fm_config_catalog_root = {
 static fm_config_proc_t	fm_config_preset_root = {
 	.name = ATTRIB_STRING(fm_config_preset_t, name),
 	.attributes = {
+		{ "info",		offsetof(fm_config_preset_t, info),		FM_CONFIG_ATTR_TYPE_STRING },
 		{ "tcp-ports",		offsetof(fm_config_preset_t, tcp_ports),	FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
 		{ "udp-ports",		offsetof(fm_config_preset_t, udp_ports),	FM_CONFIG_ATTR_TYPE_STRING_ARRAY },
 		{ "discovery-scan",	offsetof(fm_config_preset_t, discovery_scan),	FM_CONFIG_ATTR_TYPE_STRING },

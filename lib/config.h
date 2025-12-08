@@ -100,6 +100,15 @@ struct fm_config {
 		/* timeout for response to arrive */
 		unsigned int	timeout;
 	} arp;
+	struct fm_config_rawip {
+		unsigned int	retries;
+
+		/* delay, in ms, between sending two packets */
+		unsigned int	packet_spacing;
+
+		/* timeout for response to arrive */
+		unsigned int	timeout;
+	} rawip;
 };
 
 extern fm_config_t		fm_global;

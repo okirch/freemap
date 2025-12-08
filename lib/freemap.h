@@ -199,6 +199,7 @@ extern void		fm_socket_timestamp_update(fm_socket_timestamp_t *);
 extern double		fm_pkt_rtt(const fm_pkt_t *pkt, const fm_socket_timestamp_t *send_ts);
 extern bool		fm_pkt_is_ttl_exceeded(const fm_pkt_t *);
 extern bool		fm_pkt_is_dest_unreachable(const fm_pkt_t *);
+extern bool		fm_pkt_is_proto_unreachable(const fm_pkt_t *);
 extern int		fm_port_reserve(unsigned int proto_id);
 
 extern const char *	fm_arp_type_to_string(int hatype);
@@ -206,6 +207,9 @@ extern bool		fm_arp_discover(fm_protocol_t *proto, fm_target_t *target, int retr
 
 extern const char *	fm_protocol_id_to_string(unsigned int id);
 extern unsigned int	fm_protocol_string_to_id(const char *name);
+
+extern int		fm_ipproto_from_string(const char *name);
+extern const char *	fm_ipproto_to_string(unsigned int ipproto);
 
 extern fm_wellknown_service_t *fm_wellknown_service_for_port(const char *protool_id, unsigned int port);
 

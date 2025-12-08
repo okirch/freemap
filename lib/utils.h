@@ -77,6 +77,9 @@ extern void		fm_uint_array_randomize(fm_uint_array_t *);
 
 extern bool		fm_parse_port_range(const char *, fm_port_range_t *);
 extern bool		fm_parse_numeric_argument(const char *arg, const char *option_name, unsigned int *value_p);
+extern bool		fm_parse_numeric_argument_symbolic(const char *arg, const char *option_name,
+					int (*sym_to_string)(const char *),
+					unsigned int *value_p);
 extern bool		fm_parse_string_argument(const char *arg, const char *option_name, const char **value_p);
 
 extern void		fm_print_hexdump(const unsigned char *p, unsigned int len);

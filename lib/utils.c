@@ -203,6 +203,29 @@ fm_parse_numeric_argument(const char *arg, const char *option_name, unsigned int
 	return true;
 }
 
+bool
+fm_parse_numeric_argument_symbolic(const char *arg, const char *option_name,
+				int (*sym_to_string)(const char *), unsigned int *value_p)
+{
+	const char *string_value;
+	const char *end;
+	int r;
+
+	if (!fm_parse_string_argument(arg, option_name, &string_value))
+		return false;
+
+	*value_p = strtoul(string_value, (char **) &end, 0);
+	if (*end == '\0')
+		return true;
+
+	if (sym_to_string != NULL && (r = sym_to_string(string_value)) >= 0) {
+		*value_p = r;
+		return true;
+	}
+
+	return false;
+}
+
 /*
  * Handle string options like "type=echo"
  */

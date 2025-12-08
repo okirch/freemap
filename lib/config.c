@@ -127,7 +127,14 @@ fm_config_load_project(fm_project_t *project, const char *path)
 	if (!fm_config_load_work(path, &fm_project_root, project))
 		return false;
 
+	if (project->discovery_scan != NULL)
+		project->discovery_scan->stage = FM_SCAN_STAGE_DISCOVERY;
+	if (project->topology_scan != NULL)
+		project->topology_scan->stage = FM_SCAN_STAGE_TOPO;
+	if (project->host_scan != NULL)
+		project->host_scan->stage = FM_SCAN_STAGE_HOST;
 	if (project->port_scan != NULL) {
+		project->port_scan->stage = FM_SCAN_STAGE_PORT;
 		fm_config_routine_bind_ports(project->port_scan, "udp", &project->udp_ports);
 		fm_config_routine_bind_ports(project->port_scan, "tcp", &project->tcp_ports);
 	}
@@ -643,7 +650,7 @@ fm_config_render_value(curly_node_t *node, void *data, const fm_config_attr_t *a
 			fm_config_complain(node, "attribute %s has no get() function", attr_name);
 			return false;
 		}
-		okay = attr_def->getfn(node, attr_data);
+		okay = attr_def->getfn(node, attr_data, attr_name);
 		break;
 
 	case FM_CONFIG_ATTR_TYPE_INT_ARRAY:

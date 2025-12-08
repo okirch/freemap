@@ -37,7 +37,7 @@ struct fm_protocol {
 
 	void		(*destroy)(fm_protocol_t *);
 
-	fm_socket_t *	(*create_socket)(fm_protocol_t *, int af);
+	fm_socket_t *	(*create_socket)(fm_protocol_t *, int af, const fm_address_t *bind_addr);
 
 	fm_extant_t *	(*locate_error)(fm_protocol_t *, fm_pkt_t *, hlist_iterator_t *);
 	fm_extant_t *	(*locate_response)(fm_protocol_t *, fm_pkt_t *, hlist_iterator_t *);
@@ -54,25 +54,13 @@ struct fm_protocol {
 #define FM_FEATURE_STATUS_CALLBACK_MASK	(1 << FM_FEATURE_STATUS_CALLBACK)
 #define FM_FEATURE_SERVICE_PROBES_MASK	(1 << FM_FEATURE_SERVICE_PROBES)
 
-#define FM_PROTOCOL_ENGINE_MAX	256
-struct fm_protocol_engine {
-	fm_protocol_t *	driver[__FM_PROTO_MAX];
-
-	unsigned int	num_alt;
-	fm_protocol_t *	alt_driver[FM_PROTOCOL_ENGINE_MAX];
-};
-
-extern fm_protocol_engine_t *fm_protocol_engine_create_default(void);
-
 extern void		fm_protocol_directory_add(struct fm_protocol *ops);
 extern void		fm_protocol_directory_display(void);
 
-extern fm_protocol_t *	fm_protocol_engine_get_protocol(fm_protocol_engine_t *, const char *);
-extern fm_protocol_t *	fm_protocol_engine_get_protocol_alt(fm_protocol_engine_t *engine, const char *name);
 extern fm_protocol_t *	fm_protocol_by_name(const char *);
 extern fm_protocol_t *	fm_protocol_by_id(unsigned int);
 
-extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af);
+extern fm_socket_t *	fm_protocol_create_socket(fm_protocol_t *, int af, const fm_address_t *bind_addr);
 
 extern fm_extant_t *	fm_protocol_locate_error(fm_protocol_t *, fm_pkt_t *, hlist_iterator_t *);
 extern fm_extant_t *	fm_protocol_locate_response(fm_protocol_t *, fm_pkt_t *, hlist_iterator_t *);
