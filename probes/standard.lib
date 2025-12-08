@@ -42,6 +42,20 @@ host-probe icmp-info {
 	ttl 128;
 }
 
+host-probe sctp {
+	info "Check whether host supports SCTP";
+	protocol ipproto;
+	ip-proto sctp;
+	payload		0x02, 0x00, 0x00, 0x50,		# port 512 -> 80
+			0x00, 0x00, 0x00, 0x00,		# verification tag, 0
+			0x37, 0x50, 0x53, 0xe1,		# crc32c checksum (hope I got this right)
+			0x01, 0x00, 0x00, 0x14,		# chunk type 1, flags=0, len=20
+			0x00, 0x00, 0x00, 0x00,		# init tag 0; receiver MUST return ABORT
+			0x00, 0x01, 0x00, 0x00, 	# window credit: 64k
+			0x00, 0x02, 0x00, 0x02, 	# number of inbound/outbound streams: 2
+			0xde, 0xad, 0xbe, 0xef; 	# initial TSN
+}
+
 host-probe ipproto-254 {
 	info "Check host reachability, using invalid IP protocol";
 	protocol ipproto;
@@ -90,7 +104,7 @@ host-scan default {
 }
 
 host-scan thorough {
-	host-probe arp, icmp, tcp-snack;
+	host-probe arp, icmp, tcp-snack, sctp;
 }
 
 port-scan default {
