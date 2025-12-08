@@ -1,4 +1,5 @@
  * DOCUMENTATION
+ * Actually do read /etc/freemap.conf
  * icmp: add type="ndisc" for local reachability probes
  * The host asset cache is crap for IPv6
  * have a "local" address enumerator that loops through all local networks
