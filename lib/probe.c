@@ -298,7 +298,7 @@ fm_multiprobe_from_config(fm_probe_class_t *pclass, const fm_config_probe_t *con
 	if (pclass->configure == NULL)
 		fm_log_fatal("probe class %s does not support multiprobe", pclass->name);
 
-	multiprobe = fm_multiprobe_alloc(config->mode, pclass->name);
+	multiprobe = fm_multiprobe_alloc(config->mode, config->name);
 	multiprobe->probe_class = pclass;
 	multiprobe->action_flags = pclass->action_flags;
 
