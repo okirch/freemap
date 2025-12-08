@@ -656,7 +656,7 @@ fm_socket_send_pkt(fm_socket_t *sock, fm_pkt_t *pkt)
 	if (sock->fd < 0)
 		return false;
 
-	if (sock->trace) {
+	if (fm_debug_facilities & FM_DEBUG_FACILITY_DATA) {
 		fm_log_debug("Sending packet on fd=%d to %s", sock->fd, fm_address_format(&pkt->peer_addr));
 		fm_print_hexdump(fm_buffer_head(pkt->payload), fm_buffer_available(pkt->payload));
 	}
@@ -853,7 +853,7 @@ fm_socket_recv_and_dispatch_packet(fm_socket_t *sock, int flags)
 
 	bp->wpos = n;
 
-	if (sock->trace) {
+	if (fm_debug_facilities & FM_DEBUG_FACILITY_DATA) {
 		fm_log_debug("Received packet on fd=%d from %s", sock->fd, fm_address_format(&pkt->peer_addr));
 		fm_print_hexdump(fm_buffer_head(pkt->payload), fm_buffer_available(pkt->payload));
 	}

@@ -33,7 +33,6 @@ struct fm_socket {
 	int			fd;
 	int			family;
 	int			type;
-	bool			trace;
 	bool			shared;
 
 	socklen_t		addrlen;
