@@ -417,7 +417,7 @@ fm_udp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipro
 		if (!strncmp(arg, "udp-", 4) && fm_udp_process_config_arg(&udp->udp_info, arg))
 			continue;
 
-		if (!strncmp(arg, "ip-", 4) && fm_ip_process_config_arg(&udp->ip_info, arg))
+		if (!strncmp(arg, "ip-", 3) && fm_ip_process_config_arg(&udp->ip_info, arg))
 			continue;
 
 		fm_log_error("%s: unsupported or invalid option %s", multiprobe->name, arg);

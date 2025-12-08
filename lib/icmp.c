@@ -559,7 +559,7 @@ fm_icmp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipr
 		if (!strncmp(arg, "icmp-", 4) && fm_icmp_process_config_arg(&icmp->icmp_info, arg))
 			continue;
 
-		if (!strncmp(arg, "ip-", 4) && fm_ip_process_config_arg(&icmp->ip_info, arg))
+		if (!strncmp(arg, "ip-", 3) && fm_ip_process_config_arg(&icmp->ip_info, arg))
 			continue;
 
 		fm_log_error("%s: unsupported or invalid option %s", multiprobe->name, arg);

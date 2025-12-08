@@ -433,7 +433,7 @@ fm_tcp_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipro
 		if (!strncmp(arg, "tcp-", 4) && fm_tcp_process_config_arg(&tcp->tcp_info, arg))
 			continue;
 
-		if (!strncmp(arg, "ip-", 4) && fm_ip_process_config_arg(&tcp->ip_info, arg))
+		if (!strncmp(arg, "ip-", 3) && fm_ip_process_config_arg(&tcp->ip_info, arg))
 			continue;
 
 		fm_log_error("%s: unsupported or invalid option %s", multiprobe->name, arg);
