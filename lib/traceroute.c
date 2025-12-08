@@ -44,10 +44,6 @@ static void			fm_topo_hop_pkt_notifier(const fm_extant_t *extant, const fm_pkt_t
 static fm_tgateway_t *		fm_tgateway_default(void);
 static fm_tgateway_t *		fm_tgateway_for_address(unsigned int, const fm_address_t *);
 
-static fm_topo_shared_sockets_t *fm_topo_shared_sockets_get(fm_protocol_t *packet_proto, const fm_address_t *dst_addr);
-static fm_socket_t *		fm_topo_shared_socket_open(fm_topo_shared_sockets_t *shared, unsigned ttl);
-static void			fm_topo_shared_sockets_release(fm_topo_shared_sockets_t *shared);
-
 /*
  * topology scan state
  */
@@ -209,8 +205,6 @@ fm_topo_host_control_alloc(fm_topo_control_t *topo, const fm_target_t *target)
 	/* start with ttl 1 */
 	topo_host->next_ttl = 1;
 
-	topo_host->shared_socks = fm_topo_shared_sockets_get(topo->packet_proto, &target->address);
-
 	return topo_host;
 }
 
@@ -311,11 +305,6 @@ static void
 fm_topo_host_control_free(fm_topo_host_control_t *topo_host)
 {
 	unsigned int i;
-
-	if (topo_host->shared_socks != NULL) {
-		fm_topo_shared_sockets_release(topo_host->shared_socks);
-		topo_host->shared_socks = NULL;
-	}
 
 	for (i = 0; i < FM_MAX_TOPO_DEPTH; ++i) {
 		fm_topo_hop_state_t *hop = &topo_host->hop[i];
@@ -822,24 +811,13 @@ fm_topo_state_select_ttl(fm_topo_host_control_t *topo_host, double *timeout_ret,
 static fm_error_t
 fm_topo_state_send_probe(fm_topo_control_t *topo, fm_target_control_t *target_control, fm_topo_hop_state_t *hop, double *timeout_ret)
 {
-	fm_topo_host_control_t *topo_host = target_control->traceroute.topo_control;
 	fm_target_control_t *packet_control = target_control->traceroute.packet_control;
 	unsigned int ttl = hop->distance;
 	fm_extant_t *extant;
-	fm_socket_t *sock;
 	double timeout;
 	fm_error_t error;
 
 	assert(hop->probes_sent < FM_RTT_SAMPLES_WANTED);
-
-	/* sock sharing is very sustainable. not very hygienic, but sustainable */
-	if (topo_host->shared_socks == NULL) {
-		abort();
-	} else {
-		sock = fm_topo_shared_socket_open(topo_host->shared_socks, ttl);
-	}
-
-	assert(sock->family == topo_host->host_address.family);
 
 	error = fm_multiprobe_transmit_ttl_probe(topo->packet_probe, packet_control, ttl, &extant, &timeout);
 	if (error != 0) {
@@ -968,88 +946,6 @@ fm_tgateway_for_address(unsigned int distance, const fm_address_t *addr)
 	fm_tgateway_array_append(&known, gw);
 
 	return gw;
-}
-
-/*
- * Shared sockets
- */
-static fm_topo_shared_sockets_t *
-fm_topo_shared_sockets_get(fm_protocol_t *packet_proto, const fm_address_t *dst_addr)
-{
-	static fm_topo_shared_sockets_t *shared_socks[64];
-	static unsigned int nshared = 0;
-	fm_routing_info_t rtinfo;
-	fm_topo_shared_sockets_t *s;
-	unsigned int i;
-	int af;
-
-	memset(&rtinfo, 0, sizeof(rtinfo));
-	rtinfo.dst.network_address = *dst_addr;
-
-	if (!fm_routing_lookup(&rtinfo)) {
-		fm_log_error("traceroute: no route to %s", fm_address_format(dst_addr));
-		return NULL;
-	}
-
-	af = dst_addr->family;
-	for (i = 0; i < nshared; ++i) {
-		s = shared_socks[i];
-
-		if (s->packet_proto == packet_proto && s->family == af && s->interface == rtinfo.nic) {
-			s->refcount++;
-			return s;
-		}
-	}
-
-	assert(nshared < 64);
-
-	s = calloc(1, sizeof(*s));
-	s->refcount = 1;
-	s->packet_proto = packet_proto;
-	s->local_address = rtinfo.src.network_address;
-	s->family = af;
-
-	shared_socks[nshared++] = s;
-	return s;
-}
-
-static fm_socket_t *
-fm_topo_shared_socket_open(fm_topo_shared_sockets_t *shared, unsigned ttl)
-{
-	fm_socket_t *sock;
-
-	if ((sock = shared->socks[ttl]) == NULL) {
-		sock = fm_protocol_create_socket(shared->packet_proto, shared->family, &shared->local_address);
-		assert(sock != NULL);
-
-		if (!fm_socket_bind(sock, &shared->local_address))
-			fm_log_fatal("%s: cannot bind socket", __func__);
-
-		fm_log_debug("Created shared %s socket", shared->packet_proto->name);
-		shared->socks[ttl] = sock;
-	}
-
-	return sock;
-}
-
-static void
-fm_topo_shared_sockets_release(fm_topo_shared_sockets_t *shared)
-{
-	unsigned int i;
-
-	assert(shared->refcount > 0);
-
-	if (--(shared->refcount) != 0)
-		return;
-
-	for (i = 0; i < FM_MAX_TOPO_DEPTH; ++i) {
-		fm_socket_t *sock = shared->socks[i];
-
-		if (sock != NULL) {
-			fm_socket_free(sock);
-			shared->socks[i] = NULL;
-		}
-	}
 }
 
 /*

@@ -757,7 +757,7 @@ fm_multiprobe_transmit_ttl_probe(fm_multiprobe_t *multiprobe, fm_target_control_
 	fm_host_tasklet_t fake_host_task;
 	fm_error_t error;
 
-	assert(target_control->sock);
+	/* assert(target_control->sock); */
 
 	fake_host_task.name = (char *) multiprobe->name;
 	fake_host_task.control = *target_control;

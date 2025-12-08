@@ -64,16 +64,6 @@ typedef struct fm_topo_hop_state {
 	fm_tgateway_t *		alt_gateway;
 } fm_topo_hop_state_t;
 
-typedef struct fm_topo_shared_sockets {
-	unsigned int		refcount;
-	int			family;
-	fm_protocol_t *		packet_proto;
-	const fm_interface_t *	interface;
-	fm_address_t		local_address;
-
-	fm_socket_t *		socks[FM_MAX_TOPO_DEPTH];
-} fm_topo_shared_sockets_t;
-
 typedef struct fm_topo_control {
 	fm_protocol_t *		proto;
 
@@ -102,9 +92,6 @@ typedef struct fm_topo_host_control {
 	unsigned int		destination_ttl;
 
 	fm_topo_hop_state_t	hop[FM_MAX_TOPO_DEPTH];
-
-	/* share across probes */
-	fm_topo_shared_sockets_t *shared_socks;
 } fm_topo_host_control_t;
 
 struct fm_tgateway {
