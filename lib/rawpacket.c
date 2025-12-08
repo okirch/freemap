@@ -833,6 +833,7 @@ static fm_icmp_msg_type_t	fm_icmp_msg_type[] = {
 	{ "net-unreach",	ICMP_DEST_UNREACH, ICMP_NET_UNREACH, ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_NOROUTE, .with_error = true },
 	{ "host-unreach",	ICMP_DEST_UNREACH, ICMP_HOST_UNREACH, ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_ADDR, .with_error = true },
 	{ "port-unreach",	ICMP_DEST_UNREACH, ICMP_PORT_UNREACH, ICMP6_DST_UNREACH, ICMP6_DST_UNREACH_NOPORT, .with_error = true },
+	{ "proto-unreach",	ICMP_DEST_UNREACH, ICMP_PROT_UNREACH, ICMP6_PARAM_PROB, ICMP6_PARAMPROB_NEXTHEADER, .with_error = true },
 	{ "frag-needed",	ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED, ICMP6_PACKET_TOO_BIG, -1, .with_error = true },
 	{ "ttl-exceeded",	ICMP_TIME_EXCEEDED, ICMP_EXC_TTL, ICMP6_TIME_EXCEEDED, ICMP6_TIME_EXCEED_TRANSIT, .with_error = true },
 	{ "fragtime-exceeded",	ICMP_TIME_EXCEEDED, ICMP_EXC_FRAGTIME, ICMP6_TIME_EXCEEDED, ICMP6_TIME_EXCEED_REASSEMBLY, .with_error = true },
@@ -1053,6 +1054,16 @@ fm_icmp_header_is_host_unreachable(const fm_icmp_header_info_t *icmp_info)
 {
 	if (icmp_info->v4_type != ICMP_DEST_UNREACH
 	 || icmp_info->v4_code == ICMP_FRAG_NEEDED)
+		return false;
+
+	return true;
+}
+
+bool
+fm_icmp_header_is_proto_unreachable(const fm_icmp_header_info_t *icmp_info)
+{
+	if (icmp_info->v4_type != ICMP_DEST_UNREACH
+	 || icmp_info->v4_code == ICMP_PROT_UNREACH)
 		return false;
 
 	return true;

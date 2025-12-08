@@ -144,6 +144,22 @@ fm_pkt_is_dest_unreachable(const fm_pkt_t *pkt)
 	return false;
 }
 
+bool
+fm_pkt_is_proto_unreachable(const fm_pkt_t *pkt)
+{
+	const struct sock_extended_err *ee;
+	if (pkt == NULL || (ee = pkt->info.ee) == NULL)
+		return false;
+
+	if (ee->ee_origin == SO_EE_ORIGIN_ICMP)
+		return ee->ee_type == ICMP_DEST_UNREACH && ee->ee_code == ICMP_PROT_UNREACH;
+
+	if (ee->ee_origin == SO_EE_ORIGIN_ICMP6)
+		return ee->ee_type == ICMP6_PARAM_PROB && ee->ee_code == ICMP6_PARAMPROB_NEXTHEADER;
+
+	return false;
+}
+
 /*
  * This should be called in the transmit path when using raw sockets.
  * On raw sockets, the port field is supposed to be either 0 or contain the transport
