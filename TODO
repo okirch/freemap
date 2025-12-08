@@ -1,6 +1,7 @@
  * DOCUMENTATION
  * Actually do read /etc/freemap.conf
  * icmp: add type="ndisc" for local reachability probes
+ * icmp: clean up fm_target_control.icmp
  * The host asset cache is crap for IPv6
  * have a "local" address enumerator that loops through all local networks
  * improve on the netid idea
