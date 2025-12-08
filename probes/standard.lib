@@ -42,6 +42,12 @@ host-probe icmp-info {
 	ttl 128;
 }
 
+host-probe ipproto-254 {
+	info "Check host reachability, using invalid IP protocol";
+	protocol ipproto;
+	ip-proto 254;
+}
+
 # This probe tries to elicit a TCP RST response from the target host.
 # Note, this probe doesn't do anything useful if the host you run
 # on has firewalling enabled (the response will be discarded).

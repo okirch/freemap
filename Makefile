@@ -14,8 +14,9 @@ OBJS	= lib/projects.o \
 	  lib/icmp.o \
 	  lib/arp.o \
 	  lib/rawip.o \
-	  lib/rawpacket.o \
 	  lib/traceroute.o \
+	  lib/ipproto.o \
+	  lib/rawpacket.o \
 	  lib/ratelimit.o \
 	  lib/addresses.o \
 	  lib/ports.o \

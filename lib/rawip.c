@@ -83,12 +83,12 @@ fm_rawip_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *ite
 	if (pkt->info.ee != NULL) {
 		/* raw socket, received error packet from errqueue.
 		 * The ICMP info we're looking for is in the extended error: */
-		unreachable = fm_pkt_is_dest_unreachable(pkt);
+		unreachable = fm_pkt_is_proto_unreachable(pkt);
 	} else {
 		/* First, check the ICMP error header - does it tell us the port is unreachable? */
 		if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_ICMP)) == NULL)
 			return NULL;
-		unreachable = fm_icmp_header_is_host_unreachable(&hdr->icmp);
+		unreachable = fm_icmp_header_is_proto_unreachable(&hdr->icmp);
 	}
 
 	/* Then, look at the enclosed IP header */
@@ -97,7 +97,7 @@ fm_rawip_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *ite
 
 	/* Do something with what we just learned */
 	(void) unreachable;
-	fm_log_debug("fm_rawip_locate_error()");
+	fm_log_debug("fm_rawip_locate_error(): proto unreachable=%u", unreachable);
 
 	return fm_rawip_locate_common(pkt, &hdr->ip, iter);
 }
