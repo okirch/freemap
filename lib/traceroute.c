@@ -34,9 +34,9 @@
 #include "logging.h"
 
 
-static void			fm_topo_state_free(fm_topo_state_t *topo);
+static void			fm_topo_control_free(fm_topo_control_t *topo);
 static fm_probe_class_t *	fm_topo_get_packet_probe_class(const char *proto_name);
-static bool			fm_topo_create_packet_probe(fm_topo_state_t *topo);
+static bool			fm_topo_create_packet_probe(fm_topo_control_t *topo);
 static void			fm_topo_hop_remove_extant(fm_topo_hop_state_t *hop, const fm_extant_t *extant);
 static void			fm_topo_hop_pkt_notifier(const fm_extant_t *extant, const fm_pkt_t *pkt, const double *rtt, void *user_data);
 
@@ -50,10 +50,10 @@ static void			fm_topo_shared_sockets_release(fm_topo_shared_sockets_t *shared);
 /*
  * topology scan state
  */
-static fm_topo_state_t *
-fm_topo_state_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const fm_topo_extra_params_t *extra_params)
+static fm_topo_control_t *
+fm_topo_control_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const fm_topo_extra_params_t *extra_params)
 {
-	fm_topo_state_t *topo;
+	fm_topo_control_t *topo;
 	unsigned int ttl;
 
 	topo = calloc(1, sizeof(*topo));
@@ -101,12 +101,12 @@ fm_topo_state_alloc(fm_protocol_t *proto, const fm_probe_params_t *params, const
 	return topo;
 
 failed:
-	fm_topo_state_free(topo);
+	fm_topo_control_free(topo);
 	return NULL;
 }
 
 static bool
-fm_topo_state_apply_extra_params(fm_topo_state_t *topo, const fm_string_array_t *args)
+fm_topo_state_apply_extra_params(fm_topo_control_t *topo, const fm_string_array_t *args)
 {
 	unsigned int i;
 
@@ -148,7 +148,7 @@ fm_topo_state_apply_extra_params(fm_topo_state_t *topo, const fm_string_array_t 
  * Once we have settled on the packet proto to use, make sure its configuration is complete
  */
 static bool
-fm_topo_state_set_packet_defaults(fm_topo_state_t *topo)
+fm_topo_state_set_packet_defaults(fm_topo_control_t *topo)
 {
 	fm_probe_class_t *pclass = topo->packet_probe_class;
 	char port_name_arg[16], port_arg[32];
@@ -193,7 +193,7 @@ fm_topo_state_set_packet_defaults(fm_topo_state_t *topo)
 }
 
 static bool
-fm_topo_state_init_target(fm_topo_state_t *topo, fm_target_control_t *target_control, fm_target_t *target)
+fm_topo_state_init_target(fm_topo_control_t *topo, fm_target_control_t *target_control, fm_target_t *target)
 {
 	const fm_address_t *addr = &target->address;
 
@@ -242,7 +242,7 @@ fm_topo_get_packet_probe_class(const char *proto_name)
 }
 
 static bool
-fm_topo_create_packet_probe(fm_topo_state_t *topo)
+fm_topo_create_packet_probe(fm_topo_control_t *topo)
 {
 	fm_multiprobe_t *packet_probe;
 	fm_probe_params_t params = { .port = 65534, };
@@ -259,7 +259,7 @@ fm_topo_create_packet_probe(fm_topo_state_t *topo)
 }
 
 static void
-fm_topo_state_free(fm_topo_state_t *topo)
+fm_topo_control_free(fm_topo_control_t *topo)
 {
 	unsigned int i;
 
@@ -307,7 +307,7 @@ fm_topo_hop_set_gateway(fm_topo_hop_state_t *hop, const fm_address_t *gw_addr)
 }
 
 static void
-fm_topo_state_report_flapping_gateways(fm_topo_state_t *topo)
+fm_topo_state_report_flapping_gateways(fm_topo_control_t *topo)
 {
 	unsigned int ttl;
 
@@ -542,7 +542,7 @@ fm_topo_hop_probe_complete(const fm_job_t *job, void *user_data)
  * Get the current probing horizon
  */
 static inline unsigned int
-fm_topo_state_max_ttl(fm_topo_state_t *topo)
+fm_topo_state_max_ttl(fm_topo_control_t *topo)
 {
 	unsigned int max_ttl;
 
@@ -558,7 +558,7 @@ fm_topo_state_max_ttl(fm_topo_state_t *topo)
  * Check whether we have pending probes
  */
 static bool
-fm_topo_state_check_pending(fm_topo_state_t *topo, double *timeout_ret)
+fm_topo_state_check_pending(fm_topo_control_t *topo, double *timeout_ret)
 {
 	const fm_time_t now = fm_time_now();
 	unsigned int ttl, max_ttl;
@@ -628,7 +628,7 @@ fm_topo_state_check_pending(fm_topo_state_t *topo, double *timeout_ret)
  * This is what this algorithm tries to do.
  */
 static void
-fm_topo_state_check_gateways(fm_topo_state_t *topo)
+fm_topo_state_check_gateways(fm_topo_control_t *topo)
 {
 	unsigned int ttl, max_ttl;
 	fm_tgateway_t *gw;
@@ -683,7 +683,7 @@ fm_topo_state_check_gateways(fm_topo_state_t *topo)
  * Select the next distance to probe
  */
 static fm_error_t
-fm_topo_state_select_ttl(fm_topo_state_t *topo, double *timeout_ret, fm_topo_hop_state_t **next_hop_ret)
+fm_topo_state_select_ttl(fm_topo_control_t *topo, double *timeout_ret, fm_topo_hop_state_t **next_hop_ret)
 {
 	unsigned int ttl, max_ttl;
 	bool have_pending = false;
@@ -772,7 +772,7 @@ fm_topo_state_select_ttl(fm_topo_state_t *topo, double *timeout_ret, fm_topo_hop
 }
 
 static fm_error_t
-fm_topo_state_send_probe(fm_topo_state_t *topo, fm_topo_hop_state_t *hop, double *timeout_ret)
+fm_topo_state_send_probe(fm_topo_control_t *topo, fm_topo_hop_state_t *hop, double *timeout_ret)
 {
 	unsigned int ttl = hop->distance;
 	fm_target_control_t fake_control = topo->_control;
@@ -829,7 +829,7 @@ fm_topo_state_send_probe(fm_topo_state_t *topo, fm_topo_hop_state_t *hop, double
 }
 
 static void
-fm_topo_state_display(fm_topo_state_t *topo)
+fm_topo_state_display(fm_topo_control_t *topo)
 {
 	unsigned int ttl, max_ttl;
 
@@ -1015,7 +1015,7 @@ static bool
 fm_topo_multiprobe_add_target(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host_task, fm_target_t *target)
 {
 	fm_target_control_t *target_control = &host_task->control;
-	fm_topo_state_t *topo = multiprobe->control;
+	fm_topo_control_t *topo = multiprobe->control;
 	fm_host_asset_t *host_asset;
 
 	if (topo->target != NULL) {
@@ -1053,7 +1053,7 @@ fm_topo_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host
 		const fm_buffer_t *payload,
 		fm_extant_t **extant_ret, double *timeout_ret)
 {
-	fm_topo_state_t *topo = multiprobe->control;
+	fm_topo_control_t *topo = multiprobe->control;
 	fm_topo_hop_state_t *hop;
 	double timeout = 0;
 	fm_error_t error;
@@ -1120,10 +1120,10 @@ fm_topo_multiprobe_transmit(fm_multiprobe_t *multiprobe, fm_host_tasklet_t *host
 static void
 fm_topo_multiprobe_destroy(fm_multiprobe_t *multiprobe)
 {
-	fm_topo_state_t *icmp = multiprobe->control;
+	fm_topo_control_t *topo = multiprobe->control;
 
 	multiprobe->control = NULL;
-	fm_topo_state_free(icmp);
+	fm_topo_control_free(topo);
 }
 
 static fm_multiprobe_ops_t	fm_topo_multiprobe_ops = {
@@ -1135,7 +1135,7 @@ static fm_multiprobe_ops_t	fm_topo_multiprobe_ops = {
 static bool
 fm_topo_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multiprobe, const fm_string_array_t *extra_string_args)
 {
-	fm_topo_state_t *topo;
+	fm_topo_control_t *topo;
 
 	if (multiprobe->control != NULL) {
 		fm_log_error("cannot reconfigure probe %s", multiprobe->name);
@@ -1150,7 +1150,7 @@ fm_topo_configure_probe(const fm_probe_class_t *pclass, fm_multiprobe_t *multipr
 		multiprobe->params.retries = fm_global.traceroute.retries;
 #endif
 
-	topo = fm_topo_state_alloc(pclass->proto, &multiprobe->params, NULL);
+	topo = fm_topo_control_alloc(pclass->proto, &multiprobe->params, NULL);
 	if (topo == NULL)
 		return false;
 

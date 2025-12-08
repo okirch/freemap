@@ -74,15 +74,10 @@ typedef struct fm_topo_shared_sockets {
 	fm_socket_t *		socks[FM_MAX_TOPO_DEPTH];
 } fm_topo_shared_sockets_t;
 
-typedef struct fm_topo_state {
+typedef struct fm_topo_control {
 	fm_protocol_t *		proto;
-	fm_target_t *		target;
-	fm_host_asset_t *	host_asset;
 
 	int			family;
-	fm_address_t		host_address;
-
-	fm_target_control_t	_control;
 
 	fm_probe_params_t	params;
 
@@ -92,16 +87,21 @@ typedef struct fm_topo_state {
 	fm_string_array_t	packet_probe_params;
 	fm_multiprobe_t *	packet_probe;
 
+	fm_tgateway_t *		unknown_gateway;
+} fm_topo_control_t;
+
+/* Per target state */
+typedef struct fm_topo_host_control {
+	fm_host_asset_t *	host_asset;
+
 	unsigned int		next_ttl;
 	unsigned int		destination_ttl;
-
-	fm_tgateway_t *		unknown_gateway;
 
 	fm_topo_hop_state_t	hop[FM_MAX_TOPO_DEPTH];
 
 	/* share across probes */
 	fm_topo_shared_sockets_t *shared_socks;
-} fm_topo_state_t;
+} fm_topo_host_control_t;
 
 struct fm_tgateway {
 	unsigned int		nhops;
