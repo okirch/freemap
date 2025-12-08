@@ -252,12 +252,19 @@ fm_tcp_locate_error(fm_protocol_t *proto, fm_pkt_t *pkt, hlist_iterator_t *iter)
 	if ((cooked = pkt->parsed) == NULL)
 		return NULL;
 
-	/* First, check the ICMP error header - does it tell us the port is unreachable? */
-	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_ICMP)) == NULL)
-		return NULL;
+	if (pkt->info.ee != NULL) {
+		/* raw socket, received error packet from errqueue.
+		 * The ICMP info we're looking for is in the extended error: */
+		unreachable = fm_pkt_is_dest_unreachable(pkt);
+		icmp_type = pkt->info.ee->ee_type;
+        } else {
+		/* First, check the ICMP error header - does it tell us the port is unreachable? */
+		if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_ICMP)) == NULL)
+			return NULL;
 
-	unreachable = fm_icmp_header_is_host_unreachable(&hdr->icmp);
-	icmp_type = hdr->icmp.type;
+		unreachable = fm_icmp_header_is_host_unreachable(&hdr->icmp);
+		icmp_type = hdr->icmp.type;
+	}
 
 	/* Then, look at the enclosed TCP header */
 	if ((hdr = fm_parsed_packet_find_next(cooked, FM_PROTO_TCP)) == NULL)
